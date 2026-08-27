@@ -85,6 +85,22 @@ async def process_batch_files(
                 except Exception as t_err:
                     turso_msg = f" (Alerta Turso: {str(t_err)})"
 
+            # Notificación automática (Telegram / Webhook)
+            try:
+                from app.services.notification_service import NotificationService
+                noti = NotificationService()
+                if noti.enabled and (noti.telegram_token or noti.webhook_url):
+                    desp_dict = {
+                        "numero_despacho": despacho.numero_despacho,
+                        "importador_nombre": despacho.importador_nombre,
+                        "fecha_despacho": despacho.fecha_despacho.strftime("%d/%m/%Y") if despacho.fecha_despacho else "-",
+                        "valor_fob": despacho.valor_fob,
+                        "nombre_archivo_original": despacho.nombre_archivo_original or filename,
+                    }
+                    noti.notify_new_despacho(despacho_dict=desp_dict, items_count=len(despacho.items), source="Importación Manual")
+            except Exception:
+                pass
+
             results.append({
                 "filename": filename,
                 "status": despacho.estado_procesamiento,
