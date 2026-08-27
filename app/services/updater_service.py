@@ -417,12 +417,25 @@ class UpdaterService:
 
         # 2. Fallback Directo HTTP (Funciona SIN Git instalado en la máquina)
         try:
+            headers = {}
             clean_url = repo_url.rstrip("/").removesuffix(".git")
+
+            if "@github.com" in clean_url:
+                parts = clean_url.split("@github.com")
+                auth_part = parts[0].replace("https://", "").replace("http://", "")
+                clean_url = f"https://github.com{parts[1]}"
+                headers["Authorization"] = f"Bearer {auth_part}"
+
             zip_url = f"{clean_url}/archive/refs/heads/main.zip"
 
             with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-                resp = client.get(zip_url)
-                if resp.status_code != 200:
+                resp = client.get(zip_url, headers=headers)
+                if resp.status_code == 404:
+                    return {
+                        "success": False,
+                        "error": "GitHub devolvió 404 Not Found porque el repositorio es PRIVADO. Hazlo público en GitHub (Settings -> Danger Zone -> Change visibility to Public) o usa el actualizador ZIP."
+                    }
+                elif resp.status_code != 200:
                     return {
                         "success": False,
                         "error": f"No se pudo descargar el repositorio desde GitHub ({resp.status_code}): {resp.text[:100]}"
