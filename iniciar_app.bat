@@ -51,9 +51,9 @@ if exist ".git" (
 
 :: Verificar dependencias
 echo [*] Verificando dependencias del sistema...
-"%PY_CMD%" -c "import fastapi, uvicorn, sqlalchemy, openpyxl, reportlab, httpx, dotenv" >nul 2>&1
+"%PY_CMD%" -c "import fastapi, uvicorn, sqlalchemy, openpyxl, reportlab, httpx, dotenv, fitz, pdfplumber, googleapiclient" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [*] Instalando dependencias necesarias...
+    echo [*] Instalando dependencias necesarias desde requirements.txt...
     "%PY_CMD%" -m pip install -r requirements.txt
 )
 
