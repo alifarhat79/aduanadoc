@@ -84,23 +84,37 @@
     background: #ffffff;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    max-height: 280px;
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    max-height: 320px;
     overflow-y: auto;
-    width: 480px;
+    width: 550px;
     display: none;
 }
 .catalog-dropdown-item {
-    padding: 8px 12px;
+    padding: 10px 14px;
     border-bottom: 1px solid #f1f5f9;
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: 0.84rem;
+    transition: background-color 0.12s ease;
 }
 .catalog-dropdown-item:hover, .catalog-dropdown-item.active {
     background-color: #eff6ff;
 }
-.catalog-dropdown-item:last-child {
-    border-bottom: none;
+
+/* Resaltado en AMARILLO para el Despacho Más Reciente */
+.catalog-item-recent {
+    background-color: #fef08a !important; /* Amarillo destacado */
+    border-left: 6px solid #eab308 !important; /* Borde dorado */
+}
+.catalog-item-recent:hover {
+    background-color: #fde047 !important;
+}
+
+/* Modal Table Styling */
+.modal-table-recent-row {
+    background-color: #fef08a !important;
+    border-left: 6px solid #eab308 !important;
+    font-weight: 600;
 }
 </style>
 {% endblock %}
@@ -198,13 +212,13 @@
             </div>
         </div>
 
-        <!-- Alerta de Búsqueda Rápida en Catálogo -->
-        <div class="alert alert-info py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0 bg-info-subtle text-info-emphasis">
+        <!-- Alerta Informativa con Resaltado Amarillo del Más Reciente -->
+        <div class="alert alert-warning py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border border-warning-subtle bg-warning-subtle text-dark">
             <div>
-                <i class="bi bi-lightning-charge-fill me-1"></i>
-                <strong>Consejo:</strong> Escribe en la columna <strong>Mercaderías</strong> (ej. <em>ARMAF, LATTAFA, PERFUME</em>) para buscar en vivo en el catálogo de despachos anteriores y cargar el precio unitario automáticamente.
+                <i class="bi bi-star-fill text-warning me-1"></i>
+                <strong>Buscador Inteligente:</strong> Al buscar en <strong>Mercaderías</strong>, el sistema sitúa en el <strong>TOP</strong> y resalta en <strong>AMARILLO</strong> la línea del <strong>último despacho más reciente</strong> de ese modelo con su precio unitario FOB.
             </div>
-            <button type="button" class="btn btn-sm btn-primary py-0 px-2" onclick="agregarFila()">+ Fila</button>
+            <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2" onclick="abrirModalBusqueda(0)"><i class="bi bi-search me-1"></i>Abrir Buscador</button>
         </div>
 
         <!-- Tabla Estilo Hoja de Cálculo -->
@@ -221,7 +235,7 @@
                         <th style="width: 140px;">Precio<br>Factura</th>
                         <th style="width: 140px;">Precio<br>Normal U$$</th>
                         <th style="width: 150px;">Precio<br>Total U$$</th>
-                        <th style="width: 45px;"></th>
+                        <th style="width: 65px;">Acción</th>
                     </tr>
                 </thead>
                 <tbody id="planillaTableBody">
@@ -253,6 +267,58 @@
                 <button type="button" class="btn btn-success fw-bold shadow-sm" onclick="guardarPlanilla('FINIQUITADO')">
                     <i class="bi bi-check2-circle me-1"></i> Finiquitar y Guardar Planilla
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Búsqueda Avanzada de Catálogo -->
+<div class="modal fade" id="catalogSearchModal" tabindex="-1" aria-labelledby="catalogSearchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white py-2">
+                <h6 class="modal-title fw-bold" id="catalogSearchModalLabel">
+                    <i class="bi bi-search me-2"></i>Buscador de Mercaderías en Catálogo
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="input-group mb-3">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" id="modalSearchQuery" class="form-control" placeholder="Escribe marca, modelo o descripción (ej: ARMAF, YARA, LATTAFA)..." autofocus oninput="onModalSearchInput(this.value)">
+                    <button class="btn btn-primary" type="button" onclick="onModalSearchInput(document.getElementById('modalSearchQuery').value)">Buscar</button>
+                </div>
+
+                <div class="alert alert-warning py-1 px-2 small mb-2 d-flex align-items-center gap-1 border-0 bg-warning-subtle text-dark">
+                    <i class="bi bi-star-fill text-warning"></i>
+                    <span>La fila en <strong>AMARILLO en el tope</strong> representa el <strong>último despacho más reciente</strong> de este modelo.</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered align-middle small mb-0">
+                        <thead class="table-light text-muted text-uppercase">
+                            <tr>
+                                <th>Fecha & Despacho</th>
+                                <th>Marca</th>
+                                <th>Descripción Mercadería</th>
+                                <th>Importador</th>
+                                <th class="text-end">Precio FOB</th>
+                                <th class="text-center" style="width: 80px;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalSearchResultsBody">
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">
+                                    Escribe un término arriba para buscar en todo el historial de despachos.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2 bg-light">
+                <small class="text-muted me-auto">Haz clic en <strong>"Insertar"</strong> para cargar automáticamente el producto y su precio.</small>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
             </div>
         </div>
     </div>
@@ -296,8 +362,11 @@ let planillaItems = [
 
 let planillaId = {{ planilla.id if planilla else 'null' }};
 let searchDebounceTimer = null;
+let modalSearchDebounce = null;
 let activeCatalogInput = null;
 let activeRowIndex = null;
+let targetModalRowIndex = 0;
+let modalSearchResults = [];
 
 // Renderizar tabla
 function renderTable() {
@@ -314,7 +383,10 @@ function renderTable() {
                 <input type="number" step="any" min="0" class="cell-input text-center fw-semibold row-cantidad" value="${item.cantidad || ''}" placeholder="0" oninput="onCantidadChange(${index}, this.value)">
             </td>
             <td style="position: relative;">
-                <input type="text" class="cell-input fw-semibold text-dark row-mercaderia" value="${escapeHtml(item.mercaderia || '')}" placeholder="Escribe nombre, marca o código..." oninput="onMercaderiaInput(${index}, this)" onfocus="onMercaderiaFocus(${index}, this)" autocomplete="off">
+                <div class="input-group input-group-sm">
+                    <input type="text" class="cell-input fw-semibold text-dark row-mercaderia" value="${escapeHtml(item.mercaderia || '')}" placeholder="Escribe nombre, marca o modelo..." oninput="onMercaderiaInput(${index}, this)" onfocus="onMercaderiaFocus(${index}, this)" autocomplete="off">
+                    <button type="button" class="btn btn-outline-secondary border-0 btn-sm" onclick="abrirModalBusqueda(${index})" title="Buscar en catálogo con modal"><i class="bi bi-search"></i></button>
+                </div>
             </td>
             <td>
                 <input type="number" step="0.01" min="0" class="cell-input text-end row-precio-factura" value="${item.precio_factura !== undefined ? item.precio_factura : ''}" placeholder="0.00" oninput="onPrecioFacturaChange(${index}, this.value)">
@@ -347,7 +419,6 @@ function formatMoney(num) {
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Eventos de cambios en celdas
 function onCantidadChange(index, val) {
     planillaItems[index].cantidad = parseFloat(val) || 0;
     recalcularFila(index);
@@ -369,7 +440,6 @@ function recalcularFila(index) {
     const pNorm = parseFloat(item.precio_normal) || 0;
     const pFact = parseFloat(item.precio_factura) || 0;
     
-    // Precio unitario a multiplicar: precio normal preferente, sino precio factura
     const unitP = pNorm > 0 ? pNorm : pFact;
     item.precio_total = Math.round((cant * unitP) * 100) / 100;
 
@@ -420,7 +490,6 @@ function agregarFila() {
     });
     renderTable();
     
-    // Foco en la nueva fila mercaderia
     setTimeout(() => {
         const rows = document.querySelectorAll('.row-mercaderia');
         if (rows.length > 0) rows[rows.length - 1].focus();
@@ -436,7 +505,7 @@ function eliminarFila(index) {
     renderTable();
 }
 
-// Búsqueda inteligente en vivo en Catálogo
+// Búsqueda en vivo en celda con resaltado AMARILLO en el más reciente
 function onMercaderiaFocus(index, input) {
     activeRowIndex = index;
     activeCatalogInput = input;
@@ -473,28 +542,37 @@ function showCatalogDropdown(items, inputEl, rowIndex) {
     }
 
     const rect = inputEl.getBoundingClientRect();
-    const tableRect = document.getElementById('planillaItemsTable').getBoundingClientRect();
-
     dropdown.style.top = `${inputEl.offsetTop + inputEl.offsetHeight + 4}px`;
     dropdown.style.left = `${inputEl.offsetLeft}px`;
-    dropdown.style.width = `${Math.max(420, inputEl.offsetWidth)}px`;
+    dropdown.style.width = `${Math.max(480, inputEl.offsetWidth)}px`;
     dropdown.style.display = 'block';
 
-    dropdown.innerHTML = items.map((it, idx) => `
-        <div class="catalog-dropdown-item d-flex justify-content-between align-items-center" onclick="selectCatalogItem(${rowIndex}, ${idx})">
-            <div>
-                <strong class="text-primary">${escapeHtml(it.marca || 'GENÉRICO')}</strong> - ${escapeHtml(it.mercaderia)}
-                <div class="text-muted small" style="font-size: 0.72rem;">
-                    Desp: <strong>${it.despacho_numero}</strong> | ${it.importador} (${it.fecha})
+    dropdown.innerHTML = items.map((it, idx) => {
+        const isRecent = (idx === 0 || it.es_mas_reciente);
+        const recentClass = isRecent ? 'catalog-item-recent' : '';
+        const recentBadge = isRecent 
+            ? `<span class="badge bg-warning text-dark border border-warning fw-bold mb-1"><i class="bi bi-star-fill text-danger me-1"></i>ÚLTIMO DESPACHO MÁS RECIENTE</span>` 
+            : '';
+
+        return `
+            <div class="catalog-dropdown-item ${recentClass} d-flex justify-content-between align-items-center" onclick="selectCatalogItem(${rowIndex}, ${idx})">
+                <div>
+                    ${recentBadge}
+                    <div>
+                        <strong class="text-primary">${escapeHtml(it.marca || 'GENÉRICO')}</strong> - ${escapeHtml(it.mercaderia)}
+                    </div>
+                    <div class="text-muted small" style="font-size: 0.72rem;">
+                        📅 Fecha: <strong>${it.fecha || '-'}</strong> | Desp: <strong>${it.despacho_numero}</strong> | ${it.importador}
+                    </div>
+                </div>
+                <div class="text-end ps-2">
+                    <span class="badge bg-success text-white fs-6 fw-bold shadow-2xs">$${formatMoney(it.precio_normal)}</span>
+                    <div class="text-muted" style="font-size: 0.68rem;">Precio Unit. FOB</div>
                 </div>
             </div>
-            <div class="text-end">
-                <span class="badge bg-success-subtle text-success fs-6 fw-bold">$${formatMoney(it.precio_normal)}</span>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
-    // Guardar referencia en memoria
     dropdown.currentItems = items;
 }
 
@@ -508,6 +586,11 @@ function selectCatalogItem(rowIndex, itemIndex) {
     const item = dropdown.currentItems[itemIndex];
     if (!item) return;
 
+    aplicarItemEnFila(rowIndex, item);
+    hideCatalogDropdown();
+}
+
+function aplicarItemEnFila(rowIndex, item) {
     planillaItems[rowIndex].item_catalogo_id = item.id;
     planillaItems[rowIndex].mercaderia = item.mercaderia;
     planillaItems[rowIndex].marca = item.marca;
@@ -515,16 +598,103 @@ function selectCatalogItem(rowIndex, itemIndex) {
     planillaItems[rowIndex].precio_normal = item.precio_normal;
     planillaItems[rowIndex].precio_factura = item.precio_factura || item.precio_normal;
 
-    hideCatalogDropdown();
     renderTable();
 
-    // Foco en el campo de precio o siguiente
     setTimeout(() => {
         const row = document.querySelector(`tr[data-index="${rowIndex}"]`);
         if (row) {
             row.querySelector('.row-precio-factura').focus();
         }
     }, 50);
+}
+
+// Modal de Búsqueda Avanzada
+function abrirModalBusqueda(rowIndex) {
+    targetModalRowIndex = rowIndex;
+    const item = planillaItems[rowIndex];
+    const initialQuery = item ? (item.mercaderia || item.marca || '') : '';
+    
+    document.getElementById('modalSearchQuery').value = initialQuery;
+    const modalEl = document.getElementById('catalogSearchModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    if (initialQuery.trim().length >= 2) {
+        onModalSearchInput(initialQuery);
+    } else {
+        document.getElementById('modalSearchResultsBody').innerHTML = `
+            <tr><td colspan="6" class="text-center py-4 text-muted">Escribe el nombre o modelo a buscar arriba.</td></tr>
+        `;
+    }
+}
+
+function onModalSearchInput(val) {
+    clearTimeout(modalSearchDebounce);
+    const q = val.trim();
+    if (q.length < 2) {
+        document.getElementById('modalSearchResultsBody').innerHTML = `
+            <tr><td colspan="6" class="text-center py-4 text-muted">Ingresa al menos 2 caracteres para buscar.</td></tr>
+        `;
+        return;
+    }
+
+    modalSearchDebounce = setTimeout(async () => {
+        try {
+            const res = await fetch(`/api/planillas/buscar-catalogo?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            modalSearchResults = data.results || [];
+            renderModalResults(modalSearchResults);
+        } catch (e) {
+            console.error('Error modal search', e);
+        }
+    }, 200);
+}
+
+function renderModalResults(items) {
+    const tbody = document.getElementById('modalSearchResultsBody');
+    if (!items || items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">No se encontraron mercancías con ese criterio.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = items.map((it, idx) => {
+        const isRecent = (idx === 0 || it.es_mas_reciente);
+        const rowClass = isRecent ? 'modal-table-recent-row' : '';
+        const recentBadge = isRecent 
+            ? `<span class="badge bg-warning text-dark border border-warning fw-bold"><i class="bi bi-star-fill text-danger me-1"></i>MÁS RECIENTE</span>` 
+            : `<span class="text-muted small">${it.fecha || '-'}</span>`;
+
+        return `
+            <tr class="${rowClass}">
+                <td>
+                    ${recentBadge}<br>
+                    <strong>${it.despacho_numero}</strong>
+                </td>
+                <td><span class="badge bg-primary-subtle text-primary">${escapeHtml(it.marca || 'GENÉRICO')}</span></td>
+                <td>
+                    <strong>${escapeHtml(it.mercaderia)}</strong>
+                    ${it.codigo_producto ? `<div class="text-muted small">Cód: ${it.codigo_producto}</div>` : ''}
+                </td>
+                <td class="text-truncate" style="max-width: 140px;">${it.importador || '-'}</td>
+                <td class="text-end fw-bold text-success fs-6">$${formatMoney(it.precio_normal)}</td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm ${isRecent ? 'btn-warning fw-bold text-dark' : 'btn-outline-primary'}" onclick="selectModalItem(${idx})">
+                        Insertar
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function selectModalItem(index) {
+    const item = modalSearchResults[index];
+    if (!item) return;
+
+    aplicarItemEnFila(targetModalRowIndex, item);
+    const modalEl = document.getElementById('catalogSearchModal');
+    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+    if (modalInstance) modalInstance.hide();
 }
 
 // Cerrar dropdown al hacer clic fuera
@@ -545,7 +715,6 @@ async function guardarPlanilla(estado) {
     const titulo = document.getElementById('inputTitulo').value.trim();
     const observaciones = document.getElementById('inputObservaciones').value.trim();
 
-    // Validar filas
     const itemsValidos = planillaItems.filter(it => (it.mercaderia && it.mercaderia.trim() !== '') || (it.cantidad > 0 && it.precio_normal > 0));
     if (itemsValidos.length === 0) {
         mostrarToast('warning', 'Por favor ingresa al menos una mercadería en la planilla.');
@@ -581,15 +750,13 @@ async function guardarPlanilla(estado) {
             mostrarToast('success', data.message);
             planillaId = data.id;
             
-            // Actualizar URL sin recarga completa
             if (window.location.pathname === '/planillas/nueva') {
                 window.history.replaceState({}, '', `/planillas/${data.id}`);
             }
 
-            // Si es finiquitado, redirigir al listado o recargar para mostrar exportaciones
             setTimeout(() => {
                 window.location.href = `/planillas/${data.id}`;
-            }, 800);
+            }, 700);
         } else {
             mostrarToast('danger', data.message || 'Error al guardar');
         }

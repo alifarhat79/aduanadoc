@@ -184,6 +184,7 @@ async def imprimir_planilla_view(planilla_id: int, request: Request, db: Session
 # 5. API BÚSQUEDA INTELIGENTE EN CATÁLOGO
 @router.get("/api/planillas/buscar-catalogo")
 async def buscar_catalogo_api(q: str = Query("", min_length=1), db: Session = Depends(get_db)):
+    """Busca en vivo productos en el catálogo, ordenando el despacho más reciente al top y marcándolo."""
     term = f"%{q.strip()}%"
     results = (
         db.query(DespachoItem, Despacho)
@@ -196,13 +197,13 @@ async def buscar_catalogo_api(q: str = Query("", min_length=1), db: Session = De
                 DespachoItem.codigo_ncm.ilike(term)
             )
         )
-        .order_by(desc(Despacho.fecha_despacho), desc(DespachoItem.id))
-        .limit(25)
+        .order_by(desc(Despacho.fecha_despacho), desc(Despacho.id), desc(DespachoItem.id))
+        .limit(30)
         .all()
     )
 
     items_data = []
-    for item, despacho in results:
+    for idx, (item, despacho) in enumerate(results):
         unit_price = item.valor_unitario or 0.0
         if unit_price == 0.0 and item.cantidad and item.cantidad > 0 and item.valor_total:
             unit_price = round(item.valor_total / item.cantidad, 4)
@@ -221,7 +222,9 @@ async def buscar_catalogo_api(q: str = Query("", min_length=1), db: Session = De
             "precio_factura": unit_price,
             "despacho_numero": despacho.numero_despacho or "",
             "importador": despacho.importador_nombre or "",
-            "fecha": despacho.fecha_despacho.strftime("%d/%m/%Y") if despacho.fecha_despacho else ""
+            "fecha": despacho.fecha_despacho.strftime("%d/%m/%Y") if despacho.fecha_despacho else "",
+            "fecha_iso": despacho.fecha_despacho.isoformat() if despacho.fecha_despacho else "",
+            "es_mas_reciente": (idx == 0)
         })
 
     return JSONResponse(content={"results": items_data})
