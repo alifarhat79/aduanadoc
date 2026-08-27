@@ -65,99 +65,21 @@ class TursoService:
         return {"success": True, "message": "Conexión a Turso establecida exitosamente", "response": res}
 
     async def init_turso_schema(self):
-        """Crea las tablas en Turso si aún no existen."""
+        """Crea las tablas en Turso con exactamente las mismas columnas que el modelo local."""
+        def build_create_table(model, table_name):
+            cols_def = []
+            for col in model.__table__.columns:
+                cname = col.name
+                ctype = "INTEGER" if "int" in str(col.type).lower() else ("REAL" if ("float" in str(col.type).lower() or "real" in str(col.type).lower()) else "TEXT")
+                if col.primary_key:
+                    cols_def.append(f"{cname} {ctype} PRIMARY KEY")
+                else:
+                    cols_def.append(f"{cname} {ctype}")
+            return f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(cols_def)});"
+
         schema_stmts = [
-            {
-                "sql": """
-                CREATE TABLE IF NOT EXISTS despachos (
-                    id INTEGER PRIMARY KEY,
-                    propietario TEXT,
-                    numero_despacho TEXT,
-                    numero_declaracion TEXT,
-                    referencia TEXT,
-                    fecha_despacho TEXT,
-                    fecha_registro TEXT,
-                    fecha_liberacion TEXT,
-                    importador_nombre TEXT,
-                    importador_documento TEXT,
-                    importador_direccion TEXT,
-                    exportador_nombre TEXT,
-                    exportador_pais TEXT,
-                    exportador_direccion TEXT,
-                    despachante_nombre TEXT,
-                    despachante_documento TEXT,
-                    despachante_empresa TEXT,
-                    modalidad_transporte TEXT,
-                    bl TEXT,
-                    hbl TEXT,
-                    mbl TEXT,
-                    awb TEXT,
-                    contenedor TEXT,
-                    buque TEXT,
-                    vuelo TEXT,
-                    matricula TEXT,
-                    empresa_transporte TEXT,
-                    puerto_origen TEXT,
-                    puerto_destino TEXT,
-                    pais_origen TEXT,
-                    pais_procedencia TEXT,
-                    aduana TEXT,
-                    regimen TEXT,
-                    canal TEXT,
-                    tipo_cambio REAL,
-                    moneda TEXT,
-                    valor_fob REAL,
-                    valor_flete REAL,
-                    valor_seguro REAL,
-                    valor_cif REAL,
-                    valor_imponible REAL,
-                    total_general REAL,
-                    total_tributos_moneda_nacional REAL,
-                    cantidad_bultos REAL,
-                    tipo_bultos TEXT,
-                    peso_bruto REAL,
-                    peso_neto REAL,
-                    observaciones TEXT,
-                    archivo_pdf TEXT,
-                    nombre_archivo_original TEXT,
-                    hash_archivo TEXT,
-                    tipo_documento_detectado TEXT,
-                    metodo_extraccion TEXT,
-                    numero_paginas INTEGER,
-                    estado_procesamiento TEXT,
-                    confianza_promedio REAL,
-                    metadata_extraccion TEXT,
-                    created_at TEXT,
-                    updated_at TEXT
-                );
-                """
-            },
-            {
-                "sql": """
-                CREATE TABLE IF NOT EXISTS despacho_items (
-                    id INTEGER PRIMARY KEY,
-                    despacho_id INTEGER,
-                    numero_item INTEGER,
-                    numero_subitem INTEGER,
-                    codigo_ncm TEXT,
-                    codigo_producto TEXT,
-                    descripcion TEXT,
-                    marca TEXT,
-                    cantidad REAL,
-                    unidad TEXT,
-                    peso_neto REAL,
-                    peso_bruto REAL,
-                    valor_unitario REAL,
-                    valor_total REAL,
-                    tasa_iva REAL,
-                    tasa_arancel REAL,
-                    pais_origen TEXT,
-                    pais_procedencia TEXT,
-                    pagina_origen INTEGER,
-                    FOREIGN KEY (despacho_id) REFERENCES despachos(id) ON DELETE CASCADE
-                );
-                """
-            }
+            {"sql": build_create_table(Despacho, "despachos")},
+            {"sql": build_create_table(DespachoItem, "despacho_items")}
         ]
         return await self.execute_raw(schema_stmts)
 
@@ -333,27 +255,24 @@ class TursoService:
                 col_name = col.name
                 if col_name in row_dict:
                     val = row_dict[col_name]
-                    if val is None or val == "":
-                        setattr(existing, col_name, None)
-                    elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
-                        setattr(existing, col_name, float(val))
-                    elif "int" in str(col.type).lower():
-                        setattr(existing, col_name, int(val))
-                    elif "date" in str(col.type).lower():
-                        try:
+                    try:
+                        if val is None or val == "":
+                            setattr(existing, col_name, None)
+                        elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
+                            setattr(existing, col_name, float(val))
+                        elif "int" in str(col.type).lower():
+                            setattr(existing, col_name, int(val))
+                        elif "date" in str(col.type).lower():
                             if "T" in str(val):
                                 setattr(existing, col_name, datetime.fromisoformat(str(val)))
                             else:
                                 setattr(existing, col_name, date.fromisoformat(str(val)))
-                        except Exception:
-                            pass
-                    elif "json" in str(col.type).lower():
-                        try:
+                        elif "json" in str(col.type).lower():
                             setattr(existing, col_name, json.loads(str(val)) if isinstance(val, str) else val)
-                        except Exception:
-                            setattr(existing, col_name, {})
-                    else:
-                        setattr(existing, col_name, str(val))
+                        else:
+                            setattr(existing, col_name, str(val))
+                    except Exception:
+                        setattr(existing, col_name, str(val) if val is not None else None)
 
             imported_despachos += 1
 
@@ -376,14 +295,17 @@ class TursoService:
                 col_name = col.name
                 if col_name in row_dict:
                     val = row_dict[col_name]
-                    if val is None or val == "":
-                        setattr(existing_item, col_name, None)
-                    elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
-                        setattr(existing_item, col_name, float(val))
-                    elif "int" in str(col.type).lower():
-                        setattr(existing_item, col_name, int(val))
-                    else:
-                        setattr(existing_item, col_name, str(val))
+                    try:
+                        if val is None or val == "":
+                            setattr(existing_item, col_name, None)
+                        elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
+                            setattr(existing_item, col_name, float(val))
+                        elif "int" in str(col.type).lower():
+                            setattr(existing_item, col_name, int(val))
+                        else:
+                            setattr(existing_item, col_name, str(val))
+                    except Exception:
+                        setattr(existing_item, col_name, str(val) if val is not None else None)
 
             imported_items += 1
 
@@ -393,4 +315,61 @@ class TursoService:
             "success": True,
             "despachos_descargados": imported_despachos,
             "items_descargados": imported_items
+        }
+
+    async def pull_despachos_quick(self, db: Session) -> Dict[str, Any]:
+        """Sincronización ultra-rápida (en milisegundos) de cabeceras de despachos y dueños desde Turso."""
+        if not self.is_configured():
+            return {"success": False, "error": "Turso no configurado"}
+
+        query_stmts = [{"sql": "SELECT * FROM despachos ORDER BY id DESC LIMIT 500;"}]
+        res = await self.execute_raw(query_stmts)
+
+        despachos_result = res.get("results", [])[0].get("response", {}).get("result", {})
+        desp_cols = [c["name"] for c in despachos_result.get("cols", [])]
+        desp_rows = despachos_result.get("rows", [])
+
+        updated_count = 0
+        for row in desp_rows:
+            row_dict = {}
+            for col, val_obj in zip(desp_cols, row):
+                val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                row_dict[col] = val
+
+            desp_id = int(row_dict.get("id"))
+            existing = db.query(Despacho).filter(Despacho.id == desp_id).first()
+            if not existing:
+                existing = Despacho(id=desp_id)
+                db.add(existing)
+
+            for col in Despacho.__table__.columns:
+                col_name = col.name
+                if col_name in row_dict:
+                    val = row_dict[col_name]
+                    try:
+                        if val is None or val == "":
+                            setattr(existing, col_name, None)
+                        elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
+                            setattr(existing, col_name, float(val))
+                        elif "int" in str(col.type).lower():
+                            setattr(existing, col_name, int(val))
+                        elif "date" in str(col.type).lower():
+                            if "T" in str(val):
+                                setattr(existing, col_name, datetime.fromisoformat(str(val)))
+                            else:
+                                setattr(existing, col_name, date.fromisoformat(str(val)))
+                        elif "json" in str(col.type).lower():
+                            setattr(existing, col_name, json.loads(str(val)) if isinstance(val, str) else val)
+                        else:
+                            setattr(existing, col_name, str(val))
+                    except Exception:
+                        setattr(existing, col_name, str(val) if val is not None else None)
+
+            updated_count += 1
+
+        db.commit()
+        return {
+            "success": True,
+            "despachos_actualizados": updated_count,
+            "message": f"Se sincronizaron {updated_count} despachos desde Turso Cloud."
         }

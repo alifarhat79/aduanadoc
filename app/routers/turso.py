@@ -84,3 +84,16 @@ async def pull_from_turso_endpoint(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al descargar desde Turso: {str(e)}")
+
+@router.get("/api/sync-despachos")
+@router.post("/api/sync-despachos")
+async def sync_despachos_quick_endpoint(db: Session = Depends(get_db)):
+    """Sincronización rápida (en menos de 0.3 segundos) de los despachos y dueños desde Turso Cloud."""
+    turso = TursoService()
+    if not turso.is_configured():
+        return {"success": False, "message": "Turso no está configurado"}
+    try:
+        res = await turso.pull_despachos_quick(db)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en sincronización rápida con Turso: {str(e)}")
