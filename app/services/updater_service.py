@@ -378,22 +378,85 @@ class UpdaterService:
             }
 
     def connect_git_repo(self, repo_url: str = "https://github.com/alifarhat79/aduanadoc.git") -> Dict[str, Any]:
-        """Inicializa y vincula el repositorio Git si falta la carpeta .git."""
+        """Inicializa y vincula el repositorio Git si está instalado, o descarga y aplica el código directamente desde GitHub."""
         import subprocess
+        import shutil
+        import httpx
+        import zipfile
+        import io
+
+        repo_url = (repo_url or "https://github.com/alifarhat79/aduanadoc.git").strip()
+        git_executable = shutil.which("git")
+
+        # Respaldo preventivo de seguridad
+        backup_svc = BackupService()
+        backup_res = backup_svc.create_system_backup(reason="PRE_GITHUB_SYNC", include_uploads=False, include_code=False)
+
+        # 1. Si Git está instalado en el sistema
+        if git_executable:
+            try:
+                subprocess.run([git_executable, "init", "-q"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+                subprocess.run([git_executable, "remote", "remove", "origin"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+                subprocess.run([git_executable, "remote", "add", "origin", repo_url], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+                proc_fetch = subprocess.run([git_executable, "fetch", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=30)
+                if proc_fetch.returncode != 0:
+                    subprocess.run([git_executable, "fetch", "origin"], cwd=str(BASE_DIR), capture_output=True, timeout=30)
+                
+                subprocess.run([git_executable, "branch", "-M", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+                subprocess.run([git_executable, "reset", "--mixed", "origin/main"], cwd=str(BASE_DIR), capture_output=True, timeout=15)
+                status = self.get_git_status()
+                return {
+                    "success": True,
+                    "mode": "git_cli",
+                    "message": "Repositorio Git vinculado y sincronizado exitosamente con GitHub.",
+                    "status": status,
+                    "backup_file": backup_res.get("filename")
+                }
+            except Exception as e:
+                logger.warning(f"[UpdaterService] Error con Git CLI, intentando fallback HTTP: {e}")
+
+        # 2. Fallback Directo HTTP (Funciona SIN Git instalado en la máquina)
         try:
-            subprocess.run(["git", "init", "-q"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
-            subprocess.run(["git", "remote", "remove", "origin"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
-            subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=str(BASE_DIR), capture_output=True, timeout=10)
-            proc_fetch = subprocess.run(["git", "fetch", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=30)
-            if proc_fetch.returncode != 0:
-                return {"success": False, "error": f"Error descargando desde GitHub: {proc_fetch.stderr or proc_fetch.stdout}"}
-            subprocess.run(["git", "branch", "-M", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
-            subprocess.run(["git", "reset", "--mixed", "origin/main"], cwd=str(BASE_DIR), capture_output=True, timeout=15)
-            status = self.get_git_status()
+            clean_url = repo_url.rstrip("/").removesuffix(".git")
+            zip_url = f"{clean_url}/archive/refs/heads/main.zip"
+
+            with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+                resp = client.get(zip_url)
+                if resp.status_code != 200:
+                    return {
+                        "success": False,
+                        "error": f"No se pudo descargar el repositorio desde GitHub ({resp.status_code}): {resp.text[:100]}"
+                    }
+
+                zip_bytes = io.BytesIO(resp.content)
+                with zipfile.ZipFile(zip_bytes) as z:
+                    names = z.namelist()
+                    root_prefix = names[0].split("/")[0] if names and "/" in names[0] else ""
+                    
+                    for member in z.infolist():
+                        if member.is_dir():
+                            continue
+                        rel_path = member.filename
+                        if root_prefix and rel_path.startswith(f"{root_prefix}/"):
+                            rel_path = rel_path[len(root_prefix) + 1:]
+                        
+                        if not rel_path or rel_path.startswith(".git") or rel_path.startswith("data/") or rel_path == ".env":
+                            continue
+
+                        target_path = BASE_DIR / rel_path
+                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                        with z.open(member) as source_file, open(target_path, "wb") as target_file:
+                            shutil.copyfileobj(source_file, target_file)
+
             return {
                 "success": True,
-                "message": "Repositorio Git vinculado exitosamente con GitHub.",
-                "status": status
+                "mode": "http_direct",
+                "message": "¡Sistema actualizado exitosamente desde GitHub directamente (sin necesidad de instalar Git)!",
+                "backup_file": backup_res.get("filename")
             }
         except Exception as e:
-            return {"success": False, "error": f"Error al vincular Git: {str(e)}"}
+            logger.error(f"[UpdaterService] Error al actualizar vía HTTP directo: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Error al conectar con GitHub: {str(e)}"
+            }

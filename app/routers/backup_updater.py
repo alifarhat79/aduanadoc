@@ -91,10 +91,11 @@ async def git_pull_api():
     return result
 
 @router.post("/api/updates/git/connect")
-async def git_connect_api():
-    """Vincula y conecta esta computadora con el repositorio GitHub oficial."""
+async def git_connect_api(payload: dict = Body(default={})):
+    """Vincula y conecta esta computadora con el repositorio GitHub oficial (o URL personalizada)."""
+    repo_url = payload.get("repo_url", "https://github.com/alifarhat79/aduanadoc.git")
     updater = UpdaterService()
-    result = updater.connect_git_repo()
+    result = updater.connect_git_repo(repo_url=repo_url)
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error", "Error al vincular repositorio Git"))
     return result
