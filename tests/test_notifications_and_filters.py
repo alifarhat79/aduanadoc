@@ -155,6 +155,11 @@ def test_notification_service_formatting_and_telegram_mock():
 
 def test_notification_api_endpoints():
     """Prueba los endpoints de guardar y probar configuración de notificaciones."""
+    import os
+    orig_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    orig_chat = os.getenv("TELEGRAM_CHAT_ID", "")
+    orig_webhook = os.getenv("WEBHOOK_URL", "")
+
     client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
     # Guardar configuración
     payload = {
@@ -163,21 +168,27 @@ def test_notification_api_endpoints():
         "webhook_url": "https://httpbin.org/post",
         "notifications_enabled": True
     }
-    resp_save = client.post("/configuracion/api/notificaciones/guardar", json=payload)
-    assert resp_save.status_code == 200
-    assert resp_save.json()["success"] is True
+    with patch("dotenv.set_key"):
+        resp_save = client.post("/configuracion/api/notificaciones/guardar", json=payload)
+        assert resp_save.status_code == 200
+        assert resp_save.json()["success"] is True
 
-    # Test con simulación de NotificationService.send_test_notification
-    with patch.object(NotificationService, "send_test_notification") as mock_test:
-        mock_test.return_value = {
-            "success": True,
-            "message": "Notificación de prueba enviada con éxito.",
-            "results": {"telegram": {"success": True}}
-        }
+        # Test con simulación de NotificationService.send_test_notification
+        with patch.object(NotificationService, "send_test_notification") as mock_test:
+            mock_test.return_value = {
+                "success": True,
+                "message": "Notificación de prueba enviada con éxito.",
+                "results": {"telegram": {"success": True}}
+            }
 
-        resp_test = client.post("/configuracion/api/notificaciones/test", json=payload)
-        assert resp_test.status_code == 200
-        assert resp_test.json()["success"] is True
+            resp_test = client.post("/configuracion/api/notificaciones/test", json=payload)
+            assert resp_test.status_code == 200
+            assert resp_test.json()["success"] is True
+
+    # Restaurar en memoria
+    os.environ["TELEGRAM_BOT_TOKEN"] = orig_token
+    os.environ["TELEGRAM_CHAT_ID"] = orig_chat
+    os.environ["WEBHOOK_URL"] = orig_webhook
 
 
 def test_git_status_and_pull_endpoints():

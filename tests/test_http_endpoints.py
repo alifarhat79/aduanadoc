@@ -151,6 +151,7 @@ def test_configuracion_view_endpoint():
 
 def test_configuracion_guardar_api():
     import os
+    from unittest.mock import patch
     original_token = os.getenv("TURSO_AUTH_TOKEN", "")
     original_url = os.getenv("TURSO_DATABASE_URL", "")
 
@@ -159,9 +160,10 @@ def test_configuracion_guardar_api():
         "database_url": "libsql://despachos-alifarhat.aws-us-east-1.turso.io",
         "auth_token": original_token or "test_dummy_token"
     }
-    response = client.post("/configuracion/api/guardar", json=payload)
-    assert response.status_code == 200
-    assert response.json()["success"] is True
+    with patch("dotenv.set_key"):
+        response = client.post("/configuracion/api/guardar", json=payload)
+        assert response.status_code == 200
+        assert response.json()["success"] is True
 
     # Restaurar en memoria
     if original_token:
