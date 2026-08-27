@@ -178,6 +178,74 @@ class TursoService:
         else:
             return {"type": "text", "value": str(val)}
 
+    async def push_despacho_to_turso(self, despacho_id: int, db: Session) -> Dict[str, Any]:
+        """Sube un despacho específico y todos sus ítems a Turso de forma rápida e incremental."""
+        if not self.is_configured():
+            return {"success": False, "error": "Turso no configurado"}
+
+        await self.init_turso_schema()
+
+        despacho = db.query(Despacho).filter(Despacho.id == despacho_id).first()
+        if not despacho:
+            return {"success": False, "error": "Despacho no encontrado"}
+
+        items = db.query(DespachoItem).filter(DespachoItem.despacho_id == despacho_id).all()
+
+        despacho_cols = [c.name for c in Despacho.__table__.columns]
+        item_cols = [c.name for c in DespachoItem.__table__.columns]
+
+        stmts = []
+
+        # 1. Despacho
+        cols_sql = ", ".join(despacho_cols)
+        placeholders = ", ".join(["?"] * len(despacho_cols))
+        desp_sql = f"INSERT OR REPLACE INTO despachos ({cols_sql}) VALUES ({placeholders})"
+        args = [self._convert_value_to_arg(getattr(despacho, col, None)) for col in despacho_cols]
+        stmts.append({"sql": desp_sql, "args": args})
+
+        # 2. Eliminar items anteriores en Turso para este despacho
+        stmts.append({"sql": "DELETE FROM despacho_items WHERE despacho_id = ?", "args": [{"type": "integer", "value": str(despacho_id)}]})
+
+        # 3. Insertar items
+        if items:
+            item_cols_sql = ", ".join(item_cols)
+            item_placeholders = ", ".join(["?"] * len(item_cols))
+            item_sql = f"INSERT OR REPLACE INTO despacho_items ({item_cols_sql}) VALUES ({item_placeholders})"
+            for it in items:
+                it_args = [self._convert_value_to_arg(getattr(it, col, None)) for col in item_cols]
+                stmts.append({"sql": item_sql, "args": it_args})
+
+        # Enviar en bloques si supera 40 sentencias
+        chunk_size = 40
+        for i in range(0, len(stmts), chunk_size):
+            chunk = stmts[i:i + chunk_size]
+            await self.execute_raw(chunk)
+
+        logger.info(f"[TursoService] Despacho ID {despacho_id} ({despacho.numero_despacho}) sincronizado a Turso Cloud ({len(items)} ítems).")
+        return {"success": True, "despacho_id": despacho_id, "items": len(items)}
+
+    def sync_push_despacho(self, despacho_id: int, db: Session) -> Dict[str, Any]:
+        """Versión sincrónica para ser llamada desde hilos o procesos de fondo."""
+        if not self.is_configured():
+            return {"success": False, "error": "Turso no configurado"}
+        try:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, self.push_despacho_to_turso(despacho_id, db))
+                    return future.result()
+            else:
+                return asyncio.run(self.push_despacho_to_turso(despacho_id, db))
+        except Exception as e:
+            logger.warning(f"[TursoService] Error en sync_push_despacho ID {despacho_id}: {e}")
+            return {"success": False, "error": str(e)}
+
     async def push_all_to_turso(self, db: Session) -> Dict[str, Any]:
         """Sube todos los despachos y mercancías locales a Turso."""
         await self.init_turso_schema()

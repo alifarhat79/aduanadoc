@@ -113,4 +113,14 @@ async def save_reviewed_despacho(
     despacho.updated_at = datetime.now(timezone.utc)
 
     db.commit()
+
+    # Sincronización automática a Turso Cloud
+    try:
+        from app.services.turso_service import TursoService
+        turso = TursoService()
+        if turso.is_configured():
+            await turso.push_despacho_to_turso(despacho.id, db)
+    except Exception:
+        pass
+
     return RedirectResponse(url=f"/despachos/{despacho.id}", status_code=303)

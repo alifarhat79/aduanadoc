@@ -80,7 +80,7 @@ async def process_batch_files(
             turso = TursoService()
             if turso.is_configured():
                 try:
-                    await turso.push_all_to_turso(db)
+                    await turso.push_despacho_to_turso(despacho.id, db)
                     turso_msg = " [Sincronizado a Turso Cloud ☁️]"
                 except Exception as t_err:
                     turso_msg = f" (Alerta Turso: {str(t_err)})"

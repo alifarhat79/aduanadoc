@@ -180,8 +180,10 @@ class GoogleDriveService:
         turso = TursoService()
         if nuevos_procesados > 0 and turso.is_configured():
             try:
-                import asyncio
-                asyncio.run(turso.push_all_to_turso(db))
+                for det in detalles:
+                    if det.get("estado") in ["PROCESADO", "CONFIRMADO"] and det.get("despacho_id"):
+                        turso.sync_push_despacho(det["despacho_id"], db)
+                logger.info(f"[GoogleDriveService] {nuevos_procesados} despachos sincronizados automáticamente a Turso Cloud.")
             except Exception as e:
                 logger.warning(f"No se pudo sincronizar automáticamente con Turso: {e}")
 
@@ -301,6 +303,17 @@ class GoogleDriveService:
                 backup_svc.create_system_backup(reason=f"AUTO_LOCAL_FOLDER_{nuevos_procesados}_DESPACHOS")
             except Exception as b_err:
                 logger.warning(f"No se pudo crear backup automático tras escaneo local: {b_err}")
+
+        # Si Turso está configurado y hubo despachos nuevos, sincronizar a la nube
+        turso = TursoService()
+        if nuevos_procesados > 0 and turso.is_configured():
+            try:
+                for det in detalles:
+                    if det.get("estado") in ["PROCESADO", "CONFIRMADO"] and det.get("despacho_id"):
+                        turso.sync_push_despacho(det["despacho_id"], db)
+                logger.info(f"[GoogleDriveService] {nuevos_procesados} despachos sincronizados automáticamente a Turso Cloud.")
+            except Exception as e:
+                logger.warning(f"No se pudo sincronizar automáticamente con Turso: {e}")
 
         return {
             "total_encontrados": total_encontrados,
