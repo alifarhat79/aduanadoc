@@ -12,7 +12,7 @@
                 <label class="form-label small fw-semibold text-muted">Búsqueda General</label>
                 <div class="input-group input-group-sm">
                     <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
-                    <input type="text" name="q" id="searchQueryInput" class="form-control" placeholder="Nº despacho, dueño, BL, origen..." value="{{ q or '' }}" autocomplete="off">
+                    <input type="text" name="q" id="searchQueryInput" class="form-control" placeholder="Nº despacho, dueño, BL, año..." value="{{ q or '' }}" autocomplete="off">
                     {% if q %}
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearFilterField('searchQueryInput')" title="Borrar búsqueda"><i class="bi bi-x-circle"></i></button>
                     {% endif %}
@@ -30,7 +30,7 @@
             <div class="col-md-2">
                 <label class="form-label small fw-semibold text-muted">Importador</label>
                 <select name="importador" id="importadorSelect" class="form-select form-select-sm" onchange="submitDespachosFilter()">
-                    <option value="">-- Todos los Importadores --</option>
+                    <option value="">-- Todos --</option>
                     {% for imp in importadores %}
                         <option value="{{ imp }}" {% if importador_sel == imp %}selected{% endif %}>{{ imp }}</option>
                     {% endfor %}
@@ -39,16 +39,25 @@
             <div class="col-md-2">
                 <label class="form-label small fw-semibold text-muted">País de Origen</label>
                 <select name="origen" id="origenSelect" class="form-select form-select-sm" onchange="submitDespachosFilter()">
-                    <option value="">-- Todos los Orígenes --</option>
+                    <option value="">-- Todos --</option>
                     {% for orig in origenes %}
                         <option value="{{ orig }}" {% if origen_sel == orig %}selected{% endif %}>{{ orig }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
+                <label class="form-label small fw-semibold text-muted">Año</label>
+                <select name="anio" id="anioSelect" class="form-select form-select-sm" onchange="submitDespachosFilter()">
+                    <option value="">-- Todos --</option>
+                    {% for y in anios %}
+                        <option value="{{ y }}" {% if anio_sel == y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-1">
                 <label class="form-label small fw-semibold text-muted">Estado</label>
                 <select name="estado" id="estadoSelect" class="form-select form-select-sm" onchange="submitDespachosFilter()">
-                    <option value="">-- Todos los Estados --</option>
+                    <option value="">-- Todos --</option>
                     <option value="PROCESADO" {% if estado_sel == 'PROCESADO' %}selected{% endif %}>Procesado</option>
                     <option value="REVISAR" {% if estado_sel == 'REVISAR' %}selected{% endif %}>Revisar</option>
                     <option value="CONFIRMADO" {% if estado_sel == 'CONFIRMADO' %}selected{% endif %}>Confirmado</option>
@@ -66,19 +75,19 @@
             <span class="text-muted small">Mostrando <strong>{{ despachos|length }}</strong> registro(s)</span>
             <div class="d-flex gap-2 flex-wrap">
                 <!-- 1. Excel -->
-                <a href="/exportar/excel{% if q or estado_sel or importador_sel or propietario_sel or origen_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}{% endif %}" class="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm">
+                <a href="/exportar/excel{% if q or estado_sel or importador_sel or propietario_sel or origen_sel or anio_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}&anio={{ anio_sel or '' }}{% endif %}" class="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm">
                     <i class="bi bi-file-earmark-excel-fill"></i> Excel
                 </a>
                 <!-- 2. HTML -->
-                <a href="/exportar/html{% if q or estado_sel or importador_sel or propietario_sel or origen_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}{% endif %}" target="_blank" class="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm">
+                <a href="/exportar/html{% if q or estado_sel or importador_sel or propietario_sel or origen_sel or anio_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}&anio={{ anio_sel or '' }}{% endif %}" target="_blank" class="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm">
                     <i class="bi bi-filetype-html"></i> HTML
                 </a>
                 <!-- 3. PDF -->
-                <a href="/exportar/pdf{% if q or estado_sel or importador_sel or propietario_sel or origen_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}{% endif %}" target="_blank" class="btn btn-danger btn-sm d-flex align-items-center gap-1 shadow-sm">
+                <a href="/exportar/pdf{% if q or estado_sel or importador_sel or propietario_sel or origen_sel or anio_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}&anio={{ anio_sel or '' }}{% endif %}" target="_blank" class="btn btn-danger btn-sm d-flex align-items-center gap-1 shadow-sm">
                     <i class="bi bi-file-earmark-pdf-fill"></i> PDF
                 </a>
                 <!-- 4. Google Sheets -->
-                <a href="/exportar/google-sheet{% if q or estado_sel or importador_sel or propietario_sel or origen_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}{% endif %}" class="btn btn-dark btn-sm d-flex align-items-center gap-1 shadow-sm" title="Descargar CSV compatible con Google Sheets">
+                <a href="/exportar/google-sheet{% if q or estado_sel or importador_sel or propietario_sel or origen_sel or anio_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}&origen={{ origen_sel or '' }}&anio={{ anio_sel or '' }}{% endif %}" class="btn btn-dark btn-sm d-flex align-items-center gap-1 shadow-sm" title="Descargar CSV compatible con Google Sheets">
                     <i class="bi bi-google"></i> Google Sheets
                 </a>
             </div>

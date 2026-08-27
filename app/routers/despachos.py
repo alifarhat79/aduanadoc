@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, desc
+from sqlalchemy import or_, desc, func
 from typing import Optional
 
 from app.database import get_db
@@ -21,6 +21,7 @@ async def list_despachos_view(
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
     origen: Optional[str] = Query(None),
+    anio: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(35, ge=10, le=100),
     db: Session = Depends(get_db)
@@ -30,20 +31,21 @@ async def list_despachos_view(
 
     if q:
         search_pattern = f"%{q}%"
-        query = query.filter(
-            or_(
-                Despacho.numero_despacho.ilike(search_pattern),
-                Despacho.importador_nombre.ilike(search_pattern),
-                Despacho.exportador_nombre.ilike(search_pattern),
-                Despacho.importador_documento.ilike(search_pattern),
-                Despacho.propietario.ilike(search_pattern),
-                Despacho.pais_origen.ilike(search_pattern),
-                Despacho.bl.ilike(search_pattern),
-                Despacho.contenedor.ilike(search_pattern),
-                Despacho.aduana.ilike(search_pattern),
-                Despacho.despachante_nombre.ilike(search_pattern)
-            )
-        )
+        filters = [
+            Despacho.numero_despacho.ilike(search_pattern),
+            Despacho.importador_nombre.ilike(search_pattern),
+            Despacho.exportador_nombre.ilike(search_pattern),
+            Despacho.importador_documento.ilike(search_pattern),
+            Despacho.propietario.ilike(search_pattern),
+            Despacho.pais_origen.ilike(search_pattern),
+            Despacho.bl.ilike(search_pattern),
+            Despacho.contenedor.ilike(search_pattern),
+            Despacho.aduana.ilike(search_pattern),
+            Despacho.despachante_nombre.ilike(search_pattern)
+        ]
+        if q.strip().isdigit() and len(q.strip()) == 4:
+            filters.append(func.strftime("%Y", Despacho.fecha_despacho) == q.strip())
+        query = query.filter(or_(*filters))
 
     if estado:
         query = query.filter(Despacho.estado_procesamiento == estado)
@@ -57,6 +59,9 @@ async def list_despachos_view(
     if origen:
         query = query.filter(Despacho.pais_origen.ilike(f"%{origen}%"))
 
+    if anio:
+        query = query.filter(func.strftime("%Y", Despacho.fecha_despacho) == str(anio).strip())
+
     # Ordenar por fecha más reciente primero (y por ID secundario)
     query = query.order_by(desc(Despacho.fecha_despacho), desc(Despacho.id))
 
@@ -66,9 +71,10 @@ async def list_despachos_view(
 
     despachos = query.offset((current_page - 1) * per_page).limit(per_page).all()
 
-    # Obtener lista única de importadores y orígenes para los filtros
+    # Obtener lista única de importadores, orígenes y años para los filtros
     importadores = [r[0] for r in db.query(Despacho.importador_nombre).distinct().filter(Despacho.importador_nombre.isnot(None), Despacho.importador_nombre != '').order_by(Despacho.importador_nombre).all()]
     origenes = [r[0] for r in db.query(Despacho.pais_origen).distinct().filter(Despacho.pais_origen.isnot(None), Despacho.pais_origen != '').order_by(Despacho.pais_origen).all()]
+    anios = [r[0] for r in db.query(func.strftime("%Y", Despacho.fecha_despacho)).distinct().filter(Despacho.fecha_despacho.isnot(None)).order_by(desc(func.strftime("%Y", Despacho.fecha_despacho))).all() if r[0]]
 
     return templates.TemplateResponse(
         request=request,
@@ -80,8 +86,10 @@ async def list_despachos_view(
             "importador_sel": importador,
             "propietario_sel": propietario,
             "origen_sel": origen,
+            "anio_sel": anio,
             "importadores": importadores,
             "origenes": origenes,
+            "anios": anios,
             "page": current_page,
             "per_page": per_page,
             "total_pages": total_pages,

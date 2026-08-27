@@ -112,7 +112,7 @@
             <div class="card-body p-3">
                 <div class="d-flex gap-2 flex-wrap align-items-center">
                     {% for ya in despachos_por_anio %}
-                    <a href="/despachos?q={{ ya.anio }}" class="btn btn-sm btn-light border d-flex align-items-center gap-2 shadow-2xs text-decoration-none">
+                    <a href="/despachos?anio={{ ya.anio }}" class="btn btn-sm btn-light border d-flex align-items-center gap-2 shadow-2xs text-decoration-none">
                         <span class="badge bg-primary text-white px-2 py-1">{{ ya.anio or 'S/F' }}</span>
                         <div class="text-start">
                             <div class="fw-bold text-dark" style="font-size: 0.8rem;">{{ ya.total_despachos }} despachos</div>
