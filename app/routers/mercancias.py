@@ -62,7 +62,7 @@ def get_filtered_items_query(
         if d_hasta:
             query = query.filter(Despacho.fecha_despacho <= d_hasta)
 
-    return query.order_by(desc(Despacho.id), DespachoItem.numero_item, DespachoItem.numero_subitem)
+    return query.order_by(desc(Despacho.fecha_despacho), desc(Despacho.id), DespachoItem.numero_item, DespachoItem.numero_subitem)
 
 @router.get("", response_class=HTMLResponse)
 async def mercancias_view(
@@ -73,11 +73,22 @@ async def mercancias_view(
     ncm: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
     fecha_desde: Optional[str] = Query(None),
-    fecha_hasta: Optional[str] = Query(None)
+    fecha_hasta: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=10, le=200)
 ):
-    # Obtener todas las mercancías con sus despachos asociados
+    import math
+
+    # Consulta base filtrada
     items_query = get_filtered_items_query(db, q, marca, ncm, propietario, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
-    results = items_query.all()
+
+    # Conteo total y páginas
+    total_items = items_query.count()
+    total_pages = max(1, math.ceil(total_items / per_page))
+    current_page = min(page, total_pages)
+
+    # Obtener solo la página solicitada (LIMIT / OFFSET)
+    results = items_query.offset((current_page - 1) * per_page).limit(per_page).all()
 
     # Formatear lista de items con objeto despacho padre
     items_list = []
@@ -85,7 +96,47 @@ async def mercancias_view(
         item.despacho = desp
         items_list.append(item)
 
-    # Estadísticas para mini KPIs de Marcas
+    # Agregados calculados eficientemente en base de datos
+    aggregates = (
+        db.query(
+            func.coalesce(func.sum(DespachoItem.valor_total), 0.0),
+            func.coalesce(func.sum(DespachoItem.cantidad), 0.0)
+        )
+        .join(Despacho, DespachoItem.despacho_id == Despacho.id)
+    )
+    if q:
+        search_pattern = f"%{q}%"
+        aggregates = aggregates.filter(
+            or_(
+                DespachoItem.descripcion.ilike(search_pattern),
+                DespachoItem.marca.ilike(search_pattern),
+                DespachoItem.codigo_producto.ilike(search_pattern),
+                DespachoItem.codigo_ncm.ilike(search_pattern),
+                Despacho.numero_despacho.ilike(search_pattern),
+                Despacho.importador_nombre.ilike(search_pattern),
+                Despacho.propietario.ilike(search_pattern)
+            )
+        )
+    if marca:
+        aggregates = aggregates.filter(DespachoItem.marca == marca)
+    if ncm:
+        aggregates = aggregates.filter(DespachoItem.codigo_ncm == ncm)
+    if propietario:
+        aggregates = aggregates.filter(Despacho.propietario == propietario)
+    if fecha_desde:
+        d_desde = parse_date(fecha_desde)
+        if d_desde:
+            aggregates = aggregates.filter(Despacho.fecha_despacho >= d_desde)
+    if fecha_hasta:
+        d_hasta = parse_date(fecha_hasta)
+        if d_hasta:
+            aggregates = aggregates.filter(Despacho.fecha_despacho <= d_hasta)
+
+    agg_result = aggregates.first()
+    total_fob_filtrado = agg_result[0] if agg_result else 0.0
+    total_cantidad_filtrada = agg_result[1] if agg_result else 0.0
+
+    # Estadísticas para mini KPIs de Marcas (Top 15)
     marca_counts = (
         db.query(DespachoItem.marca, func.count(DespachoItem.id).label("total_items"), func.sum(DespachoItem.valor_total).label("total_fob"))
         .filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "")
@@ -96,19 +147,16 @@ async def mercancias_view(
     )
 
     # Listas para filtros dropdown
-    todas_marcas = [r[0] for r in db.query(DespachoItem.marca).distinct().filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "").order_by(DespachoItem.marca).all()]
-    todos_ncms = [r[0] for r in db.query(DespachoItem.codigo_ncm).distinct().filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "").order_by(DespachoItem.codigo_ncm).all()]
+    todas_marcas = [r[0] for r in db.query(DespachoItem.marca).distinct().filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "").order_by(DespachoItem.marca).all()[:100]]
+    todos_ncms = [r[0] for r in db.query(DespachoItem.codigo_ncm).distinct().filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "").order_by(DespachoItem.codigo_ncm).all()[:100]]
     todos_propietarios = [r[0] for r in db.query(Despacho.propietario).distinct().filter(Despacho.propietario.isnot(None), Despacho.propietario != "").order_by(Despacho.propietario).all()]
-
-    total_fob_filtrado = sum((it.valor_total or 0.0) for it in items_list)
-    total_cantidad_filtrada = sum((it.cantidad or 0.0) for it in items_list)
 
     return templates.TemplateResponse(
         request=request,
         name="mercancias.html",
         context={
             "items": items_list,
-            "total_items": len(items_list),
+            "total_items": total_items,
             "total_fob_filtrado": total_fob_filtrado,
             "total_cantidad_filtrada": total_cantidad_filtrada,
             "marca_kpis": marca_counts,
@@ -120,7 +168,14 @@ async def mercancias_view(
             "selected_ncm": ncm or "",
             "selected_propietario": propietario or "",
             "selected_fecha_desde": fecha_desde or "",
-            "selected_fecha_hasta": fecha_hasta or ""
+            "selected_fecha_hasta": fecha_hasta or "",
+            "page": current_page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "has_prev": current_page > 1,
+            "has_next": current_page < total_pages,
+            "prev_page": current_page - 1,
+            "next_page": current_page + 1
         }
     )
 

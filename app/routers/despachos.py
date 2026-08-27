@@ -1,11 +1,11 @@
 import os
+import math
 from pathlib import Path
 from fastapi import APIRouter, Depends, Request, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc
 from typing import Optional
-
 
 from app.database import get_db
 from app.models import Despacho, DespachoItem, DespachoAuditoria
@@ -20,9 +20,11 @@ async def list_despachos_view(
     estado: Optional[str] = Query(None),
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(35, ge=10, le=100),
     db: Session = Depends(get_db)
 ):
-    """Vista de tabla principal de despachos con filtros y ordenación."""
+    """Vista de tabla principal de despachos ordenada por fecha más reciente y con paginación."""
     query = db.query(Despacho)
 
     if q:
@@ -50,10 +52,17 @@ async def list_despachos_view(
     if propietario:
         query = query.filter(Despacho.propietario.ilike(f"%{propietario}%"))
 
-    despachos = query.order_by(desc(Despacho.created_at)).all()
+    # Ordenar por fecha más reciente primero (y por ID secundario)
+    query = query.order_by(desc(Despacho.fecha_despacho), desc(Despacho.id))
+
+    total_items = query.count()
+    total_pages = max(1, math.ceil(total_items / per_page))
+    current_page = min(page, total_pages)
+
+    despachos = query.offset((current_page - 1) * per_page).limit(per_page).all()
 
     # Obtener lista única de importadores para el filtro
-    importadores = [r[0] for r in db.query(Despacho.importador_nombre).distinct().filter(Despacho.importador_nombre.isnot(None)).all()]
+    importadores = [r[0] for r in db.query(Despacho.importador_nombre).distinct().filter(Despacho.importador_nombre.isnot(None)).order_by(Despacho.importador_nombre).all()]
 
     return templates.TemplateResponse(
         request=request,
@@ -64,7 +73,15 @@ async def list_despachos_view(
             "estado_sel": estado,
             "importador_sel": importador,
             "propietario_sel": propietario,
-            "importadores": importadores
+            "importadores": importadores,
+            "page": current_page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "total_items": total_items,
+            "has_prev": current_page > 1,
+            "has_next": current_page < total_pages,
+            "prev_page": current_page - 1,
+            "next_page": current_page + 1
         }
     )
 
