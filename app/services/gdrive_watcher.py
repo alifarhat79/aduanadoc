@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from app.database import SessionLocal
+from app.config import settings
 from app.services.gdrive_service import GoogleDriveService
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,18 @@ class GDriveWatcher:
 
         if result.get("nuevos_procesados", 0) > 0:
             logger.info(f"[GDriveWatcher] ¡Nuevos despachos detectados y procesados automáticamente!: {result['nuevos_procesados']}")
+
+    def set_enabled(self, enabled: bool):
+        """Activa o desactiva el vigilante en segundo plano."""
+        self.is_enabled = bool(enabled)
+        settings.GDRIVE_WATCHER_ENABLED = bool(enabled)
+        logger.info(f"[GDriveWatcher] Vigilante de Google Drive {'ACTIVADO' if self.is_enabled else 'DESACTIVADO'}.")
+
+    def set_interval(self, interval_seconds: int):
+        """Modifica el intervalo de chequeo."""
+        self.interval_seconds = max(10, int(interval_seconds))
+        settings.GDRIVE_WATCHER_INTERVAL = self.interval_seconds
+        logger.info(f"[GDriveWatcher] Intervalo de vigilancia actualizado a {self.interval_seconds}s.")
 
     def get_status(self) -> Dict[str, Any]:
         """Retorna el estado actual del vigilante en segundo plano."""

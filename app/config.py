@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # Google Drive Sync
     GDRIVE_FOLDER_ID: str = "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv"
     GDRIVE_CREDENTIALS_FILE: str = "./service_account.json"
+    GDRIVE_WATCHER_ENABLED: bool = True
+    GDRIVE_WATCHER_INTERVAL: int = 60
 
     # Backup & Updates
     BACKUP_DIR: str = str(BASE_DIR / "backups")

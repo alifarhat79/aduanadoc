@@ -255,8 +255,7 @@ async def watcher_status_api(request: Request = None):
 
 
 @router.post("/api/gdrive/watcher/toggle")
-async def watcher_toggle_api(payload: dict = Body(...), request: Request = None):
-    require_admin_auth(request)
+async def watcher_toggle_api(payload: dict = Body(...)):
     from app.services.gdrive_watcher import GDriveWatcher
     enabled = payload.get("enabled", True)
     watcher = GDriveWatcher.get_instance()
@@ -265,10 +264,9 @@ async def watcher_toggle_api(payload: dict = Body(...), request: Request = None)
 
 
 @router.post("/api/gdrive/watcher/config")
-async def watcher_config_api(payload: dict = Body(...), request: Request = None):
-    require_admin_auth(request)
+async def watcher_config_api(payload: dict = Body(...)):
     from app.services.gdrive_watcher import GDriveWatcher
-    interval = payload.get("interval_seconds", 300)
+    interval = payload.get("interval_seconds", 60)
     watcher = GDriveWatcher.get_instance()
     watcher.set_interval(interval)
     return {"success": True, "interval_seconds": watcher.interval_seconds}

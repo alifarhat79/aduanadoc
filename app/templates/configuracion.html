@@ -718,13 +718,21 @@
 
     async function toggleWatcherState(enabled) {
         try {
-            await fetch('/configuracion/api/gdrive/watcher/toggle', {
+            const resp = await fetch('/configuracion/api/gdrive/watcher/toggle', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({enabled: enabled})
             });
+            if (resp.ok) {
+                const indicator = document.getElementById('watcherPulseIndicator');
+                if (indicator) {
+                    indicator.className = enabled ? 'status-indicator bg-success' : 'status-indicator bg-secondary';
+                }
+            }
             pollWatcherStatus();
-        } catch (e) {}
+        } catch (e) {
+            console.error('Error toggling watcher:', e);
+        }
     }
 
     async function updateWatcherInterval(val) {
@@ -735,7 +743,9 @@
                 body: JSON.stringify({interval_seconds: parseInt(val)})
             });
             pollWatcherStatus();
-        } catch (e) {}
+        } catch (e) {
+            console.error('Error updating interval:', e);
+        }
     }
 
     // ==========================================
