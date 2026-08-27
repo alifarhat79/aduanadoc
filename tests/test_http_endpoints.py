@@ -137,16 +137,24 @@ def test_despacho_info_api_endpoint():
     assert len(data["campos"]) > 0
 
 def test_configuracion_view_endpoint():
+    # Sin autenticar -> pantalla de bloqueo
     response = client.get("/configuracion")
     assert response.status_code == 200
-    assert "Conexión con Turso Cloud Database" in response.text
-    assert "despachos-alifarhat" in response.text
+    assert "Acceso Restringido" in response.text
+
+    # Autenticado -> pantalla de configuración
+    client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
+    res_auth = client.get("/configuracion")
+    assert res_auth.status_code == 200
+    assert "Conexión con Turso Cloud Database" in res_auth.text
+    assert "despachos-alifarhat" in res_auth.text
 
 def test_configuracion_guardar_api():
     import os
     original_token = os.getenv("TURSO_AUTH_TOKEN", "")
     original_url = os.getenv("TURSO_DATABASE_URL", "")
 
+    client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
     payload = {
         "database_url": "libsql://despachos-alifarhat.aws-us-east-1.turso.io",
         "auth_token": original_token or "test_dummy_token"

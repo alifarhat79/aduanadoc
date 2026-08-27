@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     WEBHOOK_URL: str = ""
     NOTIFICATIONS_ENABLED: bool = True
 
+    # Seguridad / Acceso Exclusivo Programador
+    CONFIG_ADMIN_PASSWORD: str = "Sohalia2012*@"
+    SECRET_KEY: str = "aduanadoc_programmer_secret_key_2026"
+
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
         env_file_encoding="utf-8",

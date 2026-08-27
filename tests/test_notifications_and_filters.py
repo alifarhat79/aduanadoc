@@ -155,6 +155,7 @@ def test_notification_service_formatting_and_telegram_mock():
 
 def test_notification_api_endpoints():
     """Prueba los endpoints de guardar y probar configuración de notificaciones."""
+    client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
     # Guardar configuración
     payload = {
         "telegram_bot_token": "987654:TESTTOKEN",

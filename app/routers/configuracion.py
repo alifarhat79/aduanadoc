@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, Request, Form, HTTPException, Body
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import os
+import hmac
+import hashlib
+import time
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional
@@ -18,6 +21,55 @@ from app.config import settings
 router = APIRouter(prefix="/configuracion", tags=["Configuración"])
 
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+AUTH_COOKIE_NAME = "aduanadoc_admin_session"
+
+# --- UTILIDADES DE ENCRIPTACIÓN Y SESIÓN DE PROGRAMADOR ---
+def create_admin_token() -> str:
+    timestamp = str(int(time.time()))
+    pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
+    secret = getattr(settings, "SECRET_KEY", "aduanadoc_programmer_secret_key_2026")
+    signature = hmac.new(
+        secret.encode(),
+        f"admin_session_{pwd}_{timestamp}".encode(),
+        hashlib.sha256
+    ).hexdigest()
+    return f"{timestamp}.{signature}"
+
+def verify_admin_token(token: str) -> bool:
+    if not token or "." not in token:
+        return False
+    try:
+        ts_str, signature = token.split(".", 1)
+        ts = int(ts_str)
+        # Token válido por 7 días
+        if time.time() - ts > 7 * 86400:
+            return False
+        pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
+        secret = getattr(settings, "SECRET_KEY", "aduanadoc_programmer_secret_key_2026")
+        expected_sig = hmac.new(
+            secret.encode(),
+            f"admin_session_{pwd}_{ts_str}".encode(),
+            hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(signature, expected_sig)
+    except Exception:
+        return False
+
+def is_admin_authenticated(request: Request) -> bool:
+    token = request.cookies.get(AUTH_COOKIE_NAME)
+    return verify_admin_token(token)
+
+def require_admin_auth(request: Request):
+    if not is_admin_authenticated(request):
+        raise HTTPException(status_code=401, detail="No autorizado. Acceso restringido para el programador.")
+
+
+class LoginPayload(BaseModel):
+    password: str
+
+class ChangePasswordPayload(BaseModel):
+    current_password: str
+    new_password: str
 
 class SaveTursoPayload(BaseModel):
     database_url: str
@@ -37,8 +89,73 @@ class GDriveLocalScanPayload(BaseModel):
     local_path: str
     propietario: Optional[str] = "Carpeta Local"
 
+
+# --- RUTAS DE AUTENTICACIÓN ---
+@router.post("/login")
+async def login_admin(payload: LoginPayload):
+    current_pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
+    if payload.password == current_pwd:
+        token = create_admin_token()
+        response = JSONResponse(content={"success": True, "message": "Acceso concedido"})
+        response.set_cookie(
+            key=AUTH_COOKIE_NAME,
+            value=token,
+            max_age=7 * 86400,
+            httponly=True,
+            samesite="lax"
+        )
+        return response
+    raise HTTPException(status_code=401, detail="Contraseña incorrecta. Acceso denegado.")
+
+
+@router.get("/logout")
+@router.post("/logout")
+async def logout_admin():
+    response = RedirectResponse(url="/configuracion", status_code=303)
+    response.delete_cookie(key=AUTH_COOKIE_NAME)
+    return response
+
+
+@router.post("/api/cambiar-password")
+async def cambiar_password_api(payload: ChangePasswordPayload, request: Request):
+    require_admin_auth(request)
+    current_pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
+    if payload.current_password != current_pwd:
+        raise HTTPException(status_code=400, detail="La contraseña actual no es correcta.")
+    
+    if len(payload.new_password.strip()) < 6:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 6 caracteres.")
+    
+    new_pwd = payload.new_password.strip()
+    os.environ["CONFIG_ADMIN_PASSWORD"] = new_pwd
+    settings.CONFIG_ADMIN_PASSWORD = new_pwd
+    try:
+        set_key(str(ENV_PATH), "CONFIG_ADMIN_PASSWORD", new_pwd)
+    except Exception:
+        pass
+    
+    token = create_admin_token()
+    response = JSONResponse(content={"success": True, "message": "Contraseña de programador actualizada exitosamente."})
+    response.set_cookie(
+        key=AUTH_COOKIE_NAME,
+        value=token,
+        max_age=7 * 86400,
+        httponly=True,
+        samesite="lax"
+    )
+    return response
+
+
+# --- PANTALLA PRINCIPAL (CON CANDADO) ---
 @router.get("", response_class=HTMLResponse)
 async def configuracion_view(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_authenticated(request):
+        return templates.TemplateResponse(
+            request=request,
+            name="config_login.html",
+            context={}
+        )
+
     turso_url = os.getenv("TURSO_DATABASE_URL", "libsql://despachos-alifarhat.aws-us-east-1.turso.io")
     turso_token = os.getenv("TURSO_AUTH_TOKEN", "")
     gdrive_folder_id = os.getenv("GDRIVE_FOLDER_ID", "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv")
@@ -72,88 +189,111 @@ async def configuracion_view(request: Request, db: Session = Depends(get_db)):
             "total_despachos": total_despachos,
             "total_items": total_items,
             "env_path": str(ENV_PATH),
-            "app_version": settings.APP_VERSION
+            "es_programador_autenticado": True
         }
     )
 
+
+# --- APIS DE CONFIGURACIÓN PROTEGIDAS ---
 @router.post("/api/gdrive/scan")
-async def scan_gdrive_api(payload: Optional[GDriveScanPayload] = None, db: Session = Depends(get_db)):
-    folder_id = payload.folder_id if payload and payload.folder_id else os.getenv("GDRIVE_FOLDER_ID", "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv")
+async def scan_gdrive_api(
+    payload: Optional[GDriveScanPayload] = None,
+    db: Session = Depends(get_db),
+    request: Request = None
+):
+    require_admin_auth(request)
+    folder_id = payload.folder_id if payload and payload.folder_id else None
     propietario = payload.propietario if payload and payload.propietario else "Google Drive"
 
     service = GoogleDriveService(folder_id=folder_id)
     try:
-        results = service.scan_and_process_folder(db=db, propietario_default=propietario)
+        results = await service.scan_and_process(db, allow_duplicate=False, propietario=propietario)
+        procesados = results.get("procesados", 0)
+        duplicados = results.get("duplicados", 0)
+        errores = results.get("errores", 0)
+
         return {
             "success": True,
-            "message": f"Escaneo completado. {results['nuevos_procesados']} despachos nuevos procesados, {results['omitidos_duplicados']} omitidos por ya existir.",
+            "message": f"Escaneo completado: {procesados} nuevos despachos procesados, {duplicados} omitidos (ya existentes), {errores} con error.",
             "data": results
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error durante el escaneo de Google Drive: {str(e)}")
+
 
 @router.post("/api/gdrive/scan-local")
-async def scan_gdrive_local_api(payload: GDriveLocalScanPayload, db: Session = Depends(get_db)):
+async def scan_gdrive_local_api(
+    payload: GDriveLocalScanPayload,
+    db: Session = Depends(get_db),
+    request: Request = None
+):
+    require_admin_auth(request)
+    if not payload.local_path:
+        raise HTTPException(status_code=400, detail="Debes proporcionar una ruta local válida.")
+
     service = GoogleDriveService()
     try:
-        results = service.scan_local_folder(db=db, local_path=payload.local_path, propietario_default=payload.propietario or "Carpeta Local")
+        results = await service.scan_local_folder(db, payload.local_path, allow_duplicate=False, propietario=payload.propietario)
+        procesados = results.get("procesados", 0)
+        duplicados = results.get("duplicados", 0)
+        errores = results.get("errores", 0)
+
         return {
             "success": True,
-            "message": f"Escaneo local completado. {results['nuevos_procesados']} despachos nuevos procesados, {results['omitidos_duplicados']} omitidos por ya existir.",
+            "message": f"Escaneo de carpeta local completado: {procesados} nuevos despachos procesados, {duplicados} omitidos, {errores} errores.",
             "data": results
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error al escanear carpeta local: {str(e)}")
+
 
 @router.get("/api/gdrive/watcher/status")
-async def get_gdrive_watcher_status():
+async def watcher_status_api(request: Request = None):
     from app.services.gdrive_watcher import GDriveWatcher
     watcher = GDriveWatcher.get_instance()
     return watcher.get_status()
 
+
 @router.post("/api/gdrive/watcher/toggle")
-async def toggle_gdrive_watcher(enabled: bool = Body(..., embed=True)):
+async def watcher_toggle_api(payload: dict = Body(...), request: Request = None):
+    require_admin_auth(request)
     from app.services.gdrive_watcher import GDriveWatcher
+    enabled = payload.get("enabled", True)
     watcher = GDriveWatcher.get_instance()
-    watcher.is_enabled = enabled
-    return {
-        "success": True,
-        "is_enabled": watcher.is_enabled,
-        "message": f"Auto-Vigilante {'activado' if enabled else 'pausado'}."
-    }
+    watcher.set_enabled(enabled)
+    return {"success": True, "is_enabled": watcher.is_enabled}
+
 
 @router.post("/api/gdrive/watcher/config")
-async def config_gdrive_watcher(interval_seconds: int = Body(..., embed=True)):
+async def watcher_config_api(payload: dict = Body(...), request: Request = None):
+    require_admin_auth(request)
     from app.services.gdrive_watcher import GDriveWatcher
+    interval = payload.get("interval_seconds", 300)
     watcher = GDriveWatcher.get_instance()
-    if interval_seconds < 10:
-        interval_seconds = 10
-    watcher.interval_seconds = interval_seconds
-    return {
-        "success": True,
-        "interval_seconds": watcher.interval_seconds,
-        "message": f"Intervalo actualizado a {watcher.interval_seconds} segundos."
-    }
+    watcher.set_interval(interval)
+    return {"success": True, "interval_seconds": watcher.interval_seconds}
+
 
 @router.post("/api/guardar")
-async def guardar_configuracion_api(payload: SaveTursoPayload):
+async def guardar_configuracion_api(payload: SaveTursoPayload, request: Request = None):
+    require_admin_auth(request)
     url = payload.database_url.strip()
     token = payload.auth_token.strip()
 
-    if not url:
-        raise HTTPException(status_code=400, detail="La URL de la base de datos no puede estar vacía.")
+    if not url or not token:
+        raise HTTPException(status_code=400, detail="URL y Token son obligatorios.")
 
-    # Actualizar variables de entorno en memoria
     os.environ["TURSO_DATABASE_URL"] = url
     os.environ["TURSO_AUTH_TOKEN"] = token
+    settings.TURSO_DATABASE_URL = url
+    settings.TURSO_AUTH_TOKEN = token
 
-    # Persistir en archivo .env
     try:
         if not ENV_PATH.exists():
             ENV_PATH.touch()
         set_key(str(ENV_PATH), "TURSO_DATABASE_URL", url)
         set_key(str(ENV_PATH), "TURSO_AUTH_TOKEN", token)
-    except Exception as e:
+    except Exception:
         pass
 
     return {
@@ -161,8 +301,10 @@ async def guardar_configuracion_api(payload: SaveTursoPayload):
         "message": "Configuración guardada correctamente en el sistema y en el archivo .env."
     }
 
+
 @router.post("/api/test")
-async def test_configuracion_api(payload: Optional[SaveTursoPayload] = None):
+async def test_configuracion_api(payload: Optional[SaveTursoPayload] = None, request: Request = None):
+    require_admin_auth(request)
     url = payload.database_url if payload else os.getenv("TURSO_DATABASE_URL", "")
     token = payload.auth_token if payload else os.getenv("TURSO_AUTH_TOKEN", "")
 
@@ -171,7 +313,7 @@ async def test_configuracion_api(payload: Optional[SaveTursoPayload] = None):
 
     turso = TursoService(db_url=url, auth_token=token)
     try:
-        res = await turso.test_connection()
+        await turso.test_connection()
         return {
             "success": True,
             "message": "¡Conexión exitosa con la base de datos de Turso Cloud!"
@@ -179,11 +321,14 @@ async def test_configuracion_api(payload: Optional[SaveTursoPayload] = None):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Fallo de conexión: {str(e)}")
 
+
 @router.post("/api/push")
 async def push_configuracion_api(
     payload: Optional[SaveTursoPayload] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None
 ):
+    require_admin_auth(request)
     url = (payload.database_url if payload else None) or os.getenv("TURSO_DATABASE_URL", "")
     token = (payload.auth_token if payload else None) or os.getenv("TURSO_AUTH_TOKEN", "")
 
@@ -201,11 +346,14 @@ async def push_configuracion_api(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al subir a Turso: {str(e)}")
 
+
 @router.post("/api/pull")
 async def pull_configuracion_api(
     payload: Optional[SaveTursoPayload] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None
 ):
+    require_admin_auth(request)
     url = (payload.database_url if payload else None) or os.getenv("TURSO_DATABASE_URL", "")
     token = (payload.auth_token if payload else None) or os.getenv("TURSO_AUTH_TOKEN", "")
 
@@ -223,14 +371,15 @@ async def pull_configuracion_api(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al descargar desde Turso: {str(e)}")
 
+
 @router.post("/api/notificaciones/guardar")
-async def guardar_notificaciones_api(payload: SaveNotificationsPayload):
+async def guardar_notificaciones_api(payload: SaveNotificationsPayload, request: Request = None):
+    require_admin_auth(request)
     token = (payload.telegram_bot_token or "").strip()
     chat_id = (payload.telegram_chat_id or "").strip()
     webhook = (payload.webhook_url or "").strip()
     enabled = payload.notifications_enabled if payload.notifications_enabled is not None else True
 
-    # Actualizar en memoria
     os.environ["TELEGRAM_BOT_TOKEN"] = token
     os.environ["TELEGRAM_CHAT_ID"] = chat_id
     os.environ["WEBHOOK_URL"] = webhook
@@ -241,7 +390,6 @@ async def guardar_notificaciones_api(payload: SaveNotificationsPayload):
     settings.WEBHOOK_URL = webhook
     settings.NOTIFICATIONS_ENABLED = enabled
 
-    # Persistir en .env
     try:
         if not ENV_PATH.exists():
             ENV_PATH.touch()
@@ -249,7 +397,7 @@ async def guardar_notificaciones_api(payload: SaveNotificationsPayload):
         set_key(str(ENV_PATH), "TELEGRAM_CHAT_ID", chat_id)
         set_key(str(ENV_PATH), "WEBHOOK_URL", webhook)
         set_key(str(ENV_PATH), "NOTIFICATIONS_ENABLED", "true" if enabled else "false")
-    except Exception as e:
+    except Exception:
         pass
 
     return {
@@ -257,8 +405,10 @@ async def guardar_notificaciones_api(payload: SaveNotificationsPayload):
         "message": "Configuración de notificaciones guardada correctamente."
     }
 
+
 @router.post("/api/notificaciones/test")
-async def test_notificaciones_api(payload: Optional[SaveNotificationsPayload] = None):
+async def test_notificaciones_api(payload: Optional[SaveNotificationsPayload] = None, request: Request = None):
+    require_admin_auth(request)
     from app.services.notification_service import NotificationService
     token = payload.telegram_bot_token if payload and payload.telegram_bot_token is not None else os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = payload.telegram_chat_id if payload and payload.telegram_chat_id is not None else os.getenv("TELEGRAM_CHAT_ID", "")

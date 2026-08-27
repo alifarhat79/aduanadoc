@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Acceso Restringido - Programador | Sistema Aduanero{% endblock %}
+{% block page_title %}Seguridad del Sistema{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+                <div class="bg-dark text-white p-4 text-center position-relative">
+                    <div class="mb-3">
+                        <div class="d-inline-flex align-items-center justify-content-center bg-warning text-dark rounded-circle shadow" style="width: 70px; height: 70px;">
+                            <i class="bi bi-shield-lock-fill fs-1"></i>
+                        </div>
+                    </div>
+                    <h4 class="fw-bold mb-1">Acceso Restringido</h4>
+                    <p class="text-light opacity-75 small mb-0">Panel Exclusivo del Programador</p>
+                </div>
+
+                <div class="card-body p-4 bg-white">
+                    <div class="alert alert-info py-2 px-3 small border-0 bg-info-subtle text-info-emphasis mb-4">
+                        <i class="bi bi-info-circle-fill me-1"></i>
+                        Esta sección contiene parámetros críticos de base de datos, claves de nube y copias de seguridad. Ingresa tu clave maestra para continuar.
+                    </div>
+
+                    <div id="loginAlert" class="alert alert-danger py-2 small d-none mb-3"></div>
+
+                    <form id="configLoginForm" onsubmit="event.preventDefault(); submitLogin();">
+                        <div class="mb-3">
+                            <label for="adminPasswordInput" class="form-label fw-bold text-dark small">
+                                <i class="bi bi-key-fill text-warning me-1"></i>Contraseña de Programador:
+                            </label>
+                            <div class="input-group">
+                                <input type="password" id="adminPasswordInput" class="form-control form-control-lg" placeholder="••••••••••••" autofocus required>
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassVisibility()" title="Mostrar/Ocultar contraseña">
+                                    <i class="bi bi-eye" id="eyeIcon"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" id="btnLogin" class="btn btn-primary btn-lg fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2">
+                                <i class="bi bi-unlock-fill"></i> Desbloquear Configuración
+                            </button>
+                            <a href="/" class="btn btn-light btn-sm text-muted">
+                                <i class="bi bi-arrow-left me-1"></i> Volver al Dashboard
+                            </a>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card-footer bg-light py-2 text-center border-top">
+                    <span class="text-muted small" style="font-size: 0.75rem;">
+                        <i class="bi bi-lock me-1"></i>Protección de Seguridad AduanaDoc v1.0
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePassVisibility() {
+    const input = document.getElementById('adminPasswordInput');
+    const icon = document.getElementById('eyeIcon');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'bi bi-eye-slash';
+    } else {
+        input.type = 'password';
+        icon.className = 'bi bi-eye';
+    }
+}
+
+async function submitLogin() {
+    const pwd = document.getElementById('adminPasswordInput').value;
+    const btn = document.getElementById('btnLogin');
+    const alertEl = document.getElementById('loginAlert');
+
+    if (!pwd) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Verificando...';
+    alertEl.classList.add('d-none');
+
+    try {
+        const resp = await fetch('/configuracion/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pwd })
+        });
+        const data = await resp.json();
+
+        if (resp.ok && data.success) {
+            btn.className = 'btn btn-success btn-lg fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2';
+            btn.innerHTML = '<i class="bi bi-check-circle-fill"></i> ¡Acceso Concedido!';
+            setTimeout(() => {
+                window.location.href = '/configuracion';
+            }, 400);
+        } else {
+            alertEl.innerText = data.detail || data.message || 'Contraseña incorrecta. Acceso denegado.';
+            alertEl.classList.remove('d-none');
+            document.getElementById('adminPasswordInput').value = '';
+            document.getElementById('adminPasswordInput').focus();
+            btn.disabled = false;
+            btn.className = 'btn btn-primary btn-lg fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2';
+            btn.innerHTML = '<i class="bi bi-unlock-fill"></i> Desbloquear Configuración';
+        }
+    } catch (e) {
+        alertEl.innerText = 'Error de conexión con el servidor.';
+        alertEl.classList.remove('d-none');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-unlock-fill"></i> Desbloquear Configuración';
+    }
+}
+</script>
+{% endblock %}
