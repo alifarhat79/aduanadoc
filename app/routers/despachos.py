@@ -20,6 +20,7 @@ async def list_despachos_view(
     estado: Optional[str] = Query(None),
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
+    origen: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(35, ge=10, le=100),
     db: Session = Depends(get_db)
@@ -36,6 +37,7 @@ async def list_despachos_view(
                 Despacho.exportador_nombre.ilike(search_pattern),
                 Despacho.importador_documento.ilike(search_pattern),
                 Despacho.propietario.ilike(search_pattern),
+                Despacho.pais_origen.ilike(search_pattern),
                 Despacho.bl.ilike(search_pattern),
                 Despacho.contenedor.ilike(search_pattern),
                 Despacho.aduana.ilike(search_pattern),
@@ -52,6 +54,9 @@ async def list_despachos_view(
     if propietario:
         query = query.filter(Despacho.propietario.ilike(f"%{propietario}%"))
 
+    if origen:
+        query = query.filter(Despacho.pais_origen.ilike(f"%{origen}%"))
+
     # Ordenar por fecha más reciente primero (y por ID secundario)
     query = query.order_by(desc(Despacho.fecha_despacho), desc(Despacho.id))
 
@@ -61,8 +66,9 @@ async def list_despachos_view(
 
     despachos = query.offset((current_page - 1) * per_page).limit(per_page).all()
 
-    # Obtener lista única de importadores para el filtro
-    importadores = [r[0] for r in db.query(Despacho.importador_nombre).distinct().filter(Despacho.importador_nombre.isnot(None)).order_by(Despacho.importador_nombre).all()]
+    # Obtener lista única de importadores y orígenes para los filtros
+    importadores = [r[0] for r in db.query(Despacho.importador_nombre).distinct().filter(Despacho.importador_nombre.isnot(None), Despacho.importador_nombre != '').order_by(Despacho.importador_nombre).all()]
+    origenes = [r[0] for r in db.query(Despacho.pais_origen).distinct().filter(Despacho.pais_origen.isnot(None), Despacho.pais_origen != '').order_by(Despacho.pais_origen).all()]
 
     return templates.TemplateResponse(
         request=request,
@@ -73,7 +79,9 @@ async def list_despachos_view(
             "estado_sel": estado,
             "importador_sel": importador,
             "propietario_sel": propietario,
+            "origen_sel": origen,
             "importadores": importadores,
+            "origenes": origenes,
             "page": current_page,
             "per_page": per_page,
             "total_pages": total_pages,

@@ -35,6 +35,40 @@ async def dashboard_view(request: Request, db: Session = Depends(get_db)):
     confirmados = db.query(func.count(Despacho.id)).filter(Despacho.estado_procesamiento == "CONFIRMADO").scalar() or 0
     procesados = db.query(func.count(Despacho.id)).filter(Despacho.estado_procesamiento == "PROCESADO").scalar() or 0
 
+    # Nuevos KPIs solicitados:
+    # 1. Total líneas de productos (ítems de mercancías)
+    total_lineas_productos = db.query(func.count(DespachoItem.id)).scalar() or 0
+
+    # 2. Total marcas únicas
+    total_marcas = db.query(func.count(func.distinct(DespachoItem.marca))).filter(DespachoItem.marca.isnot(None), DespachoItem.marca != '').scalar() or 0
+
+    # 3. Cantidad de despachos por año
+    despachos_por_anio = (
+        db.query(
+            func.strftime("%Y", Despacho.fecha_despacho).label("anio"),
+            func.count(Despacho.id).label("total_despachos"),
+            func.sum(Despacho.valor_fob).label("total_fob")
+        )
+        .filter(Despacho.fecha_despacho.isnot(None))
+        .group_by("anio")
+        .order_by(desc("anio"))
+        .all()
+    )
+
+    # 4. Cantidad de despachos por país de origen
+    despachos_por_origen = (
+        db.query(
+            Despacho.pais_origen.label("origen"),
+            func.count(Despacho.id).label("total_despachos"),
+            func.sum(Despacho.valor_fob).label("total_fob")
+        )
+        .filter(Despacho.pais_origen.isnot(None), Despacho.pais_origen != "")
+        .group_by(Despacho.pais_origen)
+        .order_by(desc("total_despachos"))
+        .limit(8)
+        .all()
+    )
+
     ultimos_despachos = db.query(Despacho).order_by(desc(Despacho.fecha_despacho), desc(Despacho.id)).limit(10).all()
     ultimos_logs = db.query(ProcessingLog).order_by(ProcessingLog.created_at.desc()).limit(5).all()
 
@@ -44,10 +78,15 @@ async def dashboard_view(request: Request, db: Session = Depends(get_db)):
         "total_fob": total_fob,
         "total_cif": total_cif,
         "total_impuestos": total_impuestos,
+        "total_tributos_pagos": total_impuestos,
         "total_peso": total_peso,
         "pendientes_revision": pendientes_revision,
         "confirmados": confirmados,
-        "procesados": procesados
+        "procesados": procesados,
+        "total_lineas_productos": total_lineas_productos,
+        "total_marcas": total_marcas,
+        "despachos_por_anio": despachos_por_anio,
+        "despachos_por_origen": despachos_por_origen
     }
 
     return templates.TemplateResponse(

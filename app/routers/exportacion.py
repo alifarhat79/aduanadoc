@@ -21,7 +21,7 @@ from app.models import Despacho, DespachoItem
 
 router = APIRouter(prefix="/exportar", tags=["Exportación"])
 
-def get_filtered_despachos_and_items(db: Session, q: Optional[str], estado: Optional[str], importador: Optional[str], propietario: Optional[str] = None):
+def get_filtered_despachos_and_items(db: Session, q: Optional[str], estado: Optional[str], importador: Optional[str], propietario: Optional[str] = None, origen: Optional[str] = None):
     query = db.query(Despacho)
     if q:
         search_pattern = f"%{q}%"
@@ -31,6 +31,7 @@ def get_filtered_despachos_and_items(db: Session, q: Optional[str], estado: Opti
                 Despacho.importador_nombre.ilike(search_pattern),
                 Despacho.exportador_nombre.ilike(search_pattern),
                 Despacho.propietario.ilike(search_pattern),
+                Despacho.pais_origen.ilike(search_pattern),
                 Despacho.bl.ilike(search_pattern)
             )
         )
@@ -40,8 +41,10 @@ def get_filtered_despachos_and_items(db: Session, q: Optional[str], estado: Opti
         query = query.filter(Despacho.importador_nombre.ilike(f"%{importador}%"))
     if propietario:
         query = query.filter(Despacho.propietario.ilike(f"%{propietario}%"))
+    if origen:
+        query = query.filter(Despacho.pais_origen.ilike(f"%{origen}%"))
 
-    despachos = query.order_by(desc(Despacho.created_at)).all()
+    despachos = query.order_by(desc(Despacho.fecha_despacho), desc(Despacho.id)).all()
     despacho_ids = [d.id for d in despachos]
     items = db.query(DespachoItem).filter(DespachoItem.despacho_id.in_(despacho_ids)).all() if despacho_ids else []
     return despachos, items
@@ -53,9 +56,10 @@ async def export_excel(
     estado: Optional[str] = Query(None),
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
+    origen: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    despachos, items = get_filtered_despachos_and_items(db, q, estado, importador, propietario)
+    despachos, items = get_filtered_despachos_and_items(db, q, estado, importador, propietario, origen)
 
     wb = openpyxl.Workbook()
     header_fill = PatternFill(start_color="1E40AF", end_color="1E40AF", fill_type="solid")
@@ -187,9 +191,10 @@ async def export_html(
     estado: Optional[str] = Query(None),
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
+    origen: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    despachos, items = get_filtered_despachos_and_items(db, q, estado, importador, propietario)
+    despachos, items = get_filtered_despachos_and_items(db, q, estado, importador, propietario, origen)
     
     total_fob = sum(d.valor_fob or 0.0 for d in despachos)
     total_cif = sum(d.valor_cif or 0.0 for d in despachos)
@@ -282,9 +287,10 @@ async def export_pdf(
     estado: Optional[str] = Query(None),
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
+    origen: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    despachos, _ = get_filtered_despachos_and_items(db, q, estado, importador, propietario)
+    despachos, _ = get_filtered_despachos_and_items(db, q, estado, importador, propietario, origen)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
@@ -350,13 +356,14 @@ async def export_google_sheet(
     estado: Optional[str] = Query(None),
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
+    origen: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     """
     Genera un archivo CSV estándar con codificación UTF-8 con BOM y delimitador por comas,
     listo para abrir directamente en Google Sheets o usar con =IMPORTDATA().
     """
-    despachos, _ = get_filtered_despachos_and_items(db, q, estado, importador, propietario)
+    despachos, _ = get_filtered_despachos_and_items(db, q, estado, importador, propietario, origen)
     output = io.StringIO()
     writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
 
@@ -403,6 +410,7 @@ async def export_csv(
     estado: Optional[str] = Query(None),
     importador: Optional[str] = Query(None),
     propietario: Optional[str] = Query(None),
+    origen: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    return await export_google_sheet(q, estado, importador, propietario, db)
+    return await export_google_sheet(q=q, estado=estado, importador=importador, propietario=propietario, origen=origen, db=db)
