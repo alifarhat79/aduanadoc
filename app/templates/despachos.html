@@ -121,9 +121,24 @@
                             style="cursor: context-menu;">
                             <td class="text-muted">{{ d.id }}</td>
                             <td>
-                                <span class="badge bg-light text-dark border">
-                                    <i class="bi bi-person-fill me-1 text-primary"></i>{{ d.propietario or 'Sin Asignar' }}
-                                </span>
+                                <div class="editable-propietario-container d-inline-flex align-items-center gap-1" data-despacho-id="{{ d.id }}">
+                                    <span class="badge bg-light text-dark border propietario-badge py-1 px-2 d-inline-flex align-items-center" 
+                                          title="Clic o doble clic para editar dueño / cliente (Enter para guardar)"
+                                          onclick="habilitarEdicionPropietario({{ d.id }})"
+                                          style="cursor: pointer; transition: all 0.2s;">
+                                        <i class="bi bi-person-fill me-1 text-primary"></i>
+                                        <span class="propietario-text">{{ d.propietario or 'Sin Asignar' }}</span>
+                                        <i class="bi bi-pencil-fill ms-1 text-muted opacity-50" style="font-size: 0.65rem;"></i>
+                                    </span>
+                                    <input type="text" 
+                                           class="form-control form-control-sm propietario-input d-none py-0 px-2 fw-semibold border-primary shadow-sm" 
+                                           style="width: 145px; font-size: 0.8rem; height: 26px;" 
+                                           value="{{ d.propietario or '' }}" 
+                                           data-original="{{ d.propietario or '' }}"
+                                           placeholder="Nombre dueño..."
+                                           onkeydown="manejarKeyPropietario(event, {{ d.id }})"
+                                           onblur="guardarPropietarioInline({{ d.id }})">
+                                </div>
                             </td>
                             <td>{{ d.fecha_despacho.strftime('%d/%m/%Y') if d.fecha_despacho else '-' }}</td>
                             <td class="fw-bold">
@@ -238,6 +253,9 @@
         </div>
     </a>
     <hr class="dropdown-divider my-1">
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" id="ctxOptCambiarDueno">
+        <i class="bi bi-person-gear text-primary"></i> Cambiar Dueño / Cliente
+    </a>
     <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" id="ctxOptDetalle">
         <i class="bi bi-eye text-secondary"></i> Abrir Ficha Completa
     </a>
@@ -310,6 +328,7 @@
         document.getElementById('ctxMenuDespachoNum').textContent = despachoNum;
 
         document.getElementById('ctxOptInfo').onclick = (e) => { e.preventDefault(); hideContextMenu(); openInfoAuditModal(despachoId, despachoNum); };
+        document.getElementById('ctxOptCambiarDueno').onclick = (e) => { e.preventDefault(); hideContextMenu(); habilitarEdicionPropietario(despachoId); };
         document.getElementById('ctxOptDetalle').href = `/despachos/${despachoId}`;
         document.getElementById('ctxOptRevisar').href = `/revisar/${despachoId}`;
         document.getElementById('ctxOptPdf').href = `/despachos/${despachoId}/pdf`;
@@ -483,6 +502,133 @@
             const len = target.value.length;
             target.setSelectionRange(len, len);
         }
+    }
+
+    // ==========================================
+    // EDICIÓN INLINE DE DUEÑO / CLIENTE
+    // ==========================================
+    window.habilitarEdicionPropietario = function(despachoId) {
+        const container = document.querySelector(`.editable-propietario-container[data-despacho-id="${despachoId}"]`);
+        if (!container) return;
+        const badge = container.querySelector('.propietario-badge');
+        const input = container.querySelector('.propietario-input');
+        if (!badge || !input) return;
+
+        badge.classList.add('d-none');
+        input.classList.remove('d-none');
+        input.focus();
+        input.select();
+    };
+
+    window.manejarKeyPropietario = function(event, despachoId) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            const input = event.target;
+            input.blur(); // Dispara onblur que llama a guardarPropietarioInline
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            const container = document.querySelector(`.editable-propietario-container[data-despacho-id="${despachoId}"]`);
+            if (!container) return;
+            const badge = container.querySelector('.propietario-badge');
+            const input = container.querySelector('.propietario-input');
+            input.value = input.getAttribute('data-original') || '';
+            input.classList.add('d-none');
+            badge.classList.remove('d-none');
+        }
+    };
+
+    window.guardarPropietarioInline = async function(despachoId) {
+        const container = document.querySelector(`.editable-propietario-container[data-despacho-id="${despachoId}"]`);
+        if (!container) return;
+        const badge = container.querySelector('.propietario-badge');
+        const input = container.querySelector('.propietario-input');
+        const textSpan = container.querySelector('.propietario-text');
+        if (!badge || !input) return;
+
+        const newVal = input.value.trim();
+        const origVal = input.getAttribute('data-original') || '';
+
+        // Si el valor no cambió, solo alternar vista
+        if (newVal === origVal || (newVal === '' && origVal === 'Sin Asignar')) {
+            input.classList.add('d-none');
+            badge.classList.remove('d-none');
+            return;
+        }
+
+        // Mostrar feedback de guardado
+        input.classList.add('d-none');
+        badge.classList.remove('d-none');
+        const originalBadgeHTML = badge.innerHTML;
+        badge.innerHTML = `<span class="spinner-border spinner-border-sm text-primary" role="status" style="width: 10px; height: 10px;"></span> Guardando...`;
+
+        try {
+            const resp = await fetch(`/despachos/api/${despachoId}/propietario`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ propietario: newVal })
+            });
+
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.detail || 'Error al actualizar dueño.');
+            }
+
+            const data = await resp.json();
+            const assignedName = data.propietario || 'Sin Asignar';
+
+            input.setAttribute('data-original', assignedName);
+            input.value = assignedName === 'Sin Asignar' ? '' : assignedName;
+
+            badge.innerHTML = `
+                <i class="bi bi-person-fill me-1 text-success"></i>
+                <span class="propietario-text">${assignedName}</span>
+                <i class="bi bi-pencil-fill ms-1 text-muted opacity-50" style="font-size: 0.65rem;"></i>
+            `;
+            badge.classList.remove('bg-light', 'text-dark');
+            badge.classList.add('bg-success', 'text-white');
+
+            setTimeout(() => {
+                badge.classList.remove('bg-success', 'text-white');
+                badge.classList.add('bg-light', 'text-dark');
+                const icon = badge.querySelector('.bi-person-fill');
+                if (icon) icon.className = 'bi bi-person-fill me-1 text-primary';
+            }, 2000);
+
+            // Toast de notificación en vivo
+            mostrarToastPropietario(`✅ Dueño actualizado a <strong>${assignedName}</strong>.<br><small class="text-white-50">Sincronizado a Turso Cloud ☁️ y notificado en Telegram 📲</small>`);
+
+        } catch (err) {
+            badge.innerHTML = originalBadgeHTML;
+            alert('No se pudo actualizar el dueño: ' + err.message);
+        }
+    };
+
+    function mostrarToastPropietario(mensaje) {
+        let toastContainer = document.getElementById('toastPropietarioContainer');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toastPropietarioContainer';
+            toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
+            toastContainer.style.zIndex = '9999';
+            document.body.appendChild(toastContainer);
+        }
+        const toastEl = document.createElement('div');
+        toastEl.className = 'toast align-items-center text-white bg-dark border-0 shadow-lg show mb-2';
+        toastEl.setAttribute('role', 'alert');
+        toastEl.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body py-2 px-3">
+                    ${mensaje}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.closest('.toast').remove()"></button>
+            </div>
+        `;
+        toastContainer.appendChild(toastEl);
+        setTimeout(() => {
+            if (toastEl.parentNode) toastEl.remove();
+        }, 4000);
     }
 </script>
 {% endblock %}

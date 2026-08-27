@@ -201,6 +201,20 @@ def test_pdf_viewer_assets_and_review_page():
     assert "Documento Original" in response.text
     assert f"/despachos/{desp_id}/pdf" in response.text
 
+def test_actualizar_propietario_inline_endpoint():
+    desp_id = create_sample_despacho()
+    payload = {"propietario": "Ali Farhat Importaciones"}
+    response = client.post(f"/despachos/api/{desp_id}/propietario", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["propietario"] == "Ali Farhat Importaciones"
+
+    db = SessionLocal()
+    d = db.query(Despacho).filter(Despacho.id == desp_id).first()
+    assert d.propietario == "Ali Farhat Importaciones"
+    db.close()
+
 
 
 

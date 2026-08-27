@@ -133,6 +133,46 @@ class NotificationService:
             "results": results
         }
 
+    def notify_propietario_actualizado(
+        self,
+        numero_despacho: str,
+        propietario_nuevo: str,
+        propietario_anterior: Optional[str] = None,
+        importador_nombre: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Envía una notificación cuando se corrige/modifica el dueño o cliente de un despacho.
+        """
+        if not self.enabled:
+            return {"success": False, "message": "Notificaciones desactivadas."}
+
+        anterior_clean = propietario_anterior or "Sin Asignar"
+        anterior_str = f"\n<i>(Anterior: {anterior_clean})</i>" if anterior_clean != propietario_nuevo else ""
+        imp_str = f"\n🏢 <b>Importador:</b> {importador_nombre}" if importador_nombre else ""
+
+        tg_text = (
+            f"✏️ <b>Corrección de Dueño / Cliente</b>\n\n"
+            f"📌 <b>Nº Despacho:</b> <code>{numero_despacho}</code>\n"
+            f"👤 <b>Nuevo Dueño:</b> <b>{propietario_nuevo}</b>{anterior_str}{imp_str}\n\n"
+            f"<i>☁️ Base de Datos Actualizada & Sincronizado a Turso Cloud</i>"
+        )
+
+        results = {}
+        if self.telegram_token and self.telegram_chat_id:
+            results["telegram"] = self.send_telegram_message(tg_text)
+
+        if self.webhook_url:
+            webhook_payload = {
+                "event": "despacho_propietario_actualizado",
+                "numero_despacho": numero_despacho,
+                "propietario_nuevo": propietario_nuevo,
+                "propietario_anterior": propietario_anterior,
+                "importador_nombre": importador_nombre
+            }
+            results["webhook"] = self.send_webhook(webhook_payload)
+
+        return {"success": True, "results": results}
+
     def send_test_notification(self) -> Dict[str, Any]:
         """
         Envía un mensaje de prueba a Telegram y/o Webhook para verificar la configuración.

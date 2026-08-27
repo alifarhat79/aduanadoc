@@ -6,6 +6,8 @@ from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc, func
 from typing import Optional
+from datetime import datetime, timezone
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models import Despacho, DespachoItem, DespachoAuditoria
@@ -259,6 +261,79 @@ async def descargar_despacho_pdf(despacho_id: int, db: Session = Depends(get_db)
         content_disposition_type="attachment",
         filename=despacho.nombre_archivo_original or pdf_path.name
     )
+
+
+class PropietarioUpdatePayload(BaseModel):
+    propietario: str
+
+
+@router.post("/api/{despacho_id}/propietario")
+@router.patch("/api/{despacho_id}/propietario")
+async def update_despacho_propietario_api(
+    despacho_id: int,
+    payload: PropietarioUpdatePayload,
+    db: Session = Depends(get_db)
+):
+    """Actualiza de forma inline el dueño / cliente de un despacho, sincroniza con Turso y notifica por Telegram."""
+    despacho = db.query(Despacho).filter(Despacho.id == despacho_id).first()
+    if not despacho:
+        raise HTTPException(status_code=404, detail="Despacho no encontrado")
+
+    anterior = despacho.propietario or "Sin Asignar"
+    nuevo = payload.propietario.strip()
+    if not nuevo:
+        nuevo = "Sin Asignar"
+
+    despacho.propietario = nuevo
+    despacho.updated_at = datetime.now(timezone.utc)
+
+    # Registrar en auditoría
+    audit = DespachoAuditoria(
+        despacho_id=despacho.id,
+        campo_modificado="propietario",
+        valor_anterior=anterior,
+        valor_nuevo=nuevo,
+        usuario="Operador Aduanero",
+        fecha_modificacion=datetime.now(timezone.utc)
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(despacho)
+
+    # Sincronizar automáticamente a Turso Cloud
+    turso_synced = False
+    try:
+        from app.services.turso_service import TursoService
+        turso = TursoService()
+        if turso.is_configured():
+            await turso.push_despacho_to_turso(despacho.id, db)
+            turso_synced = True
+    except Exception as t_err:
+        pass
+
+    # Enviar notificación a Telegram
+    telegram_sent = False
+    try:
+        from app.services.notification_service import NotificationService
+        noti = NotificationService()
+        res_noti = noti.notify_propietario_actualizado(
+            numero_despacho=despacho.numero_despacho or "S/N",
+            propietario_nuevo=nuevo,
+            propietario_anterior=anterior,
+            importador_nombre=despacho.importador_nombre
+        )
+        telegram_sent = res_noti.get("results", {}).get("telegram", {}).get("success", False)
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "despacho_id": despacho.id,
+        "propietario": nuevo,
+        "turso_synced": turso_synced,
+        "telegram_sent": telegram_sent,
+        "message": f"Dueño actualizado a '{nuevo}' y sincronizado con éxito."
+    }
 
 
 @router.delete("/{despacho_id}")
