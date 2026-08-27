@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Turso Cloud Database
     TURSO_DATABASE_URL: str = "libsql://despachos-alifarhat.aws-us-east-1.turso.io"
-    TURSO_AUTH_TOKEN: str = ""
+    TURSO_AUTH_TOKEN: str = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc3Njk1NzcsImlkIjoiMDFhMDNmNTItOGQwMS03YmMzLTk0YmItYjZjZTA5YzU2ZjM2Iiwia2lkIjoiSE9nOF8zQjZsR2k4LWF0YUQ3NDlzSzJob25SV3NuTVpYbTF3TEVpREtnMCIsInJpZCI6IjVlNjVmZTljLTY2ZmUtNGE4MS1hNTIxLTUyMWZjMDk5ZWM0ZSJ9.jZMp4XqDHo-dCXNZkHSA9d3BfyYgM4WVk4lgsxlmPP4ng93uf0pA2C5HNoDw7JiIFRIV5tsL6CEVFUPWaAgJBg"
 
     # Google Drive Sync
     GDRIVE_FOLDER_ID: str = "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv"

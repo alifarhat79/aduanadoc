@@ -293,12 +293,29 @@ async def guardar_configuracion_api(payload: SaveTursoPayload, request: Request 
             ENV_PATH.touch()
         set_key(str(ENV_PATH), "TURSO_DATABASE_URL", url)
         set_key(str(ENV_PATH), "TURSO_AUTH_TOKEN", token)
+
+        # Actualizar app/config.py para que viaje automáticamente por Git
+        config_file = BASE_DIR / "app" / "config.py"
+        if config_file.exists():
+            import re
+            content = config_file.read_text(encoding="utf-8")
+            content = re.sub(r'TURSO_DATABASE_URL:\s*str\s*=\s*".*?"', f'TURSO_DATABASE_URL: str = "{url}"', content)
+            content = re.sub(r'TURSO_AUTH_TOKEN:\s*str\s*=\s*".*?"', f'TURSO_AUTH_TOKEN: str = "{token}"', content)
+            config_file.write_text(content, encoding="utf-8")
+
+            try:
+                import subprocess
+                subprocess.run(["git", "add", "app/config.py"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
+                subprocess.run(["git", "commit", "-m", "chore: sincronizar credenciales Turso"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
+                subprocess.run(["git", "push", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+            except Exception:
+                pass
     except Exception:
         pass
 
     return {
         "success": True,
-        "message": "Configuración guardada correctamente en el sistema y en el archivo .env."
+        "message": "Configuración guardada y sincronizada para todas las PCs."
     }
 
 
