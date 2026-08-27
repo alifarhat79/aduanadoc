@@ -166,9 +166,11 @@ class NotificationService:
                 "error": "No hay ningún canal configurado. Ingresa el Token y Chat ID de Telegram o una URL de Webhook."
             }
 
-        all_ok = all(r.get("success", False) for r in results.values())
+        errors = [r["error"] for r in results.values() if not r.get("success") and "error" in r]
+        all_ok = len(errors) == 0
         return {
             "success": all_ok,
             "results": results,
-            "message": "Notificación de prueba enviada con éxito." if all_ok else "Ocurrió un error en uno de los canales configurados."
+            "error": " | ".join(errors) if errors else None,
+            "message": "Notificación de prueba enviada con éxito." if all_ok else ("Error: " + " | ".join(errors))
         }
