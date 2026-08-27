@@ -339,9 +339,14 @@
                     <div id="gitDetails" class="small text-muted mb-2 font-monospace" style="font-size: 0.73rem;">
                         <span class="spinner-border spinner-border-sm me-1"></span> Leyendo repositorio...
                     </div>
-                    <button class="btn btn-dark btn-sm w-100 fw-semibold" id="btnGitPull" onclick="ejecutarGitPull()" disabled>
-                        <i class="bi bi-arrow-down-circle me-1"></i> Sincronizar con Git (git pull)
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-dark btn-sm w-100 fw-semibold" id="btnGitPull" onclick="ejecutarGitPull()" disabled>
+                            <i class="bi bi-arrow-down-circle me-1"></i> Sincronizar con Git (git pull)
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm fw-semibold text-nowrap d-none" id="btnGitConnect" onclick="ejecutarGitConnect()" title="Vincular esta PC con el repositorio oficial en GitHub">
+                            <i class="bi bi-link-45deg me-1"></i> Conectar con GitHub
+                        </button>
+                    </div>
                     <div id="gitPullResult" class="mt-2 d-none"></div>
                 </div>
 
@@ -937,6 +942,8 @@
         const badgeEl = document.getElementById('gitBadgeState');
         const btnPull = document.getElementById('btnGitPull');
 
+        const btnConnect = document.getElementById('btnGitConnect');
+
         try {
             const resp = await fetch('/api/updates/git/status');
             const data = await resp.json();
@@ -945,6 +952,7 @@
                 badgeEl.className = 'badge bg-success-subtle text-success';
                 badgeEl.textContent = 'Git Activo';
                 btnPull.disabled = false;
+                if (btnConnect) btnConnect.classList.add('d-none');
 
                 detailsEl.innerHTML = `
                     <div><strong>Rama:</strong> <span class="text-primary">${data.branch}</span></div>
@@ -955,12 +963,42 @@
                 badgeEl.className = 'badge bg-warning-subtle text-warning-emphasis';
                 badgeEl.textContent = 'Sin Repo Git';
                 btnPull.disabled = true;
-                detailsEl.innerHTML = `<span class="text-muted">${data.message || 'No se detectó carpeta .git. Usa el actualizador ZIP.'}</span>`;
+                if (btnConnect) btnConnect.classList.remove('d-none');
+                detailsEl.innerHTML = `<span class="text-muted">${data.message || 'No se detectó carpeta .git. Haz clic en "Conectar con GitHub" para activar actualizaciones automáticas.'}</span>`;
             }
         } catch (e) {
             badgeEl.className = 'badge bg-secondary';
             badgeEl.textContent = 'Desconectado';
             detailsEl.textContent = 'No se pudo consultar el estado de Git.';
+        }
+    }
+
+    async function ejecutarGitConnect() {
+        const btn = document.getElementById('btnGitConnect');
+        const resEl = document.getElementById('gitPullResult');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Vinculando...';
+        resEl.className = 'alert alert-info py-2 small mt-2 mb-0';
+        resEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Conectando con GitHub y descargando actualizaciones...';
+        resEl.classList.remove('d-none');
+
+        try {
+            const resp = await fetch('/api/updates/git/connect', { method: 'POST' });
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+                resEl.className = 'alert alert-success py-2 small mt-2 mb-0';
+                resEl.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> ${data.message || 'Repositorio vinculado con éxito.'}`;
+                cargarEstadoGit();
+            } else {
+                resEl.className = 'alert alert-danger py-2 small mt-2 mb-0';
+                resEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error: ${data.detail || data.error || 'No se pudo vincular'}`;
+            }
+        } catch (e) {
+            resEl.className = 'alert alert-danger py-2 small mt-2 mb-0';
+            resEl.innerHTML = `Error de conexión: ${e.message}`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-link-45deg me-1"></i> Conectar con GitHub';
         }
     }
 

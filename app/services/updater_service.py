@@ -376,3 +376,24 @@ class UpdaterService:
                 "success": False,
                 "error": f"Excepción al ejecutar git pull: {str(e)}"
             }
+
+    def connect_git_repo(self, repo_url: str = "https://github.com/alifarhat79/aduanadoc.git") -> Dict[str, Any]:
+        """Inicializa y vincula el repositorio Git si falta la carpeta .git."""
+        import subprocess
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+            subprocess.run(["git", "remote", "remove", "origin"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+            subprocess.run(["git", "remote", "add", "origin", repo_url], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+            proc_fetch = subprocess.run(["git", "fetch", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=30)
+            if proc_fetch.returncode != 0:
+                return {"success": False, "error": f"Error descargando desde GitHub: {proc_fetch.stderr or proc_fetch.stdout}"}
+            subprocess.run(["git", "branch", "-M", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+            subprocess.run(["git", "reset", "--mixed", "origin/main"], cwd=str(BASE_DIR), capture_output=True, timeout=15)
+            status = self.get_git_status()
+            return {
+                "success": True,
+                "message": "Repositorio Git vinculado exitosamente con GitHub.",
+                "status": status
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Error al vincular Git: {str(e)}"}

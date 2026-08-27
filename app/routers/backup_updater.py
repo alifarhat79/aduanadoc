@@ -89,3 +89,12 @@ async def git_pull_api():
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error", "Error al ejecutar git pull"))
     return result
+
+@router.post("/api/updates/git/connect")
+async def git_connect_api():
+    """Vincula y conecta esta computadora con el repositorio GitHub oficial."""
+    updater = UpdaterService()
+    result = updater.connect_git_repo()
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Error al vincular repositorio Git"))
+    return result

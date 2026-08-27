@@ -29,10 +29,16 @@ echo [*] Utilizando Python: %PY_CMD%
 REM 2. Sincronizacion con Git
 where git >nul 2>&1
 if not errorlevel 1 (
-    if exist ".git" (
-        echo [*] Sincronizando con repositorio Git...
-        git pull --ff-only
+    if not exist ".git" (
+        echo [*] Configurando vinculo automatico con GitHub...
+        git init -q >nul 2>&1
+        git remote add origin https://github.com/alifarhat79/aduanadoc.git >nul 2>&1
+        git fetch origin main -q >nul 2>&1
+        git branch -M main >nul 2>&1
+        git reset --mixed origin/main >nul 2>&1
     )
+    echo [*] Sincronizando con repositorio Git...
+    git pull origin main --ff-only >nul 2>&1 || git pull origin main -q >nul 2>&1
 )
 
 REM 3. Dependencias
