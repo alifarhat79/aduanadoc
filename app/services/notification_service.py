@@ -23,32 +23,54 @@ class NotificationService:
 
     def send_telegram_message(self, text: str, parse_mode: str = "HTML") -> Dict[str, Any]:
         """
-        Envía un mensaje formateado a un chat/canal/grupo de Telegram usando la Bot API oficial.
+        Envía un mensaje formateado a uno o múltiples chats/canales/grupos de Telegram (separados por comas, punto y coma o espacios).
         """
         if not self.telegram_token or not self.telegram_chat_id:
             return {"success": False, "error": "Telegram Token o Chat ID no configurados."}
 
+        import re
+        raw_ids = re.split(r'[,;\s]+', self.telegram_chat_id.strip())
+        chat_ids = [cid.strip() for cid in raw_ids if cid.strip()]
+
+        if not chat_ids:
+            return {"success": False, "error": "No se encontraron Chat IDs válidos."}
+
         url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-        payload = {
-            "chat_id": self.telegram_chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-            "disable_web_page_preview": True
-        }
+        exitos = 0
+        errores = []
 
         try:
             with httpx.Client(timeout=10.0) as client:
-                resp = client.post(url, json=payload)
-                if resp.status_code == 200:
-                    return {"success": True, "message": "Mensaje enviado a Telegram con éxito."}
-                else:
-                    err_msg = resp.text
+                for cid in chat_ids:
+                    payload = {
+                        "chat_id": cid,
+                        "text": text,
+                        "parse_mode": parse_mode,
+                        "disable_web_page_preview": True
+                    }
                     try:
-                        err_json = resp.json()
-                        err_msg = err_json.get("description", err_msg)
-                    except Exception:
-                        pass
-                    return {"success": False, "error": f"Telegram API Error ({resp.status_code}): {err_msg}"}
+                        resp = client.post(url, json=payload)
+                        if resp.status_code == 200:
+                            exitos += 1
+                        else:
+                            err_msg = resp.text
+                            try:
+                                err_json = resp.json()
+                                err_msg = err_json.get("description", err_msg)
+                            except Exception:
+                                pass
+                            errores.append(f"ID {cid}: {err_msg}")
+                    except Exception as sub_e:
+                        errores.append(f"ID {cid}: {str(sub_e)}")
+
+            if exitos > 0:
+                msg = f"Mensaje enviado con éxito a {exitos} chat(s) de Telegram."
+                if errores:
+                    msg += f" (Avisos: {', '.join(errores)})"
+                return {"success": True, "message": msg, "exitos": exitos, "errores": errores}
+            else:
+                return {"success": False, "error": f"Fallo al enviar a Telegram: {'; '.join(errores)}"}
+
         except Exception as e:
             logger.error(f"[NotificationService] Error enviando a Telegram: {e}")
             return {"success": False, "error": str(e)}
