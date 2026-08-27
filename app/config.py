@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # Backup & Updates
     BACKUP_DIR: str = str(BASE_DIR / "backups")
     UPDATES_DIR: str = str(BASE_DIR / "updates")
+    BACKUP_MAX_KEEP: int = 3
 
     # Notificaciones Telegram & Webhooks
     TELEGRAM_BOT_TOKEN: str = ""

@@ -118,8 +118,9 @@ class BackupService:
             # Intentar subida opcional a Google Drive API si está configurado
             drive_uploaded = self._try_upload_to_gdrive(zip_filepath)
 
-            # Limpiar backups antiguos (mantener últimos 20)
-            self._cleanup_old_backups(max_keep=20)
+            # Limpiar backups antiguos (mantener últimos N según configuración)
+            max_keep = getattr(settings, "BACKUP_MAX_KEEP", 3)
+            self._cleanup_old_backups(max_keep=max_keep)
 
             logger.info(f"[BackupService] Backup creado con éxito: {zip_filename} ({file_size_mb} MB) [Motivo: {reason}]")
 
@@ -183,15 +184,30 @@ class BackupService:
             return True
         return False
 
-    def _cleanup_old_backups(self, max_keep: int = 20):
-        """Elimina los backups más antiguos si se excede la cantidad máxima."""
+    def _cleanup_old_backups(self, max_keep: Optional[int] = None):
+        """Elimina los backups más antiguos si se excede la cantidad máxima (por defecto 3)."""
+        limit = max_keep if max_keep is not None else getattr(settings, "BACKUP_MAX_KEEP", 3)
         all_backups = sorted(self.backup_dir.glob("backup_aduanadoc_*.zip"), key=os.path.getmtime, reverse=True)
-        if len(all_backups) > max_keep:
-            for old_p in all_backups[max_keep:]:
+        if len(all_backups) > limit:
+            for old_p in all_backups[limit:]:
                 try:
                     old_p.unlink(missing_ok=True)
                 except Exception:
                     pass
+
+    def cleanup_old_backups(self, max_keep: Optional[int] = None) -> int:
+        """Método público para purgar respaldos antiguos."""
+        limit = max_keep if max_keep is not None else getattr(settings, "BACKUP_MAX_KEEP", 3)
+        all_backups = sorted(self.backup_dir.glob("backup_aduanadoc_*.zip"), key=os.path.getmtime, reverse=True)
+        deleted = 0
+        if len(all_backups) > limit:
+            for old_p in all_backups[limit:]:
+                try:
+                    old_p.unlink(missing_ok=True)
+                    deleted += 1
+                except Exception:
+                    pass
+        return deleted
 
     def _try_upload_to_gdrive(self, zip_filepath: Path) -> bool:
         """Intenta subir el backup a Google Drive si las credenciales tienen permisos."""
