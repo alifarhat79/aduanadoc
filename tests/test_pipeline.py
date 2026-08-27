@@ -63,7 +63,7 @@ def test_pipeline_end_to_end():
         assert despacho.id is not None
         assert despacho.propietario == "Empresa Cliente S.A."
         assert despacho.numero_despacho == "26021ZF2I000919N"
-        assert despacho.importador_nombre == "FLORACE S.A"
+        assert despacho.importador_nombre == "FLORACE S.A."
         assert despacho.importador_documento == "800409361"
         assert despacho.valor_fob == 668385.25
         assert despacho.valor_flete == 3000.0

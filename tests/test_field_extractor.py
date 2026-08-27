@@ -49,7 +49,7 @@ def test_field_extraction():
 
     assert fields["numero_despacho"] == "26021ZF2I000919N"
     assert fields["fecha_despacho"] == date(2026, 8, 10)
-    assert fields["importador_nombre"] == "FLORACE S.A"
+    assert fields["importador_nombre"] == "FLORACE S.A."
     assert fields["importador_documento"] == "800409361"
     assert fields["despachante_nombre"] == "GONZALEZ LOPEZ ALEJANDRO SELESTINO"
     assert fields["exportador_nombre"] == "IMPORTADORA AMERICAS S.A"

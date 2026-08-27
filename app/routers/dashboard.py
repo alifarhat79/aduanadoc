@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, desc
 from datetime import date
 
 from app.database import get_db
@@ -35,7 +35,7 @@ async def dashboard_view(request: Request, db: Session = Depends(get_db)):
     confirmados = db.query(func.count(Despacho.id)).filter(Despacho.estado_procesamiento == "CONFIRMADO").scalar() or 0
     procesados = db.query(func.count(Despacho.id)).filter(Despacho.estado_procesamiento == "PROCESADO").scalar() or 0
 
-    ultimos_despachos = db.query(Despacho).order_by(Despacho.created_at.desc()).limit(10).all()
+    ultimos_despachos = db.query(Despacho).order_by(desc(Despacho.fecha_despacho), desc(Despacho.id)).limit(10).all()
     ultimos_logs = db.query(ProcessingLog).order_by(ProcessingLog.created_at.desc()).limit(5).all()
 
     stats = {

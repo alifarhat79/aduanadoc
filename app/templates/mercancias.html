@@ -68,8 +68,12 @@
                 <div class="col-xl-6 col-lg-6">
                     <div class="input-group input-group-sm">
                         <span class="input-group-text bg-white"><i class="bi bi-search text-primary"></i></span>
-                        <input type="text" name="q" id="liveSearchInput" class="form-control" value="{{ q }}" placeholder="Buscar por producto, marca, código EAN, Nº despacho, importador...">
-                        {% if q or selected_marca or selected_ncm or selected_propietario or selected_fecha_desde or selected_fecha_hasta %}
+                        <input type="text" name="q" id="liveSearchInput" class="form-control" value="{{ q }}" placeholder="Buscar por producto, marca, código EAN, Nº despacho, importador..." autocomplete="off">
+                        {% if q %}
+                        <button type="button" class="btn btn-outline-secondary" onclick="clearMercanciasField('liveSearchInput')" title="Borrar búsqueda">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                        {% elif selected_marca or selected_ncm or selected_propietario or selected_fecha_desde or selected_fecha_hasta %}
                         <a href="/mercancias" class="btn btn-outline-secondary" title="Limpiar todos los filtros">
                             <i class="bi bi-x-circle"></i>
                         </a>
@@ -114,7 +118,7 @@
             <div class="row g-2 pt-3 mt-1 border-top align-items-end">
                 <div class="col-xl-2 col-md-4 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Marca:</label>
-                    <select name="marca" id="filterMarcaSelect" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <select name="marca" id="filterMarcaSelect" class="form-select form-select-sm" onchange="submitMercanciasFilter()">
                         <option value="">-- Todas las Marcas --</option>
                         {% for m in todas_marcas %}
                         <option value="{{ m }}" {% if selected_marca == m %}selected{% endif %}>{{ m }}</option>
@@ -123,7 +127,7 @@
                 </div>
                 <div class="col-xl-2 col-md-4 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">NCM / Posición:</label>
-                    <select name="ncm" id="filterNcmSelect" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <select name="ncm" id="filterNcmSelect" class="form-select form-select-sm" onchange="submitMercanciasFilter()">
                         <option value="">-- Todos los NCM --</option>
                         {% for n in todos_ncms %}
                         <option value="{{ n }}" {% if selected_ncm == n %}selected{% endif %}>{{ n }}</option>
@@ -132,7 +136,7 @@
                 </div>
                 <div class="col-xl-2 col-md-4 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Dueño / Cliente:</label>
-                    <select name="propietario" id="filterPropietarioSelect" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <select name="propietario" id="filterPropietarioSelect" class="form-select form-select-sm" onchange="submitMercanciasFilter()">
                         <option value="">-- Todos los Dueños --</option>
                         {% for p in todos_propietarios %}
                         <option value="{{ p }}" {% if selected_propietario == p %}selected{% endif %}>{{ p }}</option>
@@ -141,11 +145,11 @@
                 </div>
                 <div class="col-xl-2 col-md-3 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;"><i class="bi bi-calendar-event me-1 text-primary"></i>Fecha Desde:</label>
-                    <input type="date" name="fecha_desde" id="filterFechaDesde" class="form-control form-control-sm" value="{{ selected_fecha_desde }}">
+                    <input type="date" name="fecha_desde" id="filterFechaDesde" class="form-control form-control-sm" value="{{ selected_fecha_desde }}" onchange="submitMercanciasFilter()">
                 </div>
                 <div class="col-xl-2 col-md-3 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;"><i class="bi bi-calendar-event-fill me-1 text-primary"></i>Fecha Hasta:</label>
-                    <input type="date" name="fecha_hasta" id="filterFechaHasta" class="form-control form-control-sm" value="{{ selected_fecha_hasta }}">
+                    <input type="date" name="fecha_hasta" id="filterFechaHasta" class="form-control form-control-sm" value="{{ selected_fecha_hasta }}" onchange="submitMercanciasFilter()">
                 </div>
                 <div class="col-xl-2 col-md-6 col-sm-12 d-flex gap-2">
                     <button type="submit" class="btn btn-primary btn-sm fw-semibold flex-grow-1">
@@ -307,10 +311,54 @@
 
 {% block extra_scripts %}
 <script>
+    let mercanciasDebounceTimer = null;
+
+    function submitMercanciasFilter(fieldId) {
+        if (fieldId) {
+            sessionStorage.setItem('mercanciasFocusedField', fieldId);
+        }
+        document.getElementById('filterForm').submit();
+    }
+
+    function clearMercanciasField(fieldId) {
+        const input = document.getElementById(fieldId);
+        if (input) input.value = '';
+        submitMercanciasFilter(fieldId);
+    }
+
+    const liveSearchEl = document.getElementById('liveSearchInput');
+    if (liveSearchEl) {
+        liveSearchEl.addEventListener('input', function() {
+            clearTimeout(mercanciasDebounceTimer);
+            const val = this.value.trim();
+            if (val.length === 0) {
+                // Al eliminar la palabra, cancelar filtro y mostrar todo de inmediato
+                submitMercanciasFilter('liveSearchInput');
+            } else {
+                // Filtrar en vivo mientras escribe con debounce de 350ms
+                mercanciasDebounceTimer = setTimeout(() => {
+                    submitMercanciasFilter('liveSearchInput');
+                }, 350);
+            }
+        });
+    }
+
+    // Restaurar foco y posición del cursor tras recarga de filtrado
+    const savedMercField = sessionStorage.getItem('mercanciasFocusedField');
+    if (savedMercField) {
+        sessionStorage.removeItem('mercanciasFocusedField');
+        const target = document.getElementById(savedMercField);
+        if (target) {
+            target.focus();
+            const len = target.value.length;
+            target.setSelectionRange(len, len);
+        }
+    }
+
     function filterByMarca(marca) {
         const sel = document.getElementById('filterMarcaSelect');
         if (sel) sel.value = marca;
-        document.getElementById('filterForm').submit();
+        submitMercanciasFilter();
     }
 
     function triggerExport(format) {

@@ -7,21 +7,29 @@
 <div class="card border-0 shadow-sm rounded-3">
     <div class="card-body p-4">
         <!-- Filtros y Búsqueda -->
-        <form method="GET" action="/despachos" class="row g-3 mb-4 align-items-end">
+        <form method="GET" action="/despachos" id="filterFormDespachos" class="row g-3 mb-4 align-items-end">
             <div class="col-md-3">
                 <label class="form-label small fw-semibold text-muted">Búsqueda General</label>
                 <div class="input-group">
                     <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
-                    <input type="text" name="q" class="form-control" placeholder="Nº despacho, dueño, BL..." value="{{ q or '' }}">
+                    <input type="text" name="q" id="searchQueryInput" class="form-control" placeholder="Nº despacho, dueño, BL..." value="{{ q or '' }}" autocomplete="off">
+                    {% if q %}
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearFilterField('searchQueryInput')" title="Borrar búsqueda"><i class="bi bi-x-circle"></i></button>
+                    {% endif %}
                 </div>
             </div>
             <div class="col-md-3">
                 <label class="form-label small fw-semibold text-muted">Dueño / Cliente</label>
-                <input type="text" name="propietario" class="form-control" placeholder="Filtrar por dueño..." value="{{ propietario_sel or '' }}">
+                <div class="input-group">
+                    <input type="text" name="propietario" id="propietarioInput" class="form-control" placeholder="Filtrar por dueño..." value="{{ propietario_sel or '' }}" autocomplete="off">
+                    {% if propietario_sel %}
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearFilterField('propietarioInput')" title="Borrar dueño"><i class="bi bi-x-circle"></i></button>
+                    {% endif %}
+                </div>
             </div>
             <div class="col-md-3">
                 <label class="form-label small fw-semibold text-muted">Importador</label>
-                <select name="importador" class="form-select">
+                <select name="importador" id="importadorSelect" class="form-select" onchange="submitDespachosFilter()">
                     <option value="">-- Todos los Importadores --</option>
                     {% for imp in importadores %}
                         <option value="{{ imp }}" {% if importador_sel == imp %}selected{% endif %}>{{ imp }}</option>
@@ -30,7 +38,7 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label small fw-semibold text-muted">Estado</label>
-                <select name="estado" class="form-select">
+                <select name="estado" id="estadoSelect" class="form-select" onchange="submitDespachosFilter()">
                     <option value="">-- Todos --</option>
                     <option value="PROCESADO" {% if estado_sel == 'PROCESADO' %}selected{% endif %}>Procesado</option>
                     <option value="REVISAR" {% if estado_sel == 'REVISAR' %}selected{% endif %}>Revisar</option>
@@ -397,6 +405,56 @@
                 </tr>
             `;
         }).join('');
+    }
+
+    // --- FILTRO EN VIVO AL DIGITAR Y AL CAMBIAR COMBOS ---
+    let searchDebounceTimer = null;
+
+    function submitDespachosFilter(fieldId) {
+        if (fieldId) {
+            sessionStorage.setItem('despachosFocusedField', fieldId);
+        }
+        document.getElementById('filterFormDespachos').submit();
+    }
+
+    function clearFilterField(fieldId) {
+        const input = document.getElementById(fieldId);
+        if (input) input.value = '';
+        submitDespachosFilter(fieldId);
+    }
+
+    function setupLiveInput(fieldId) {
+        const el = document.getElementById(fieldId);
+        if (!el) return;
+
+        el.addEventListener('input', function() {
+            clearTimeout(searchDebounceTimer);
+            const val = this.value.trim();
+            if (val.length === 0) {
+                // Cancelar filtro inmediatamente al borrar la palabra
+                submitDespachosFilter(fieldId);
+            } else {
+                // Filtrar mientras escribe con debounce de 350ms
+                searchDebounceTimer = setTimeout(() => {
+                    submitDespachosFilter(fieldId);
+                }, 350);
+            }
+        });
+    }
+
+    setupLiveInput('searchQueryInput');
+    setupLiveInput('propietarioInput');
+
+    // Restaurar foco y cursor tras recarga de filtrado
+    const savedField = sessionStorage.getItem('despachosFocusedField');
+    if (savedField) {
+        sessionStorage.removeItem('despachosFocusedField');
+        const target = document.getElementById(savedField);
+        if (target) {
+            target.focus();
+            const len = target.value.length;
+            target.setSelectionRange(len, len);
+        }
     }
 </script>
 {% endblock %}
