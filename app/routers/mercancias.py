@@ -44,7 +44,7 @@ def get_filtered_items_query(
             )
         )
     if marca:
-        query = query.filter(DespachoItem.marca == marca)
+        query = query.filter(DespachoItem.marca.ilike(marca.strip()))
     if ncm:
         query = query.filter(DespachoItem.codigo_ncm == ncm)
     if propietario:
@@ -118,7 +118,7 @@ async def mercancias_view(
             )
         )
     if marca:
-        aggregates = aggregates.filter(DespachoItem.marca == marca)
+        aggregates = aggregates.filter(DespachoItem.marca.ilike(marca.strip()))
     if ncm:
         aggregates = aggregates.filter(DespachoItem.codigo_ncm == ncm)
     if propietario:
@@ -147,8 +147,8 @@ async def mercancias_view(
     )
 
     # Listas para filtros dropdown
-    todas_marcas = [r[0] for r in db.query(DespachoItem.marca).distinct().filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "").order_by(DespachoItem.marca).all()[:100]]
-    todos_ncms = [r[0] for r in db.query(DespachoItem.codigo_ncm).distinct().filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "").order_by(DespachoItem.codigo_ncm).all()[:100]]
+    todas_marcas = [r[0] for r in db.query(DespachoItem.marca).distinct().filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "").order_by(DespachoItem.marca).all()]
+    todos_ncms = [r[0] for r in db.query(DespachoItem.codigo_ncm).distinct().filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "").order_by(DespachoItem.codigo_ncm).all()]
     todos_propietarios = [r[0] for r in db.query(Despacho.propietario).distinct().filter(Despacho.propietario.isnot(None), Despacho.propietario != "").order_by(Despacho.propietario).all()]
 
     return templates.TemplateResponse(
