@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Planillas de Valoración | Sistema Aduanero{% endblock %}
+{% block page_title %}Planillas de Valoración{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Encabezado con Botón Crear -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h4 class="fw-bold text-dark mb-1"><i class="bi bi-file-earmark-spreadsheet-fill text-success me-2"></i>Planillas de Valoración</h4>
+            <p class="text-muted small mb-0">Gestión de valoraciones de mercaderías con cálculo automático y catálogo en vivo.</p>
+        </div>
+        <a href="/planillas/nueva" class="btn btn-success d-flex align-items-center gap-2 shadow-sm">
+            <i class="bi bi-plus-circle-fill"></i> Nueva Planilla
+        </a>
+    </div>
+
+    <!-- Mini KPIs de Planillas -->
+    <div class="row g-3 mb-4">
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-3 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.72rem;">Total Planillas</span>
+                        <h3 class="fw-bold my-1 text-dark">{{ total_planillas }}</h3>
+                        <span class="badge bg-primary-subtle text-primary" style="font-size: 0.7rem;">Registradas</span>
+                    </div>
+                    <div class="rounded-3 p-3 bg-primary-subtle text-primary">
+                        <i class="bi bi-folder-fill fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-3 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.72rem;">Finiquitadas</span>
+                        <h3 class="fw-bold my-1 text-success">{{ total_finiquitadas }}</h3>
+                        <span class="badge bg-success-subtle text-success" style="font-size: 0.7rem;">Listas / Cerradas</span>
+                    </div>
+                    <div class="rounded-3 p-3 bg-success-subtle text-success">
+                        <i class="bi bi-check-all fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-3 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.72rem;">Borradores</span>
+                        <h3 class="fw-bold my-1 text-warning">{{ total_borradores }}</h3>
+                        <span class="badge bg-warning-subtle text-warning-emphasis" style="font-size: 0.7rem;">En edición</span>
+                    </div>
+                    <div class="rounded-3 p-3 bg-warning-subtle text-warning">
+                        <i class="bi bi-pencil-square fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="card border-0 shadow-sm rounded-3 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.72rem;">Valor Total Planillado</span>
+                        <h3 class="fw-bold my-1 text-primary text-truncate" style="font-size: 1.3rem;">${{ "{:,.2f}".format(suma_total_valor) }}</h3>
+                        <span class="badge bg-info-subtle text-info-emphasis" style="font-size: 0.7rem;">USD ($)</span>
+                    </div>
+                    <div class="rounded-3 p-3 bg-info-subtle text-info">
+                        <i class="bi bi-cash-coin fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros y Búsqueda -->
+    <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-body p-3">
+            <form method="GET" action="/planillas" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small fw-semibold text-muted">Búsqueda</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" name="q" class="form-control" placeholder="Despacho Nº, Factura, Importador..." value="{{ q or '' }}">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Importador</label>
+                    <select name="importador" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Todos --</option>
+                        {% for imp in importadores %}
+                            <option value="{{ imp }}" {% if importador_sel == imp %}selected{% endif %}>{{ imp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold text-muted">Estado</label>
+                    <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Todos --</option>
+                        <option value="BORRADOR" {% if estado_sel == 'BORRADOR' %}selected{% endif %}>Borrador</option>
+                        <option value="FINIQUITADO" {% if estado_sel == 'FINIQUITADO' %}selected{% endif %}>Finiquitado</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex gap-1">
+                    <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-filter me-1"></i>Filtrar</button>
+                    <a href="/planillas" class="btn btn-light btn-sm border" title="Limpiar"><i class="bi bi-arrow-counterclockwise"></i></a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de Planillas -->
+    <div class="card border-0 shadow-sm rounded-3">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="fw-bold text-dark small text-uppercase"><i class="bi bi-list-columns-reverse me-2 text-primary"></i>Planillas Guardadas ({{ total_items }})</span>
+            <span class="text-muted small">Disponible para todas las computadoras en red</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light text-muted small text-uppercase">
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>Fecha</th>
+                        <th>Despacho Nº</th>
+                        <th>Factura Comercial</th>
+                        <th>Importador</th>
+                        <th>Cant. Total</th>
+                        <th>Total Valor U$$</th>
+                        <th>Estado</th>
+                        <th class="text-end" style="min-width: 170px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if planillas %}
+                        {% for p in planillas %}
+                        <tr>
+                            <td class="text-muted fw-semibold">#{{ p.id }}</td>
+                            <td>{{ p.fecha_emision.strftime('%d/%m/%Y') if p.fecha_emision else '-' }}</td>
+                            <td class="fw-bold text-primary">
+                                <a href="/planillas/{{ p.id }}" class="text-decoration-none">{{ p.despacho_numero or 'S/N' }}</a>
+                            </td>
+                            <td>{{ p.factura_comercial or '-' }}</td>
+                            <td class="text-truncate" style="max-width: 220px;" title="{{ p.importador }}">{{ p.importador or '-' }}</td>
+                            <td class="fw-semibold">{{ "{:,.2f}".format(p.total_cantidad) if p.total_cantidad else '0.00' }}</td>
+                            <td class="fw-bold text-dark">${{ "{:,.2f}".format(p.total_general) if p.total_general else '0.00' }}</td>
+                            <td>
+                                {% if p.estado == 'FINIQUITADO' %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                        <i class="bi bi-check-circle me-1"></i>Finiquitado
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+                                        <i class="bi bi-pencil-square me-1"></i>Borrador
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="/planillas/{{ p.id }}" class="btn btn-outline-primary" title="Editar / Ver">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="/planillas/{{ p.id }}/imprimir" target="_blank" class="btn btn-outline-dark" title="Imprimir Directo">
+                                        <i class="bi bi-printer"></i>
+                                    </a>
+                                    <a href="/planillas/{{ p.id }}/excel" class="btn btn-outline-success" title="Exportar a Excel">
+                                        <i class="bi bi-file-earmark-excel"></i>
+                                    </a>
+                                    <a href="/planillas/{{ p.id }}/pdf" class="btn btn-outline-danger" title="Exportar a PDF">
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-outline-danger" onclick="eliminarPlanilla({{ p.id }}, '{{ p.despacho_numero or p.id }}')" title="Eliminar">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center py-5 text-muted">
+                                <i class="bi bi-file-earmark-excel fs-1 text-muted opacity-50 mb-3 d-block"></i>
+                                <h5>No se encontraron planillas guardadas</h5>
+                                <p class="small">Haz clic en <strong>"Nueva Planilla"</strong> para crear la primera planilla de valoración estilo Excel.</p>
+                                <a href="/planillas/nueva" class="btn btn-success btn-sm mt-2">
+                                    <i class="bi bi-plus-circle me-1"></i> Crear Nueva Planilla
+                                </a>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginación -->
+        {% if total_pages > 1 %}
+        <div class="card-footer bg-white py-3 border-top d-flex justify-content-between align-items-center">
+            <span class="text-muted small">Página {{ page }} de {{ total_pages }} (Total {{ total_items }} planillas)</span>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if not has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ prev_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}">Anterior</a>
+                </li>
+                {% for p_num in range(1, total_pages + 1) %}
+                    {% if p_num == page or p_num == 1 or p_num == total_pages or (p_num >= page - 2 and p_num <= page + 2) %}
+                    <li class="page-item {% if p_num == page %}active{% endif %}">
+                        <a class="page-link" href="?page={{ p_num }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}">{{ p_num }}</a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                <li class="page-item {% if not has_next %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ next_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}">Siguiente</a>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+async function eliminarPlanilla(id, ref) {
+    if (!confirm(`¿Estás seguro de eliminar la planilla de valoración [${ref}]? Esta acción no se puede deshacer.`)) return;
+    try {
+        const res = await fetch(`/api/planillas/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.message || 'Error al eliminar');
+        }
+    } catch (e) {
+        alert('Error de conexión al eliminar la planilla.');
+    }
+}
+</script>
+{% endblock %}

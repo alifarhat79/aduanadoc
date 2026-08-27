@@ -17,7 +17,7 @@ from pathlib import Path
 from app.config import settings
 from app.database import init_db
 from app.services.gdrive_watcher import GDriveWatcher
-from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater
+from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater, planillas
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,6 +46,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 app.include_router(dashboard.router)
 app.include_router(despachos.router)
 app.include_router(mercancias.router)
+app.include_router(planillas.router)
 app.include_router(turso.router)
 app.include_router(configuracion.router)
 app.include_router(upload.router)

@@ -1,0 +1,617 @@
+{% extends "base.html" %}
+
+{% block title %}{% if es_nueva %}Nueva Planilla de Valoración{% else %}Editar Planilla - {{ planilla.despacho_numero or planilla.id }}{% endif %} | Sistema Aduanero{% endblock %}
+{% block page_title %}Planilla de Valoración{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Estilos estilo Hoja de Cálculo Excel */
+.spreadsheet-container {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 24px;
+}
+.spreadsheet-header-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: #111827;
+    text-align: center;
+    border-bottom: 2px solid #1e40af;
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+}
+.meta-input-group label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-decoration: underline;
+    color: #374151;
+}
+.table-excel {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 15px;
+}
+.table-excel th {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-weight: 700;
+    font-style: italic;
+    border: 1px solid #cbd5e1;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    text-align: center;
+    vertical-align: middle;
+}
+.table-excel td {
+    border: 1px solid #e2e8f0;
+    padding: 4px 6px;
+    vertical-align: middle;
+    background: #ffffff;
+}
+.table-excel tr:hover td {
+    background-color: #f8fafc;
+}
+.table-excel input.cell-input {
+    width: 100%;
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 6px 8px;
+    font-size: 0.88rem;
+    border-radius: 4px;
+    outline: none;
+    transition: all 0.15s ease-in-out;
+}
+.table-excel input.cell-input:focus {
+    background: #ffffff;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+.table-excel .total-row td {
+    background-color: #f1f5f9;
+    font-weight: 800;
+    border-top: 2px solid #94a3b8;
+    border-bottom: 3px double #0f172a;
+    font-size: 0.95rem;
+}
+
+/* Autocomplete Flotante del Catálogo */
+.catalog-dropdown {
+    position: absolute;
+    z-index: 1050;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    max-height: 280px;
+    overflow-y: auto;
+    width: 480px;
+    display: none;
+}
+.catalog-dropdown-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+.catalog-dropdown-item:hover, .catalog-dropdown-item.active {
+    background-color: #eff6ff;
+}
+.catalog-dropdown-item:last-child {
+    border-bottom: none;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Barra Superior de Acciones -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2 sticky-top bg-light py-2 border-bottom">
+        <div class="d-flex align-items-center gap-2">
+            <a href="/planillas" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i> Volver
+            </a>
+            <span class="fw-bold text-dark">
+                {% if es_nueva %}
+                    <span class="badge bg-primary">Nueva Planilla</span>
+                {% else %}
+                    <span class="badge bg-secondary">Planilla #{{ planilla.id }}</span>
+                    {% if planilla.estado == 'FINIQUITADO' %}
+                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Finiquitado</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-pencil me-1"></i>Borrador</span>
+                    {% endif %}
+                {% endif %}
+            </span>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarFila()">
+                <i class="bi bi-plus-circle me-1"></i> Agregar Fila
+            </button>
+            <button type="button" class="btn btn-warning btn-sm fw-semibold" onclick="guardarPlanilla('BORRADOR')">
+                <i class="bi bi-save me-1"></i> Guardar Borrador
+            </button>
+            <button type="button" class="btn btn-success btn-sm fw-bold shadow-sm" onclick="guardarPlanilla('FINIQUITADO')">
+                <i class="bi bi-check2-all me-1"></i> Finiquitar y Guardar
+            </button>
+            {% if not es_nueva and planilla %}
+                <div class="btn-group btn-group-sm">
+                    <a href="/planillas/{{ planilla.id }}/imprimir" target="_blank" class="btn btn-outline-dark" title="Imprimir">
+                        <i class="bi bi-printer me-1"></i> Imprimir
+                    </a>
+                    <a href="/planillas/{{ planilla.id }}/excel" class="btn btn-outline-success" title="Excel">
+                        <i class="bi bi-file-earmark-excel me-1"></i> Excel
+                    </a>
+                    <a href="/planillas/{{ planilla.id }}/pdf" class="btn btn-outline-danger" title="PDF">
+                        <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Hoja de Cálculo Principal -->
+    <div class="spreadsheet-container">
+        <!-- Título Central Editable -->
+        <div class="spreadsheet-header-title text-uppercase">
+            <input type="text" id="inputTitulo" class="form-control form-control-lg text-center fw-bold border-0 bg-transparent" value="{{ planilla.titulo if planilla else 'PLANILLA DE VALORACION' }}" style="font-size: 1.5rem; letter-spacing: 1px;">
+        </div>
+
+        <!-- Encabezado de Metadatos (Despacho Nº, Factura Comercial, Importador) -->
+        <div class="row g-3 mb-4 bg-light p-3 rounded-3 border">
+            <div class="col-md-4">
+                <div class="meta-input-group">
+                    <label for="inputDespacho" class="form-label mb-1">Despacho Nº:</label>
+                    <input type="text" id="inputDespacho" class="form-control form-control-sm fw-bold text-primary" placeholder="Ej: 26021ZF2I000919N" value="{{ planilla.despacho_numero if planilla else '' }}">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="meta-input-group">
+                    <label for="inputFactura" class="form-label mb-1">FACTURA COMERCIAL NRO:</label>
+                    <input type="text" id="inputFactura" class="form-control form-control-sm fw-bold" placeholder="Ej: FC-84920 / INV-2026" value="{{ planilla.factura_comercial if planilla else '' }}">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="meta-input-group">
+                    <label for="inputImportador" class="form-label mb-1">Importador:</label>
+                    <input type="text" id="inputImportador" class="form-control form-control-sm fw-bold" list="importadoresList" placeholder="Nombre o Razón Social..." value="{{ planilla.importador if planilla else '' }}">
+                    <datalist id="importadoresList">
+                        {% for imp in importadores_frecuentes %}
+                            <option value="{{ imp }}"></option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold text-muted mb-1">Dueño / Cliente Asignado:</label>
+                <input type="text" id="inputPropietario" class="form-control form-control-sm" placeholder="Ej: Cliente Mayorista / Propietario" value="{{ planilla.propietario if planilla else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold text-muted mb-1">Fecha de Emisión:</label>
+                <input type="date" id="inputFecha" class="form-control form-control-sm" value="{{ fecha_hoy }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold text-muted mb-1">Observaciones Generales:</label>
+                <input type="text" id="inputObservaciones" class="form-control form-control-sm" placeholder="Notas adicionales..." value="{{ planilla.observaciones if planilla else '' }}">
+            </div>
+        </div>
+
+        <!-- Alerta de Búsqueda Rápida en Catálogo -->
+        <div class="alert alert-info py-2 px-3 small d-flex align-items-center justify-content-between mb-3 border-0 bg-info-subtle text-info-emphasis">
+            <div>
+                <i class="bi bi-lightning-charge-fill me-1"></i>
+                <strong>Consejo:</strong> Escribe en la columna <strong>Mercaderías</strong> (ej. <em>ARMAF, LATTAFA, PERFUME</em>) para buscar en vivo en el catálogo de despachos anteriores y cargar el precio unitario automáticamente.
+            </div>
+            <button type="button" class="btn btn-sm btn-primary py-0 px-2" onclick="agregarFila()">+ Fila</button>
+        </div>
+
+        <!-- Tabla Estilo Hoja de Cálculo -->
+        <div class="table-responsive" style="position: relative;">
+            <!-- Dropdown flotante global de catálogo -->
+            <div id="globalCatalogDropdown" class="catalog-dropdown"></div>
+
+            <table class="table-excel" id="planillaItemsTable">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        <th style="width: 110px;">Cantidad</th>
+                        <th>Mercaderias (Descripción, Marca, Código)</th>
+                        <th style="width: 140px;">Precio<br>Factura</th>
+                        <th style="width: 140px;">Precio<br>Normal U$$</th>
+                        <th style="width: 150px;">Precio<br>Total U$$</th>
+                        <th style="width: 45px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="planillaTableBody">
+                    <!-- Filas renderizadas dinámicamente -->
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td class="text-center">Σ</td>
+                        <td class="text-center" id="lblTotalCantidad">0.00</td>
+                        <td class="text-center fw-bold">TOTALES</td>
+                        <td class="text-end" id="lblTotalFactura">$0.00</td>
+                        <td class="text-end" id="lblTotalNormal">$0.00</td>
+                        <td class="text-end text-success fw-bold fs-6" id="lblTotalGeneral">$0.00</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- Botones de Acción al Pie -->
+        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarFila()">
+                <i class="bi bi-plus-circle me-1"></i> Agregar otra fila (Enter)
+            </button>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-warning btn-sm fw-semibold" onclick="guardarPlanilla('BORRADOR')">
+                    <i class="bi bi-save me-1"></i> Guardar Borrador
+                </button>
+                <button type="button" class="btn btn-success fw-bold shadow-sm" onclick="guardarPlanilla('FINIQUITADO')">
+                    <i class="bi bi-check2-circle me-1"></i> Finiquitar y Guardar Planilla
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Notificación -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="liveToast" class="toast align-items-center text-white border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage">Acción completada</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Estado de ítems cargados desde backend o inicial vacío
+let planillaItems = [
+    {% if items %}
+        {% for it in items %}
+        {
+            id: {{ it.id }},
+            orden: {{ it.orden or loop.index }},
+            item_catalogo_id: {{ it.item_catalogo_id or 'null' }},
+            cantidad: {{ it.cantidad or 1.0 }},
+            mercaderia: {{ (it.mercaderia or '')|tojson }},
+            marca: {{ (it.marca or '')|tojson }},
+            codigo_producto: {{ (it.codigo_producto or '')|tojson }},
+            precio_factura: {{ it.precio_factura or 0.0 }},
+            precio_normal: {{ it.precio_normal or 0.0 }},
+            precio_total: {{ it.precio_total or 0.0 }},
+            observacion: {{ (it.observacion or '')|tojson }}
+        },
+        {% endfor %}
+    {% else %}
+        { id: null, orden: 1, item_catalogo_id: null, cantidad: 1, mercaderia: '', marca: '', codigo_producto: '', precio_factura: 0, precio_normal: 0, precio_total: 0, observacion: '' },
+        { id: null, orden: 2, item_catalogo_id: null, cantidad: 1, mercaderia: '', marca: '', codigo_producto: '', precio_factura: 0, precio_normal: 0, precio_total: 0, observacion: '' },
+        { id: null, orden: 3, item_catalogo_id: null, cantidad: 1, mercaderia: '', marca: '', codigo_producto: '', precio_factura: 0, precio_normal: 0, precio_total: 0, observacion: '' }
+    {% endif %}
+];
+
+let planillaId = {{ planilla.id if planilla else 'null' }};
+let searchDebounceTimer = null;
+let activeCatalogInput = null;
+let activeRowIndex = null;
+
+// Renderizar tabla
+function renderTable() {
+    const tbody = document.getElementById('planillaTableBody');
+    tbody.innerHTML = '';
+
+    planillaItems.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.dataset.index = index;
+
+        tr.innerHTML = `
+            <td class="text-center text-muted small fw-semibold">${index + 1}</td>
+            <td>
+                <input type="number" step="any" min="0" class="cell-input text-center fw-semibold row-cantidad" value="${item.cantidad || ''}" placeholder="0" oninput="onCantidadChange(${index}, this.value)">
+            </td>
+            <td style="position: relative;">
+                <input type="text" class="cell-input fw-semibold text-dark row-mercaderia" value="${escapeHtml(item.mercaderia || '')}" placeholder="Escribe nombre, marca o código..." oninput="onMercaderiaInput(${index}, this)" onfocus="onMercaderiaFocus(${index}, this)" autocomplete="off">
+            </td>
+            <td>
+                <input type="number" step="0.01" min="0" class="cell-input text-end row-precio-factura" value="${item.precio_factura !== undefined ? item.precio_factura : ''}" placeholder="0.00" oninput="onPrecioFacturaChange(${index}, this.value)">
+            </td>
+            <td>
+                <input type="number" step="0.01" min="0" class="cell-input text-end fw-semibold text-primary row-precio-normal" value="${item.precio_normal !== undefined ? item.precio_normal : ''}" placeholder="0.00" oninput="onPrecioNormalChange(${index}, this.value)">
+            </td>
+            <td>
+                <input type="text" readonly class="cell-input text-end fw-bold text-dark row-precio-total bg-light" value="$${formatMoney(item.precio_total)}">
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-link text-danger p-0 border-0" onclick="eliminarFila(${index})" title="Eliminar fila">
+                    <i class="bi bi-x-circle-fill"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    recalcularTotales();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatMoney(num) {
+    const n = parseFloat(num) || 0.0;
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Eventos de cambios en celdas
+function onCantidadChange(index, val) {
+    planillaItems[index].cantidad = parseFloat(val) || 0;
+    recalcularFila(index);
+}
+
+function onPrecioFacturaChange(index, val) {
+    planillaItems[index].precio_factura = parseFloat(val) || 0;
+    recalcularFila(index);
+}
+
+function onPrecioNormalChange(index, val) {
+    planillaItems[index].precio_normal = parseFloat(val) || 0;
+    recalcularFila(index);
+}
+
+function recalcularFila(index) {
+    const item = planillaItems[index];
+    const cant = parseFloat(item.cantidad) || 0;
+    const pNorm = parseFloat(item.precio_normal) || 0;
+    const pFact = parseFloat(item.precio_factura) || 0;
+    
+    // Precio unitario a multiplicar: precio normal preferente, sino precio factura
+    const unitP = pNorm > 0 ? pNorm : pFact;
+    item.precio_total = Math.round((cant * unitP) * 100) / 100;
+
+    const row = document.querySelector(`tr[data-index="${index}"]`);
+    if (row) {
+        row.querySelector('.row-precio-total').value = `$${formatMoney(item.precio_total)}`;
+    }
+    recalcularTotales();
+}
+
+function recalcularTotales() {
+    let totCant = 0;
+    let totFact = 0;
+    let totNorm = 0;
+    let totGen = 0;
+
+    planillaItems.forEach(it => {
+        const c = parseFloat(it.cantidad) || 0;
+        const pf = parseFloat(it.precio_factura) || 0;
+        const pn = parseFloat(it.precio_normal) || 0;
+        const pt = parseFloat(it.precio_total) || 0;
+
+        totCant += c;
+        totFact += (c * pf);
+        totNorm += (c * pn);
+        totGen += pt;
+    });
+
+    document.getElementById('lblTotalCantidad').innerText = totCant.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('lblTotalFactura').innerText = `$${formatMoney(totFact)}`;
+    document.getElementById('lblTotalNormal').innerText = `$${formatMoney(totNorm)}`;
+    document.getElementById('lblTotalGeneral').innerText = `$${formatMoney(totGen)}`;
+}
+
+function agregarFila() {
+    planillaItems.push({
+        id: null,
+        orden: planillaItems.length + 1,
+        item_catalogo_id: null,
+        cantidad: 1,
+        mercaderia: '',
+        marca: '',
+        codigo_producto: '',
+        precio_factura: 0,
+        precio_normal: 0,
+        precio_total: 0,
+        observacion: ''
+    });
+    renderTable();
+    
+    // Foco en la nueva fila mercaderia
+    setTimeout(() => {
+        const rows = document.querySelectorAll('.row-mercaderia');
+        if (rows.length > 0) rows[rows.length - 1].focus();
+    }, 50);
+}
+
+function eliminarFila(index) {
+    if (planillaItems.length <= 1) {
+        planillaItems = [{ id: null, orden: 1, item_catalogo_id: null, cantidad: 1, mercaderia: '', marca: '', codigo_producto: '', precio_factura: 0, precio_normal: 0, precio_total: 0, observacion: '' }];
+    } else {
+        planillaItems.splice(index, 1);
+    }
+    renderTable();
+}
+
+// Búsqueda inteligente en vivo en Catálogo
+function onMercaderiaFocus(index, input) {
+    activeRowIndex = index;
+    activeCatalogInput = input;
+}
+
+function onMercaderiaInput(index, input) {
+    activeRowIndex = index;
+    activeCatalogInput = input;
+    planillaItems[index].mercaderia = input.value;
+
+    clearTimeout(searchDebounceTimer);
+    const q = input.value.trim();
+    if (q.length < 2) {
+        hideCatalogDropdown();
+        return;
+    }
+
+    searchDebounceTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(`/api/planillas/buscar-catalogo?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            showCatalogDropdown(data.results || [], input, index);
+        } catch (e) {
+            console.error('Error buscando catálogo', e);
+        }
+    }, 250);
+}
+
+function showCatalogDropdown(items, inputEl, rowIndex) {
+    const dropdown = document.getElementById('globalCatalogDropdown');
+    if (!items || items.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    const rect = inputEl.getBoundingClientRect();
+    const tableRect = document.getElementById('planillaItemsTable').getBoundingClientRect();
+
+    dropdown.style.top = `${inputEl.offsetTop + inputEl.offsetHeight + 4}px`;
+    dropdown.style.left = `${inputEl.offsetLeft}px`;
+    dropdown.style.width = `${Math.max(420, inputEl.offsetWidth)}px`;
+    dropdown.style.display = 'block';
+
+    dropdown.innerHTML = items.map((it, idx) => `
+        <div class="catalog-dropdown-item d-flex justify-content-between align-items-center" onclick="selectCatalogItem(${rowIndex}, ${idx})">
+            <div>
+                <strong class="text-primary">${escapeHtml(it.marca || 'GENÉRICO')}</strong> - ${escapeHtml(it.mercaderia)}
+                <div class="text-muted small" style="font-size: 0.72rem;">
+                    Desp: <strong>${it.despacho_numero}</strong> | ${it.importador} (${it.fecha})
+                </div>
+            </div>
+            <div class="text-end">
+                <span class="badge bg-success-subtle text-success fs-6 fw-bold">$${formatMoney(it.precio_normal)}</span>
+            </div>
+        </div>
+    `).join('');
+
+    // Guardar referencia en memoria
+    dropdown.currentItems = items;
+}
+
+function hideCatalogDropdown() {
+    const dropdown = document.getElementById('globalCatalogDropdown');
+    dropdown.style.display = 'none';
+}
+
+function selectCatalogItem(rowIndex, itemIndex) {
+    const dropdown = document.getElementById('globalCatalogDropdown');
+    const item = dropdown.currentItems[itemIndex];
+    if (!item) return;
+
+    planillaItems[rowIndex].item_catalogo_id = item.id;
+    planillaItems[rowIndex].mercaderia = item.mercaderia;
+    planillaItems[rowIndex].marca = item.marca;
+    planillaItems[rowIndex].codigo_producto = item.codigo_producto;
+    planillaItems[rowIndex].precio_normal = item.precio_normal;
+    planillaItems[rowIndex].precio_factura = item.precio_factura || item.precio_normal;
+
+    hideCatalogDropdown();
+    renderTable();
+
+    // Foco en el campo de precio o siguiente
+    setTimeout(() => {
+        const row = document.querySelector(`tr[data-index="${rowIndex}"]`);
+        if (row) {
+            row.querySelector('.row-precio-factura').focus();
+        }
+    }, 50);
+}
+
+// Cerrar dropdown al hacer clic fuera
+document.addEventListener('click', function(e) {
+    const dropdown = document.getElementById('globalCatalogDropdown');
+    if (!dropdown.contains(e.target) && e.target !== activeCatalogInput) {
+        hideCatalogDropdown();
+    }
+});
+
+// Guardar Planilla (Borrador o Finiquitado)
+async function guardarPlanilla(estado) {
+    const despacho = document.getElementById('inputDespacho').value.trim();
+    const factura = document.getElementById('inputFactura').value.trim();
+    const importador = document.getElementById('inputImportador').value.trim();
+    const propietario = document.getElementById('inputPropietario').value.trim();
+    const fecha = document.getElementById('inputFecha').value;
+    const titulo = document.getElementById('inputTitulo').value.trim();
+    const observaciones = document.getElementById('inputObservaciones').value.trim();
+
+    // Validar filas
+    const itemsValidos = planillaItems.filter(it => (it.mercaderia && it.mercaderia.trim() !== '') || (it.cantidad > 0 && it.precio_normal > 0));
+    if (itemsValidos.length === 0) {
+        mostrarToast('warning', 'Por favor ingresa al menos una mercadería en la planilla.');
+        return;
+    }
+
+    const payload = {
+        id: planillaId,
+        titulo: titulo || 'PLANILLA DE VALORACION',
+        despacho_numero: despacho,
+        factura_comercial: factura,
+        importador: importador,
+        propietario: propietario,
+        fecha_emision: fecha,
+        estado: estado,
+        observaciones: observaciones,
+        items: itemsValidos.map((it, idx) => ({
+            ...it,
+            orden: idx + 1,
+            mercaderia: it.mercaderia.trim() || 'Sin Descripción'
+        }))
+    };
+
+    try {
+        const res = await fetch('/api/planillas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            mostrarToast('success', data.message);
+            planillaId = data.id;
+            
+            // Actualizar URL sin recarga completa
+            if (window.location.pathname === '/planillas/nueva') {
+                window.history.replaceState({}, '', `/planillas/${data.id}`);
+            }
+
+            // Si es finiquitado, redirigir al listado o recargar para mostrar exportaciones
+            setTimeout(() => {
+                window.location.href = `/planillas/${data.id}`;
+            }, 800);
+        } else {
+            mostrarToast('danger', data.message || 'Error al guardar');
+        }
+    } catch (e) {
+        mostrarToast('danger', 'Error de comunicación con el servidor.');
+    }
+}
+
+function mostrarToast(tipo, mensaje) {
+    const toastEl = document.getElementById('liveToast');
+    const toastMsg = document.getElementById('toastMessage');
+    
+    toastEl.className = `toast align-items-center text-white border-0 bg-${tipo}`;
+    toastMsg.innerText = mensaje;
+    
+    const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+    toast.show();
+}
+
+// Inicialización
+document.addEventListener('DOMContentLoaded', () => {
+    renderTable();
+});
+</script>
+{% endblock %}

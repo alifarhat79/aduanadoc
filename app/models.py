@@ -166,3 +166,53 @@ class ProcessingLog(Base):
     confianza_promedio = Column(Float, default=0.0)
     errores = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PlanillaValoracion(Base):
+    """Modelo para Planillas de Valoración estilo Excel."""
+    __tablename__ = "planillas_valoracion"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    titulo = Column(String(200), default="PLANILLA DE VALORACION")
+    despacho_numero = Column(String(100), nullable=True, index=True)
+    factura_comercial = Column(String(100), nullable=True, index=True)
+    importador = Column(String(255), nullable=True, index=True)
+    propietario = Column(String(150), nullable=True)
+    fecha_emision = Column(Date, default=date.today)
+    estado = Column(String(50), default="BORRADOR", index=True)  # BORRADOR, FINIQUITADO
+    moneda = Column(String(10), default="USD")
+
+    total_cantidad = Column(Float, default=0.0)
+    total_precio_factura = Column(Float, default=0.0)
+    total_precio_normal = Column(Float, default=0.0)
+    total_general = Column(Float, default=0.0)
+    observaciones = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    items = relationship("PlanillaItem", back_populates="planilla", cascade="all, delete-orphan", order_by="PlanillaItem.orden")
+
+
+class PlanillaItem(Base):
+    """Ítem individual de la Planilla de Valoración."""
+    __tablename__ = "planilla_items"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    planilla_id = Column(Integer, ForeignKey("planillas_valoracion.id", ondelete="CASCADE"), nullable=False, index=True)
+    orden = Column(Integer, default=1)
+    
+    item_catalogo_id = Column(Integer, ForeignKey("despacho_items.id", ondelete="SET NULL"), nullable=True)
+    
+    cantidad = Column(Float, default=1.0)
+    mercaderia = Column(Text, nullable=False)
+    marca = Column(String(150), nullable=True)
+    codigo_producto = Column(String(100), nullable=True)
+    
+    precio_factura = Column(Float, default=0.0)
+    precio_normal = Column(Float, default=0.0)
+    precio_total = Column(Float, default=0.0)
+    observacion = Column(String(255), nullable=True)
+
+    planilla = relationship("PlanillaValoracion", back_populates="items")
+
