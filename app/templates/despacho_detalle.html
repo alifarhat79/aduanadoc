@@ -503,7 +503,9 @@
                 </div>
             </div>
             <div class="modal-body p-0 h-100">
-                <iframe src="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" class="w-100 h-100 border-0" type="application/pdf"></iframe>
+                <object data="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" type="application/pdf" class="w-100 h-100 border-0">
+                    <iframe src="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" class="w-100 h-100 border-0" type="application/pdf"></iframe>
+                </object>
             </div>
         </div>
     </div>

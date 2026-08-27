@@ -213,7 +213,7 @@ async def get_despacho_info_api(despacho_id: int, db: Session = Depends(get_db))
 
 @router.get("/{despacho_id}/pdf")
 async def get_despacho_pdf(despacho_id: int, db: Session = Depends(get_db)):
-    """Sirve el archivo PDF original para visualización embebida."""
+    """Sirve el archivo PDF original para visualización embebida inline en el navegador sin forzar descarga."""
     despacho = db.query(Despacho).filter(Despacho.id == despacho_id).first()
     if not despacho or not despacho.archivo_pdf:
         raise HTTPException(status_code=404, detail="Despacho no encontrado")
@@ -230,8 +230,34 @@ async def get_despacho_pdf(despacho_id: int, db: Session = Depends(get_db)):
         str(pdf_path),
         media_type="application/pdf",
         content_disposition_type="inline",
-        filename=despacho.nombre_archivo_original or pdf_path.name,
-        headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=3600"}
+        headers={
+            "Content-Disposition": "inline",
+            "Content-Type": "application/pdf",
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600"
+        }
+    )
+
+@router.get("/{despacho_id}/descargar-pdf")
+async def descargar_despacho_pdf(despacho_id: int, db: Session = Depends(get_db)):
+    """Descarga explícita del archivo PDF."""
+    despacho = db.query(Despacho).filter(Despacho.id == despacho_id).first()
+    if not despacho or not despacho.archivo_pdf:
+        raise HTTPException(status_code=404, detail="Despacho no encontrado")
+
+    from app.config import BASE_DIR
+    pdf_path = Path(despacho.archivo_pdf)
+    if not pdf_path.is_absolute():
+        pdf_path = (BASE_DIR / despacho.archivo_pdf).resolve()
+
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="El archivo PDF físico no fue encontrado en el servidor")
+
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        content_disposition_type="attachment",
+        filename=despacho.nombre_archivo_original or pdf_path.name
     )
 
 

@@ -40,7 +40,9 @@
             </div>
             <div class="card-body p-0 flex-grow-1" style="min-height: 850px; height: 850px;">
                 {% if pdf_exists %}
-                    <iframe src="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" class="w-100 h-100 border-0 rounded-bottom" style="min-height: 850px; display: block;" type="application/pdf"></iframe>
+                    <object data="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" type="application/pdf" class="w-100 h-100 border-0 rounded-bottom" style="min-height: 850px; display: block;">
+                        <iframe src="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" class="w-100 h-100 border-0 rounded-bottom" style="min-height: 850px; display: block;" type="application/pdf"></iframe>
+                    </object>
                 {% else %}
                     <div class="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center bg-light">
                         <i class="bi bi-file-earmark-pdf text-warning mb-3" style="font-size: 3.5rem;"></i>
