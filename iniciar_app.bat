@@ -50,6 +50,6 @@ start "" cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:8000"
 REM 5. Servidor FastAPI
 echo [*] Iniciando servidor AduanaDoc...
 echo ================================================================
-"%PY_CMD%" -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+"%PY_CMD%" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 pause
