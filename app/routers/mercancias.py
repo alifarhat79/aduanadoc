@@ -156,7 +156,8 @@ async def export_mercancias_excel(
     headers = [
         "ID Despacho", "Nº Despacho", "Fecha Despacho", "Dueño / Cliente", "Importador",
         "Ítem", "Subítem", "NCM / Posición", "MARCA", "CÓDIGO / EAN",
-        "Descripción del Producto", "Cantidad", "Unidad", "FOB Unitario ($)", "FOB Total ($)", "Pág. Origen"
+        "Descripción del Producto", "Cantidad", "Unidad", "FOB Unitario ($)", "FOB Total ($)",
+        "IVA (%)", "Arancel (%)", "País Origen", "Pág. Origen"
     ]
     ws.append(headers)
 
@@ -184,6 +185,9 @@ async def export_mercancias_excel(
             item.unidad or "UNIDAD",
             item.valor_unitario or 0.0,
             item.valor_total or 0.0,
+            f"{item.tasa_iva * 100:.1f}%" if item.tasa_iva is not None else "",
+            f"{item.tasa_arancel * 100:.1f}%" if item.tasa_arancel is not None else "",
+            item.pais_origen or "",
             item.pagina_origen or 1
         ]
         ws.append(row)
@@ -234,7 +238,8 @@ async def export_mercancias_csv(
     writer.writerow([
         "ID_DESPACHO", "NUMERO_DESPACHO", "FECHA_DESPACHO", "DUENO_CLIENTE", "IMPORTADOR",
         "ITEM", "SUBITEM", "NCM_POSICION", "MARCA", "CODIGO_EAN",
-        "DESCRIPCION", "CANTIDAD", "UNIDAD", "FOB_UNITARIO", "FOB_TOTAL", "PAGINA"
+        "DESCRIPCION", "CANTIDAD", "UNIDAD", "FOB_UNITARIO", "FOB_TOTAL",
+        "IVA_PCT", "ARANCEL_PCT", "PAIS_ORIGEN", "PAGINA"
     ])
 
     for item, desp in results:
@@ -255,6 +260,9 @@ async def export_mercancias_csv(
             item.unidad or "UNIDAD",
             item.valor_unitario or 0.0,
             item.valor_total or 0.0,
+            f"{item.tasa_iva * 100:.1f}%" if item.tasa_iva is not None else "",
+            f"{item.tasa_arancel * 100:.1f}%" if item.tasa_arancel is not None else "",
+            item.pais_origen or "",
             item.pagina_origen or 1
         ])
 

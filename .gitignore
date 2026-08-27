@@ -13,6 +13,9 @@ env/
 data/
 *.db
 *.sqlite3
+*.xlsx
+*.xls
+*.csv
 
 # Archivos subidos y temporales
 uploads/

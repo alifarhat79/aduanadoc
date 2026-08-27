@@ -172,6 +172,7 @@
                     <th class="text-end" style="width: 85px;">Cantidad</th>
                     <th class="text-end" style="width: 95px;">Unitario</th>
                     <th class="text-end" style="width: 105px;">FOB Total</th>
+                    <th class="text-center" style="width: 100px;">IVA / Aranc.</th>
                     <th class="text-center" style="width: 50px;">Acción</th>
                 </tr>
             </thead>
@@ -225,6 +226,22 @@
                         </td>
                         <td class="text-end small">${{ "{:,.2f}".format(it.valor_unitario) if it.valor_unitario else '-' }}</td>
                         <td class="text-end fw-semibold text-dark small">${{ "{:,.2f}".format(it.valor_total) if it.valor_total else '-' }}</td>
+                        <td class="text-center small">
+                            {% if it.tasa_iva is not none or it.tasa_arancel is not none %}
+                                {% if it.tasa_iva is not none %}
+                                    <span class="badge bg-info-subtle text-info-emphasis border px-1" title="IVA">
+                                        {{ "{:.1f}%".format(it.tasa_iva * 100) }}
+                                    </span>
+                                {% endif %}
+                                {% if it.tasa_arancel is not none %}
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis border px-1" title="Arancel">
+                                        {{ "{:.1f}%".format(it.tasa_arancel * 100) }}
+                                    </span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td class="text-center">
                             <a href="/despachos/{{ it.despacho_id }}?highlight_item={{ it.id }}#item-{{ it.id }}" class="btn btn-sm btn-light border py-0 px-1" title="Ver Ítem en Despacho">
                                 <i class="bi bi-eye text-primary"></i>
@@ -234,7 +251,7 @@
                     {% endfor %}
                 {% else %}
                     <tr id="emptyRow">
-                        <td colspan="11" class="text-center py-4 text-muted">No se encontraron mercancías registradas.</td>
+                        <td colspan="13" class="text-center py-4 text-muted">No se encontraron mercancías registradas.</td>
                     </tr>
                 {% endif %}
             </tbody>

@@ -126,6 +126,8 @@ class DespachoItem(Base):
     peso_bruto = Column(Float, nullable=True)
     valor_unitario = Column(Float, nullable=True)
     valor_total = Column(Float, nullable=True)
+    tasa_iva = Column(Float, nullable=True)        # Ej: 0.015 (1.5%) o 0.10 (10%)
+    tasa_arancel = Column(Float, nullable=True)    # Ej: 0.06 (6%) o 0.18 (18%)
     pais_origen = Column(String(100), nullable=True)
     pais_procedencia = Column(String(100), nullable=True)
     pagina_origen = Column(Integer, nullable=True)

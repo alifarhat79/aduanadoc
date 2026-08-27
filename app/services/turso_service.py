@@ -149,6 +149,8 @@ class TursoService:
                     peso_bruto REAL,
                     valor_unitario REAL,
                     valor_total REAL,
+                    tasa_iva REAL,
+                    tasa_arancel REAL,
                     pais_origen TEXT,
                     pais_procedencia TEXT,
                     pagina_origen INTEGER,
