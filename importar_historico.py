@@ -15,6 +15,7 @@ from app.database import SessionLocal, engine, Base
 from app.models import Despacho, DespachoItem
 from app.services.backup_service import BackupService
 from app.services.turso_service import TursoService
+from app.services.normalizer import normalize_company_name
 import asyncio
 
 def parse_excel_date(v):
@@ -89,8 +90,7 @@ def run_import(excel_path: str = "Planilla-Partida-Precio.xlsx", max_year: int =
     df['Fecha_parsed'] = df['Fecha '].apply(parse_excel_date).ffill()
     df['N_Despacho_clean'] = df['N_Despacho'].astype(str).str.strip()
     df['N_Despacho_clean'] = df['N_Despacho_clean'].replace(['nan', 'None', ''], None).ffill()
-    df['Importadora_clean'] = df['Importadora'].astype(str).str.strip()
-    df['Importadora_clean'] = df['Importadora_clean'].replace(['nan', 'None', ''], None).ffill()
+    df['Importadora_clean'] = df['Importadora'].apply(lambda x: normalize_company_name(str(x)) if pd.notna(x) and str(x).strip() not in ['nan', 'None', ''] else None).ffill()
 
     # 3. Filtrar años < 2026
     df['Anio'] = df['Fecha_parsed'].apply(lambda d: d.year if d else None)

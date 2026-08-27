@@ -1,5 +1,5 @@
 from datetime import date
-from app.services.normalizer import parse_date, parse_currency, normalize_document, clean_text
+from app.services.normalizer import parse_date, parse_currency, normalize_document, clean_text, normalize_company_name
 
 def test_parse_date():
     assert parse_date("10/08/2026 17:13:10") == date(2026, 8, 10)
@@ -42,3 +42,13 @@ def test_clean_text():
     assert clean_text("  FLORACE   S.A  ") == "FLORACE S.A"
     assert clean_text("VALOR ********** IMPONIBLE") == "VALOR IMPONIBLE"
     assert clean_text(None) is None
+
+def test_normalize_company_name():
+    assert normalize_company_name("Florace s.a") == "FLORACE S.A."
+    assert normalize_company_name("FLORACE") == "FLORACE S.A."
+    assert normalize_company_name("Gafa s.a") == "GAFA S.A."
+    assert normalize_company_name("GAFA") == "GAFA S.A."
+    assert normalize_company_name("H.T s.a") == "H.T. S.A."
+    assert normalize_company_name("HT S.A") == "H.T. S.A."
+    assert normalize_company_name("Eras s.r.l") == "ERAS S.R.L."
+    assert normalize_company_name(None) is None

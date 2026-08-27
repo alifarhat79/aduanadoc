@@ -162,3 +162,34 @@ def normalize_document(raw_doc: Optional[str]) -> Optional[str]:
     # Eliminar textos como "RUC/DOC:", "RUC:", "DOC:" si quedaron adheridos
     cleaned = re.sub(r"(?i)^(?:RUC[/]DOC|RUC|DOC|CNPJ|TAX\s*ID|CPF)[:\s-]*", "", cleaned).strip()
     return cleaned if cleaned else None
+
+COMPANY_CANONICAL_MAP = {
+    'florace': 'FLORACE S.A.',
+    'gafa': 'GAFA S.A.',
+    'eras': 'ERAS S.R.L.',
+    'h.t': 'H.T. S.A.',
+    'ht': 'H.T. S.A.',
+    'karry': 'KARRY S.A.',
+    'jordana': 'JORDANA',
+    'serena': 'SERENA',
+    'suntec': 'SUNTEC',
+    'la gloria': 'LA GLORIA',
+    'mega': 'MEGA',
+    'agatres': 'AGATRES',
+}
+
+def normalize_company_name(name: Optional[str]) -> Optional[str]:
+    """Normaliza y unifica variaciones tipográficas de nombres de importadores y empresas."""
+    if not name:
+        return None
+    s = clean_text(name)
+    if not s:
+        return None
+    
+    s_lower = s.lower().replace('.', '').replace(',', '').strip()
+    for k, v in COMPANY_CANONICAL_MAP.items():
+        k_clean = k.replace('.', '').strip()
+        if s_lower == k_clean or s_lower.startswith(k_clean + ' '):
+            return v
+    return s.strip().upper()
+

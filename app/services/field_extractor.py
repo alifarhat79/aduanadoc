@@ -1,6 +1,6 @@
 import re
 from typing import Dict, Any, List, Optional
-from app.services.normalizer import clean_text, parse_date, parse_currency, normalize_document
+from app.services.normalizer import clean_text, parse_date, parse_currency, normalize_document, normalize_company_name
 
 # Catálogo ampliable de Alias Multilingües (ES / EN / PT)
 FIELD_ALIASES = {
@@ -181,6 +181,9 @@ def extract_field_from_text(pages_data: List[Dict[str, Any]], field_key: str) ->
                 elif "canal" in field_key:
                     val = clean_text(raw_extracted).upper() if raw_extracted else None
                     conf = 0.98 if val in ("VERDE", "NARANJA", "ROJO") else 0.70
+                elif "importador" in field_key or "exportador" in field_key or "despachante" in field_key or "propietario" in field_key:
+                    val = normalize_company_name(raw_extracted)
+                    conf = 0.95 if val else 0.40
                 else:
                     val = clean_text(raw_extracted)
                     conf = 0.92 if val else 0.40
