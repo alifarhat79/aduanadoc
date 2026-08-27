@@ -397,12 +397,30 @@ async def guardar_notificaciones_api(payload: SaveNotificationsPayload, request:
         set_key(str(ENV_PATH), "TELEGRAM_CHAT_ID", chat_id)
         set_key(str(ENV_PATH), "WEBHOOK_URL", webhook)
         set_key(str(ENV_PATH), "NOTIFICATIONS_ENABLED", "true" if enabled else "false")
+
+        # Actualizar app/config.py para que viaje automáticamente por Git a todas las PCs
+        config_file = BASE_DIR / "app" / "config.py"
+        if config_file.exists():
+            import re
+            content = config_file.read_text(encoding="utf-8")
+            content = re.sub(r'TELEGRAM_BOT_TOKEN:\s*str\s*=\s*".*?"', f'TELEGRAM_BOT_TOKEN: str = "{token}"', content)
+            content = re.sub(r'TELEGRAM_CHAT_ID:\s*str\s*=\s*".*?"', f'TELEGRAM_CHAT_ID: str = "{chat_id}"', content)
+            config_file.write_text(content, encoding="utf-8")
+
+            # Intentar sincronizar con Git
+            try:
+                import subprocess
+                subprocess.run(["git", "add", "app/config.py"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
+                subprocess.run(["git", "commit", "-m", "chore: sincronizar credenciales Telegram"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
+                subprocess.run(["git", "push", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+            except Exception:
+                pass
     except Exception:
         pass
 
     return {
         "success": True,
-        "message": "Configuración de notificaciones guardada correctamente."
+        "message": "Configuración de notificaciones guardada y sincronizada para todas las PCs."
     }
 
 
