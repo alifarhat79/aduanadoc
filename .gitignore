@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Base de datos y datos locales (CRÍTICO: no subir datos de clientes)
+data/
+*.db
+*.sqlite3
+
+# Archivos subidos y temporales
+uploads/
+backups/
+updates/
+tmp/
+*.log
+
+# Credenciales y Secretos (CRÍTICO: nunca subir a GitHub)
+.env
+service_account.json
+credentials.json
+*.pem
+*.key
+
+# IDEs y SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Sistema de Gestión de Despachos Aduaneros{% endblock %}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/custom.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <div class="d-flex" id="wrapper">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar-wrapper">
+            <div class="sidebar-heading d-flex align-items-center gap-2">
+                <i class="bi bi-box-seam-fill text-primary fs-4"></i>
+                <span class="fw-bold tracking-wide">ADUANA<span class="text-primary">DOC</span></span>
+            </div>
+            <div class="list-group list-group-flush my-3">
+                <a href="/" class="list-group-item list-group-item-action {% if request.url.path == '/' %}active{% endif %}">
+                    <i class="bi bi-speedometer2 me-2"></i> Dashboard
+                </a>
+                <a href="/despachos" class="list-group-item list-group-item-action {% if request.url.path.startswith('/despachos') %}active{% endif %}">
+                    <i class="bi bi-table me-2"></i> Despachos
+                </a>
+                <a href="/mercancias" class="list-group-item list-group-item-action {% if request.url.path.startswith('/mercancias') %}active{% endif %}">
+                    <i class="bi bi-box-seam me-2"></i> Mercancías (Catálogo)
+                </a>
+                <a href="/upload" class="list-group-item list-group-item-action {% if request.url.path == '/upload' %}active{% endif %}">
+                    <i class="bi bi-cloud-arrow-up-fill me-2"></i> Importar PDFs
+                </a>
+                <a href="/revisar" class="list-group-item list-group-item-action {% if request.url.path.startswith('/revisar') %}active{% endif %}">
+                    <i class="bi bi-check2-circle me-2"></i> Pendientes Revisión
+                </a>
+                <div class="sidebar-divider my-3"></div>
+                <div class="px-3 text-muted small text-uppercase fw-semibold mb-2">Sistema & Nube</div>
+                <a href="/configuracion" class="list-group-item list-group-item-action {% if request.url.path == '/configuracion' %}active{% endif %}">
+                    <i class="bi bi-gear-fill me-2 text-primary"></i> Configuración (Turso)
+                </a>
+                <div class="sidebar-divider my-3"></div>
+                <div class="px-3 text-muted small text-uppercase fw-semibold mb-2">Exportación</div>
+                <a href="/exportar/excel" class="list-group-item list-group-item-action text-success">
+                    <i class="bi bi-file-earmark-excel-fill me-2"></i> Exportar a Excel
+                </a>
+                <a href="/exportar/csv" class="list-group-item list-group-item-action text-secondary">
+                    <i class="bi bi-file-earmark-spreadsheet me-2"></i> Exportar a CSV
+                </a>
+            </div>
+            <div class="sidebar-footer p-3 mt-auto border-top text-muted small">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="status-indicator bg-success"></span>
+                    <span>Sistema Activo v1.0.0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page Content -->
+        <div id="page-content-wrapper" class="w-100">
+            <!-- Navbar -->
+            <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom px-4 py-2 sticky-top shadow-sm">
+                <div class="d-flex align-items-center w-100 justify-content-between">
+                    <div class="d-flex align-items-center gap-3">
+                        <button class="btn btn-light btn-sm border" id="sidebarToggle">
+                            <i class="bi bi-list fs-5"></i>
+                        </button>
+                        <h5 class="mb-0 fw-semibold text-secondary">{% block page_title %}Dashboard{% endblock %}</h5>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <form action="/despachos" method="GET" class="d-none d-md-flex">
+                            <div class="input-group input-group-sm">
+                                <input type="text" name="q" class="form-control" placeholder="Buscar despacho, RUC, BL..." value="{{ request.query_params.get('q', '') }}">
+                                <button class="btn btn-outline-secondary" type="submit">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                        </form>
+                        <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 shadow-sm" id="btnGlobalBackup" onclick="crearBackupGlobal()" title="Crear Copia de Seguridad ZIP">
+                            <i class="bi bi-file-earmark-zip-fill text-warning"></i> Backup ZIP
+                        </button>
+                        <a href="/upload" class="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm">
+                            <i class="bi bi-plus-lg"></i> Cargar PDFs
+                        </a>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Banner Global de Nueva Actualización Disponible -->
+            <div id="globalUpdateBanner" class="alert alert-warning border-0 rounded-0 py-2 px-4 mb-0 d-none d-flex justify-content-between align-items-center shadow-sm" style="background-color: #fef08a; color: #854d0e;">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-stars fs-5 text-warning-emphasis"></i>
+                    <span><strong>¡Nueva Actualización Disponible!</strong> Versión <span id="bannerNewVersion" class="badge bg-dark"></span> <span id="bannerChangelog" class="text-muted small ms-1"></span></span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-dark fw-semibold" id="btnBannerUpdate" onclick="ejecutarActualizacionDesdeBanner()">
+                        <i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar en esta PC
+                    </button>
+                    <button type="button" class="btn-close" onclick="document.getElementById('globalUpdateBanner').classList.add('d-none')"></button>
+                </div>
+            </div>
+
+            <!-- Main Content Container -->
+            <div class="container-fluid p-4">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmación de Eliminación -->
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-body text-center p-4">
+                    <div class="text-danger mb-3">
+                        <i class="bi bi-exclamation-triangle-fill" style="font-size: 3rem;"></i>
+                    </div>
+                    <h6 class="fw-bold mb-2">¿Eliminar Despacho?</h6>
+                    <p class="text-muted small mb-4">Esta acción eliminará el despacho <strong id="deleteDespachoNum"></strong> y todos sus ítems asociados de forma permanente.</p>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button type="button" class="btn btn-light btn-sm px-3" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-danger btn-sm px-3" id="confirmDeleteBtn">
+                            <i class="bi bi-trash3-fill me-1"></i> Sí, Eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Turso Cloud Sync -->
+    <div class="modal fade" id="tursoSyncModal" tabindex="-1" aria-labelledby="tursoSyncModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-light py-2">
+                    <h6 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="tursoSyncModalLabel">
+                        <i class="bi bi-cloud-check-fill text-primary"></i> Sincronización Turso Cloud (libSQL)
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <p class="small text-muted mb-3">
+                        Conecta y sincroniza la base de datos de despachos en la nube con <strong>Turso</strong> para que cualquier otra computadora pueda descargar y ver toda la información actualizada.
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-dark mb-1">URL de Base de Datos Turso:</label>
+                        <input type="text" id="tursoDbUrl" class="form-control form-control-sm font-monospace" placeholder="libsql://despachos-tu-usuario.turso.io">
+                        <div class="form-text" style="font-size: 0.72rem;">Ejemplo: <code>libsql://mi-base-usuario.turso.io</code> o <code>https://...</code></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-dark mb-1">Auth Token de Turso:</label>
+                        <input type="password" id="tursoAuthToken" class="form-control form-control-sm font-monospace" placeholder="eyJhbGciOi...">
+                        <div class="form-text" style="font-size: 0.72rem;">Token generado con <code>turso db tokens create [nombre-db]</code></div>
+                    </div>
+
+                    <div id="tursoSyncStatus" class="alert d-none py-2 small" role="alert"></div>
+
+                    <div class="d-flex gap-2 justify-content-between pt-2 border-top">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnTestTurso" onclick="testTurso()">
+                            <i class="bi bi-broadcast me-1"></i> Probar Conexión
+                        </button>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="btnPullTurso" onclick="pullFromTurso()">
+                                <i class="bi bi-cloud-download me-1"></i> Descargar (Pull)
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm" id="btnPushTurso" onclick="pushToTurso()">
+                                <i class="bi bi-cloud-upload me-1"></i> Subir a Turso (Push)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('sidebarToggle')?.addEventListener('click', function() {
+            document.getElementById('wrapper').classList.toggle('toggled');
+        });
+
+        let targetDespachoId = null;
+        let deleteModalInstance = null;
+        let tursoModalInstance = null;
+
+        window.confirmarEliminarDespacho = function(id, numero) {
+            targetDespachoId = id;
+            document.getElementById('deleteDespachoNum').textContent = numero || `ID ${id}`;
+            const modalEl = document.getElementById('deleteConfirmModal');
+            deleteModalInstance = new bootstrap.Modal(modalEl);
+            deleteModalInstance.show();
+        };
+
+        window.openTursoModal = async function() {
+            const modalEl = document.getElementById('tursoSyncModal');
+            tursoModalInstance = new bootstrap.Modal(modalEl);
+            tursoModalInstance.show();
+
+            // Cargar configuración guardada
+            try {
+                const resp = await fetch('/turso/api/config');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.database_url) {
+                        document.getElementById('tursoDbUrl').value = data.database_url;
+                    }
+                }
+            } catch (err) {}
+        };
+
+        function setTursoStatus(msg, type = 'info') {
+            const el = document.getElementById('tursoSyncStatus');
+            el.className = `alert alert-${type} py-2 small mb-3`;
+            el.innerHTML = msg;
+            el.classList.remove('d-none');
+        }
+
+        window.testTurso = async function() {
+            const url = document.getElementById('tursoDbUrl').value.trim();
+            const token = document.getElementById('tursoAuthToken').value.trim();
+            if (!url || !token) {
+                setTursoStatus('Por favor ingresa la URL y el Token de Turso.', 'warning');
+                return;
+            }
+            setTursoStatus('<span class="spinner-border spinner-border-sm me-1"></span> Probando conexión con Turso...', 'info');
+
+            try {
+                const resp = await fetch('/turso/api/test', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({database_url: url, auth_token: token})
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    setTursoStatus('<i class="bi bi-check-circle me-1"></i> ¡Conexión establecida exitosamente con Turso Cloud!', 'success');
+                } else {
+                    setTursoStatus('<i class="bi bi-x-circle me-1"></i> ' + (res.detail || 'Error al conectar.'), 'danger');
+                }
+            } catch (err) {
+                setTursoStatus('<i class="bi bi-x-circle me-1"></i> ' + err.message, 'danger');
+            }
+        };
+
+        window.pushToTurso = async function() {
+            const url = document.getElementById('tursoDbUrl').value.trim();
+            const token = document.getElementById('tursoAuthToken').value.trim();
+            if (!url || !token) {
+                setTursoStatus('Por favor ingresa la URL y el Token de Turso.', 'warning');
+                return;
+            }
+            setTursoStatus('<span class="spinner-border spinner-border-sm me-1"></span> Subiendo despachos y mercancías a Turso Cloud...', 'info');
+
+            try {
+                const resp = await fetch('/turso/api/push', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({database_url: url, auth_token: token})
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    setTursoStatus('<i class="bi bi-check-circle me-1"></i> ' + res.message, 'success');
+                } else {
+                    setTursoStatus('<i class="bi bi-x-circle me-1"></i> ' + (res.detail || 'Error al subir a Turso.'), 'danger');
+                }
+            } catch (err) {
+                setTursoStatus('<i class="bi bi-x-circle me-1"></i> ' + err.message, 'danger');
+            }
+        };
+
+        window.pullFromTurso = async function() {
+            const url = document.getElementById('tursoDbUrl').value.trim();
+            const token = document.getElementById('tursoAuthToken').value.trim();
+            if (!url || !token) {
+                setTursoStatus('Por favor ingresa la URL y el Token de Turso.', 'warning');
+                return;
+            }
+            setTursoStatus('<span class="spinner-border spinner-border-sm me-1"></span> Descargando datos desde Turso Cloud a esta PC...', 'info');
+
+            try {
+                const resp = await fetch('/turso/api/pull', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({database_url: url, auth_token: token})
+                });
+                const res = await resp.json();
+                if (resp.ok) {
+                    setTursoStatus('<i class="bi bi-check-circle me-1"></i> ' + res.message, 'success');
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    setTursoStatus('<i class="bi bi-x-circle me-1"></i> ' + (res.detail || 'Error al descargar de Turso.'), 'danger');
+                }
+            } catch (err) {
+                setTursoStatus('<i class="bi bi-x-circle me-1"></i> ' + err.message, 'danger');
+            }
+        };
+
+        document.getElementById('confirmDeleteBtn')?.addEventListener('click', async function() {
+            if (!targetDespachoId) return;
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Eliminando...';
+
+            try {
+                const response = await fetch(`/despachos/${targetDespachoId}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    if (window.location.pathname.includes(`/despachos/${targetDespachoId}`)) {
+                        window.location.href = '/despachos';
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    alert('Error al eliminar el despacho');
+                    this.disabled = false;
+                    this.innerHTML = '<i class="bi bi-trash3-fill me-1"></i> Sí, Eliminar';
+                }
+            } catch (err) {
+                alert('Error de conexión al eliminar: ' + err.message);
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-trash3-fill me-1"></i> Sí, Eliminar';
+            }
+        });
+
+        // ==========================================
+        // Manejador Global de Backup ZIP
+        // ==========================================
+        window.crearBackupGlobal = async function() {
+            const btn = document.getElementById('btnGlobalBackup');
+            const originalHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Generando ZIP...';
+            }
+
+            try {
+                const resp = await fetch('/api/backup/crear', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({reason: 'BOTON_NAVBAR'})
+                });
+                const res = await resp.json();
+                if (resp.ok && res.success) {
+                    alert(`✅ ¡Copia de seguridad ZIP creada con éxito!\n\nArchivo: ${res.filename}\nTamaño: ${res.size_mb} MB\nUbicación: backups/ (Sincronizado en Google Drive)`);
+                    if (window.location.pathname === '/configuracion' && typeof cargarHistorialBackups === 'function') {
+                        cargarHistorialBackups();
+                    }
+                } else {
+                    alert('⚠️ Error al generar el respaldo: ' + (res.detail || res.error || 'Error desconocido'));
+                }
+            } catch (err) {
+                alert('⚠️ Error de conexión al generar backup: ' + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            }
+        };
+
+        // ==========================================
+        // Comprobación Global de Actualizaciones Multi-PC
+        // ==========================================
+        async function checkGlobalUpdates() {
+            try {
+                const resp = await fetch('/api/updates/check');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.has_update) {
+                        const banner = document.getElementById('globalUpdateBanner');
+                        const newVerBadge = document.getElementById('bannerNewVersion');
+                        const changelogEl = document.getElementById('bannerChangelog');
+                        if (banner && newVerBadge) {
+                            newVerBadge.textContent = 'v' + data.latest_version;
+                            if (changelogEl) changelogEl.textContent = data.changelog ? `— ${data.changelog}` : '';
+                            banner.classList.remove('d-none');
+                        }
+                    }
+                }
+            } catch (err) {
+                // Silencioso en caso de no conexión
+            }
+        }
+
+        window.ejecutarActualizacionDesdeBanner = async function() {
+            const btn = document.getElementById('btnBannerUpdate');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando...';
+            }
+
+            try {
+                const resp = await fetch('/api/updates/apply', { method: 'POST' });
+                const res = await resp.json();
+                if (resp.ok && res.success) {
+                    alert(`🚀 ¡Actualización exitosa!\n\n${res.message}\nSe creó un respaldo preventivo: ${res.backup_file || 'backup_aduanadoc'}.\nLa aplicación se reiniciará ahora.`);
+                    window.location.reload();
+                } else {
+                    alert('⚠️ No se pudo aplicar la actualización: ' + (res.detail || res.error || 'Error desconocido'));
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar en esta PC';
+                    }
+                }
+            } catch (err) {
+                alert('⚠️ Error de conexión durante la actualización: ' + err.message);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar en esta PC';
+                }
+            }
+        };
+
+        // Ejecutar comprobación al cargar
+        document.addEventListener('DOMContentLoaded', checkGlobalUpdates);
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
+

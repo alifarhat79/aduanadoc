@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Sistema de Despachos Aduaneros{% endblock %}
+{% block page_title %}Panel de Control Principal{% endblock %}
+
+{% block content %}
+<!-- Tarjetas KPI Principales Simplificadas -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4 col-sm-6">
+        <div class="card card-kpi border-0 shadow-sm rounded-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.75rem;">Total Despachos</span>
+                        <h3 class="fw-bold my-2 text-dark">{{ total_despachos }}</h3>
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                            <i class="bi bi-calendar-check me-1"></i>Este mes: {{ despachos_este_mes }}
+                        </span>
+                    </div>
+                    <div class="rounded-3 p-3 bg-primary-subtle text-primary">
+                        <i class="bi bi-file-earmark-text fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 col-sm-6">
+        <div class="card card-kpi border-0 shadow-sm rounded-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.75rem;">Despachos Confirmados</span>
+                        <h3 class="fw-bold my-2 text-success">{{ confirmados }}</h3>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            <i class="bi bi-check-circle me-1"></i>Validados
+                        </span>
+                    </div>
+                    <div class="rounded-3 p-3 bg-success-subtle text-success">
+                        <i class="bi bi-patch-check fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 col-sm-12">
+        <div class="card card-kpi border-0 shadow-sm rounded-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.75rem;">Para Revisión Humana</span>
+                        <h3 class="fw-bold my-2 {% if pendientes_revision > 0 %}text-warning{% else %}text-muted{% endif %}">{{ pendientes_revision }}</h3>
+                        {% if pendientes_revision > 0 %}
+                            <a href="/revisar" class="badge bg-warning text-dark text-decoration-none border border-warning-subtle">
+                                Revisar ahora &rarr;
+                            </a>
+                        {% else %}
+                            <span class="badge bg-light text-muted border">Al día</span>
+                        {% endif %}
+                    </div>
+                    <div class="rounded-3 p-3 bg-warning-subtle text-warning">
+                        <i class="bi bi-exclamation-triangle fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de Últimos Despachos Procesados a Ancho Completo (100%) -->
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm rounded-3">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-clock-history me-2 text-primary"></i>Últimos Despachos Procesados</h6>
+                    <span class="badge bg-light text-muted border small" style="font-size: 0.7rem;">Clic derecho en cualquier fila para abrir menú</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="/upload" class="btn btn-sm btn-primary">
+                        <i class="bi bi-cloud-arrow-up me-1"></i> Cargar PDFs
+                    </a>
+                    <a href="/despachos" class="btn btn-sm btn-outline-primary">Ver todos</a>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="dashboardDespachosTable">
+                    <thead class="table-light text-muted small text-uppercase">
+                        <tr>
+                            <th>Nº Despacho</th>
+                            <th>Fecha</th>
+                            <th>Importador</th>
+                            <th>Dueño / Cliente</th>
+                            <th>Canal</th>
+                            <th>Estado</th>
+                            <th class="text-end" style="width: 80px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if ultimos_despachos %}
+                            {% for d in ultimos_despachos %}
+                            <tr class="despacho-row" 
+                                data-id="{{ d.id }}" 
+                                data-numero="{{ d.numero_despacho or 'S/N' }}"
+                                style="cursor: context-menu;">
+                                <td>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <a href="/despachos/{{ d.id }}" class="fw-bold text-primary text-decoration-none font-monospace">
+                                            {{ d.numero_despacho or 'S/N' }}
+                                        </a>
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-secondary" title="Ver Mercancías y Marcas" onclick="openItemsModal({{ d.id }}, '{{ d.numero_despacho or 'S/N' }}')">
+                                            <i class="bi bi-box-seam text-warning"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td class="small">{{ d.fecha_despacho.strftime('%d/%m/%Y') if d.fecha_despacho else '-' }}</td>
+                                <td class="small">
+                                    <span class="d-block text-truncate fw-semibold" style="max-width: 240px;" title="{{ d.importador_nombre }}">{{ d.importador_nombre or '-' }}</span>
+                                </td>
+                                <td>
+                                    {% if d.propietario %}
+                                        <span class="badge bg-light text-primary border border-primary-subtle"><i class="bi bi-person-fill me-1"></i>{{ d.propietario }}</span>
+                                    {% else %}
+                                        <span class="text-muted small">Sin Asignar</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if d.canal %}
+                                        <span class="badge {% if d.canal == 'VERDE' %}bg-success{% elif d.canal == 'NARANJA' %}bg-warning text-dark{% else %}bg-danger{% endif %} shadow-2xs">
+                                            <i class="bi bi-flag-fill me-1"></i>{{ d.canal }}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if d.estado_procesamiento == 'CONFIRMADO' %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle">Confirmado</span>
+                                    {% elif d.estado_procesamiento == 'REVISAR' %}
+                                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Revisar</span>
+                                    {% else %}
+                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Procesado</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-light border shadow-2xs px-2 py-1 btn-trigger-ctx" 
+                                            type="button" 
+                                            title="Menú Contextual"
+                                            onclick="triggerMenuFromButton(event, {{ d.id }}, '{{ d.numero_despacho or 'S/N' }}')">
+                                        <i class="bi bi-three-dots-vertical"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">
+                                    No hay despachos registrados aún. <a href="/upload">Cargar PDFs</a>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MENÚ CONTEXTUAL FLOTANTE (CLIC DERECHO NATIVO) -->
+<div id="customContextMenu" class="custom-context-menu shadow border rounded-3 py-1 bg-white" style="display: none; position: fixed; z-index: 1055; min-width: 230px;">
+    <div class="px-3 py-2 text-muted border-bottom bg-light d-flex justify-content-between align-items-center" style="font-size: 0.75rem; font-weight: 600;">
+        <span>DESPACHO: <strong id="ctxMenuDespachoNum" class="font-monospace text-primary"></strong></span>
+        <span class="badge bg-secondary-subtle text-secondary small" style="font-size: 0.65rem;">Opciones</span>
+    </div>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-primary fw-semibold" href="#" id="ctxOptInfo">
+        <i class="bi bi-info-circle-fill fs-6 text-primary"></i>
+        <div>
+            <div>Informaciones</div>
+            <small class="text-muted fw-normal" style="font-size: 0.72rem;">Auditoría de Campos Extraídos</small>
+        </div>
+    </a>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" id="ctxOptItems">
+        <i class="bi bi-box-seam text-warning fs-6"></i>
+        <div>
+            <div>Mercancías & Marcas</div>
+            <small class="text-muted fw-normal" style="font-size: 0.72rem;">Ver productos y códigos EAN</small>
+        </div>
+    </a>
+    <hr class="dropdown-divider my-1">
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" id="ctxOptDetalle">
+        <i class="bi bi-eye text-secondary"></i> Abrir Ficha Completa
+    </a>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" id="ctxOptRevisar">
+        <i class="bi bi-pencil-square text-warning"></i> Revisar / Modificar
+    </a>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" target="_blank" id="ctxOptPdf">
+        <i class="bi bi-file-earmark-pdf text-danger"></i> Ver PDF Original
+    </a>
+    <hr class="dropdown-divider my-1">
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-success" href="#" id="ctxOptExcel">
+        <i class="bi bi-file-earmark-excel"></i> Exportar a Excel
+    </a>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-danger" href="#" id="ctxOptPdfExport">
+        <i class="bi bi-file-earmark-pdf"></i> Exportar a PDF
+    </a>
+    <hr class="dropdown-divider my-1">
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-danger fw-semibold" href="#" id="ctxOptEliminar">
+        <i class="bi bi-trash3-fill"></i> Eliminar Despacho
+    </a>
+</div>
+
+<!-- Modal 1: Informaciones / Auditoría Completa de Campos Extraídos -->
+<div class="modal fade" id="auditInfoModal" tabindex="-1" aria-labelledby="auditInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light py-2">
+                <h6 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="auditInfoModalLabel">
+                    <i class="bi bi-info-circle-fill text-primary"></i>
+                    <span>Informaciones - Despacho <strong id="infoModalDespachoNum" class="font-monospace text-primary"></strong></span>
+                    <span id="infoModalCanalBadge"></span>
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <input type="text" id="auditSearchInput" class="form-control form-control-sm w-50" placeholder="Filtrar campos o valores...">
+                    <a id="infoDetailLink" href="#" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Abrir Ficha Técnica
+                    </a>
+                </div>
+                <div class="table-responsive" style="max-height: 440px; overflow-y: auto;">
+                    <table class="table table-sm table-bordered table-hover align-middle mb-0 small">
+                        <thead class="table-light text-muted text-uppercase sticky-top" style="font-size: 0.72rem;">
+                            <tr>
+                                <th style="width: 260px;">Campo</th>
+                                <th>Valor Normalizado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditInfoTableBody">
+                            <tr><td colspan="2" class="text-center py-3 text-muted">Cargando información...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 2: Popup Rápido para Ver Mercancías y Marcas -->
+<div class="modal fade" id="quickItemsModal" tabindex="-1" aria-labelledby="quickItemsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light py-2">
+                <h6 class="modal-title fw-bold text-dark" id="quickItemsModalLabel">
+                    <i class="bi bi-box-seam me-2 text-warning"></i>Mercancías y Marcas - Despacho <span id="modalDespachoNum" class="font-monospace text-primary"></span>
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <input type="text" id="modalSearch" class="form-control form-control-sm w-50" placeholder="Filtrar marcas o productos...">
+                    <a id="modalDetailLink" href="#" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Ver Ficha Completa
+                    </a>
+                </div>
+                <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0 small">
+                        <thead class="table-light text-muted text-uppercase sticky-top">
+                            <tr>
+                                <th>Ítem</th>
+                                <th>NCM</th>
+                                <th class="text-primary">MARCA</th>
+                                <th>Código / EAN</th>
+                                <th>Descripción</th>
+                                <th class="text-end">Cantidad</th>
+                                <th class="text-end">FOB Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalItemsBody">
+                            <tr><td colspan="7" class="text-center py-3 text-muted">Cargando mercancías...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let quickItemsModalInstance = null;
+    let auditInfoModalInstance = null;
+    const contextMenu = document.getElementById('customContextMenu');
+    let activeRow = null;
+
+    // Función para mostrar el Menú Contextual en coordenadas (x, y)
+    function showContextMenuAt(x, y, despachoId, despachoNum) {
+        if (!contextMenu) return;
+
+        document.getElementById('ctxMenuDespachoNum').textContent = despachoNum;
+
+        // Configurar enlaces del menú contextual
+        document.getElementById('ctxOptInfo').onclick = (e) => { e.preventDefault(); hideContextMenu(); openInfoAuditModal(despachoId, despachoNum); };
+        document.getElementById('ctxOptItems').onclick = (e) => { e.preventDefault(); hideContextMenu(); openItemsModal(despachoId, despachoNum); };
+        document.getElementById('ctxOptDetalle').href = `/despachos/${despachoId}`;
+        document.getElementById('ctxOptRevisar').href = `/revisar/${despachoId}`;
+        document.getElementById('ctxOptPdf').href = `/despachos/${despachoId}/pdf`;
+        document.getElementById('ctxOptExcel').href = `/exportar/excel?q=${encodeURIComponent(despachoNum)}`;
+        document.getElementById('ctxOptPdfExport').href = `/exportar/pdf?q=${encodeURIComponent(despachoNum)}`;
+        document.getElementById('ctxOptEliminar').onclick = (e) => { e.preventDefault(); hideContextMenu(); confirmarEliminarDespacho(despachoId, despachoNum); };
+
+        contextMenu.style.display = 'block';
+
+        // Ajustar posición para que no se salga de la pantalla
+        const menuWidth = contextMenu.offsetWidth || 230;
+        const menuHeight = contextMenu.offsetHeight || 300;
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+
+        let posX = x;
+        let posY = y;
+
+        if (posX + menuWidth > winWidth) {
+            posX = winWidth - menuWidth - 10;
+        }
+        if (posY + menuHeight > winHeight) {
+            posY = winHeight - menuHeight - 10;
+        }
+
+        contextMenu.style.left = `${posX}px`;
+        contextMenu.style.top = `${posY}px`;
+    }
+
+    function hideContextMenu() {
+        if (contextMenu) {
+            contextMenu.style.display = 'none';
+        }
+        if (activeRow) {
+            activeRow.classList.remove('table-row-ctx-active');
+            activeRow = null;
+        }
+    }
+
+    // Activar Clic Derecho en cada fila de despacho
+    document.querySelectorAll('.despacho-row').forEach(row => {
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (activeRow) activeRow.classList.remove('table-row-ctx-active');
+            activeRow = row;
+            activeRow.classList.add('table-row-ctx-active');
+
+            const id = row.getAttribute('data-id');
+            const num = row.getAttribute('data-numero');
+            showContextMenuAt(e.clientX, e.clientY, id, num);
+        });
+    });
+
+    // Activar Menú desde el botón de opciones
+    window.triggerMenuFromButton = function(e, id, num) {
+        e.stopPropagation();
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        showContextMenuAt(rect.left - 180, rect.bottom + 5, id, num);
+    };
+
+    // Cerrar menú al hacer clic fuera o presionar Escape
+    document.addEventListener('click', (e) => {
+        if (contextMenu && !contextMenu.contains(e.target)) {
+            hideContextMenu();
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideContextMenu();
+        }
+    });
+
+    // Abrir Modal de Informaciones / Auditoría de Campos Extraídos
+    window.openInfoAuditModal = async function(despachoId, despachoNum) {
+        document.getElementById('infoModalDespachoNum').textContent = despachoNum;
+        document.getElementById('infoDetailLink').href = `/despachos/${despachoId}`;
+        const tbody = document.getElementById('auditInfoTableBody');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando auditoría de campos...</td></tr>';
+        
+        const modalEl = document.getElementById('auditInfoModal');
+        auditInfoModalInstance = new bootstrap.Modal(modalEl);
+        auditInfoModalInstance.show();
+
+        try {
+            const resp = await fetch(`/despachos/api/${despachoId}/info`);
+            if (resp.ok) {
+                const data = await resp.json();
+                const canalBadge = document.getElementById('infoModalCanalBadge');
+                if (data.canal) {
+                    const bgClass = data.canal === 'VERDE' ? 'bg-success' : (data.canal === 'NARANJA' ? 'bg-warning text-dark' : 'bg-danger');
+                    canalBadge.innerHTML = `<span class="badge ${bgClass} ms-2"><i class="bi bi-flag-fill me-1"></i>${data.canal}</span>`;
+                } else {
+                    canalBadge.innerHTML = '';
+                }
+
+                renderAuditRows(data.campos || []);
+
+                document.getElementById('auditSearchInput').oninput = function() {
+                    const q = this.value.toLowerCase().trim();
+                    const filtered = (data.campos || []).filter(c => 
+                        (c.label || '').toLowerCase().includes(q) ||
+                        (c.campo || '').toLowerCase().includes(q) ||
+                        (c.valor || '').toLowerCase().includes(q)
+                    );
+                    renderAuditRows(filtered);
+                };
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-danger">Error al cargar datos del despacho.</td></tr>';
+            }
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-danger">${err.message}</td></tr>`;
+        }
+    };
+
+    function renderAuditRows(campos) {
+        const tbody = document.getElementById('auditInfoTableBody');
+        if (campos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center py-3 text-muted">Sin campos coincidentes.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = campos.map(c => {
+            let valHtml = `<span class="fw-bold font-monospace text-dark">${c.valor}</span>`;
+            if (c.campo === 'canal') {
+                const bg = c.valor === 'VERDE' ? 'bg-success' : (c.valor === 'NARANJA' ? 'bg-warning text-dark' : 'bg-danger');
+                valHtml = `<span class="badge ${bg} px-2 py-1"><i class="bi bi-flag-fill me-1"></i>${c.valor}</span>`;
+            } else if (c.campo === 'propietario') {
+                valHtml = `<span class="badge bg-primary px-2 py-1"><i class="bi bi-person-fill me-1"></i>${c.valor}</span>`;
+            }
+
+            return `
+                <tr>
+                    <td class="fw-semibold text-muted" style="font-size: 0.82rem;">${c.label}</td>
+                    <td>${valHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Modal de Mercancías y Marcas
+    window.openItemsModal = async function(despachoId, despachoNum) {
+        document.getElementById('modalDespachoNum').textContent = despachoNum;
+        document.getElementById('modalDetailLink').href = `/despachos/${despachoId}`;
+        const tbody = document.getElementById('modalItemsBody');
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando mercancías...</td></tr>';
+        
+        const modalEl = document.getElementById('quickItemsModal');
+        quickItemsModalInstance = new bootstrap.Modal(modalEl);
+        quickItemsModalInstance.show();
+
+        try {
+            const resp = await fetch(`/despachos/api/${despachoId}/items`);
+            if (resp.ok) {
+                const items = await resp.json();
+                if (items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-muted">No se registraron sub-ítems tabulares.</td></tr>';
+                    return;
+                }
+                renderModalRows(items);
+
+                document.getElementById('modalSearch').oninput = function() {
+                    const q = this.value.toLowerCase().trim();
+                    const filtered = items.filter(it => 
+                        (it.marca || '').toLowerCase().includes(q) ||
+                        (it.descripcion || '').toLowerCase().includes(q) ||
+                        (it.codigo_producto || '').toLowerCase().includes(q) ||
+                        (it.codigo_ncm || '').toLowerCase().includes(q)
+                    );
+                    renderModalRows(filtered);
+                };
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-danger">Error al cargar datos.</td></tr>';
+            }
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-3 text-danger">${err.message}</td></tr>`;
+        }
+    };
+
+    function renderModalRows(items) {
+        const tbody = document.getElementById('modalItemsBody');
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-muted">Sin coincidencias.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.map(it => `
+            <tr>
+                <td class="fw-semibold">${it.numero_item}.${it.numero_subitem || 1}</td>
+                <td class="font-monospace">${it.codigo_ncm || '-'}</td>
+                <td><span class="badge bg-light text-primary border fw-semibold">${it.marca || 'Sin Marca'}</span></td>
+                <td>${it.codigo_producto ? `<code class="bg-light px-1 border">${it.codigo_producto}</code>` : '-'}</td>
+                <td>${it.descripcion || '-'}</td>
+                <td class="text-end font-monospace">${(it.cantidad || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                <td class="text-end fw-semibold text-dark">$${(it.valor_total || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+            </tr>
+        `).join('');
+    }
+</script>
+{% endblock %}

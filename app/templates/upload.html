@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Importar PDFs | Sistema de Despachos{% endblock %}
+{% block page_title %}Importación Masiva de Despachos Aduaneros{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Zona de Carga Drag & Drop -->
+    <div class="col-lg-12">
+        <div class="card border-0 shadow-sm rounded-3">
+            <div class="card-body p-5">
+                <div class="upload-dropzone p-5 text-center border border-2 border-dashed rounded-3 bg-light" id="dropzone">
+                    <i class="bi bi-cloud-arrow-up text-primary" style="font-size: 3.5rem;"></i>
+                    <h5 class="fw-bold mt-3 mb-1">Arrastra tus archivos PDF de despachos aquí</h5>
+                    <p class="text-muted small mb-3">Soporta carga individual o por lotes (hasta {{ max_mb }} MB por archivo)</p>
+                    
+                    <input type="file" id="fileInput" name="files" multiple accept=".pdf" class="d-none">
+                    
+                    <div class="row justify-content-center my-3">
+                        <div class="col-md-6 text-start">
+                            <label class="form-label small fw-bold text-dark"><i class="bi bi-person-badge me-1 text-primary"></i>Dueño / Cliente Propietario del Despacho (Opcional):</label>
+                            <input type="text" id="propietarioInput" class="form-control form-control-sm" placeholder="Ej: Importadora San José S.A. / Cliente 123">
+                            <small class="text-muted" style="font-size: 0.75rem;">Se asignará este propietario a todos los PDFs que se procesen en este lote.</small>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-center gap-3">
+                        <button type="button" class="btn btn-primary px-4 py-2" onclick="document.getElementById('fileInput').click()">
+                            <i class="bi bi-folder2-open me-2"></i> Seleccionar Archivos PDF
+                        </button>
+                    </div>
+
+                    <div class="form-check form-switch d-inline-block mt-3">
+                        <input class="form-check-input" type="checkbox" id="allowDuplicate">
+                        <label class="form-check-label small text-muted" for="allowDuplicate">Permitir re-importar si es posible duplicado</label>
+                    </div>
+                </div>
+
+                <!-- Barra de Progreso -->
+                <div id="progressContainer" class="mt-4 d-none">
+                    <div class="d-flex justify-content-between small text-muted mb-1">
+                        <span id="progressStatus">Procesando documentos...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Tabla de Resultados en Vivo -->
+                <div id="resultsContainer" class="mt-4 d-none">
+                    <h6 class="fw-bold text-dark mb-3"><i class="bi bi-list-check me-2 text-success"></i>Resultados del Procesamiento</h6>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle border">
+                            <thead class="table-light text-muted small text-uppercase">
+                                <tr>
+                                    <th>Archivo</th>
+                                    <th>Nº Despacho</th>
+                                    <th>Importador</th>
+                                    <th>Estado</th>
+                                    <th>Detalle / Mensaje</th>
+                                    <th class="text-end">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                                <!-- Se llena dinámicamente con JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <a href="/despachos" class="btn btn-outline-primary btn-sm">Ir al Listado de Despachos</a>
+                        <a href="/revisar" class="btn btn-warning btn-sm">Ver Pendientes de Revisión</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/upload.js"></script>
+{% endblock %}

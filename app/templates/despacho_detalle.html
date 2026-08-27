@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}Despacho {{ despacho.numero_despacho }} | Detalle{% endblock %}
+{% block page_title %}Despacho Aduanero Nº {{ despacho.numero_despacho or 'S/N' }}{% endblock %}
+
+{% block extra_head %}
+<script src="/static/js/pdf.min.js"></script>
+<script src="/static/js/pdf-viewer.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Barra Superior de Acciones y Estado -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2 bg-white p-3 rounded-3 shadow-sm">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="/despachos" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Volver a Despachos</a>
+        <span class="badge {% if despacho.estado_procesamiento == 'CONFIRMADO' %}bg-success{% elif despacho.estado_procesamiento == 'REVISAR' %}bg-warning text-dark{% else %}bg-primary{% endif %} px-3 py-2 shadow-2xs">
+            Estado: {{ despacho.estado_procesamiento }}
+        </span>
+        {% if despacho.canal %}
+            <span class="badge {% if despacho.canal == 'VERDE' %}bg-success{% elif despacho.canal == 'NARANJA' %}bg-warning text-dark{% else %}bg-danger{% endif %} px-3 py-2 shadow-2xs">
+                <i class="bi bi-flag-fill me-1"></i>Canal: {{ despacho.canal }}
+            </span>
+        {% endif %}
+        {% if despacho.propietario %}
+            <span class="badge bg-primary px-3 py-2 shadow-2xs">
+                <i class="bi bi-person-fill me-1"></i>Dueño: {{ despacho.propietario }}
+            </span>
+        {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/revisar/{{ despacho.id }}" class="btn btn-warning btn-sm d-flex align-items-center gap-1 shadow-sm">
+            <i class="bi bi-pencil-square"></i> Revisar / Modificar
+        </a>
+        <button type="button" class="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm" data-bs-toggle="modal" data-bs-target="#pdfViewerModal">
+            <i class="bi bi-file-earmark-pdf"></i> Ver PDF en Visor
+        </button>
+        <a href="/despachos/{{ despacho.id }}/pdf" target="_blank" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm" title="Abrir en pestaña nueva">
+            <i class="bi bi-box-arrow-up-right"></i>
+        </a>
+        <button type="button" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1 shadow-sm" onclick="confirmarEliminarDespacho({{ despacho.id }}, '{{ despacho.numero_despacho or 'S/N' }}')">
+            <i class="bi bi-trash3"></i> Eliminar
+        </button>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- COLUMNA IZQUIERDA: Gran Tabla de Mercancías e Ítems con Espacio Generoso -->
+    <div class="col-xxl-8 col-xl-8 col-lg-7">
+        <div class="card border-0 shadow-sm rounded-3">
+            <div class="card-header bg-white py-3 border-bottom">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-box-seam me-2 text-warning"></i>Mercancías e Ítems Detallados (<span id="visibleItemCount">{{ items|length }}</span> de {{ items|length }})</h6>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="resetItemFilters()" title="Restablecer filtros">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i> Limpiar Filtros
+                    </button>
+                </div>
+
+                <!-- Buscador en Vivo General -->
+                <div class="input-group input-group-sm mb-3">
+                    <span class="input-group-text bg-light"><i class="bi bi-search text-primary"></i></span>
+                    <input type="text" id="itemLiveSearch" class="form-control" placeholder="Buscar en vivo por cualquier dato (descripción, marca, código EAN, NCM, cantidad)...">
+                </div>
+
+                <!-- Filtros por Columna -->
+                <div class="row g-2 pt-1 border-top">
+                    <div class="col-md-4">
+                        <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Filtrar por NCM / Posición:</label>
+                        <select id="filterNCM" class="form-select form-select-sm">
+                            <option value="">-- Todos los NCM --</option>
+                            {% set ncms = [] %}
+                            {% for it in items %}
+                                {% if it.codigo_ncm and it.codigo_ncm not in ncms %}
+                                    {% set _ = ncms.append(it.codigo_ncm) %}
+                                    <option value="{{ it.codigo_ncm }}">{{ it.codigo_ncm }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Filtrar por MARCA:</label>
+                        <select id="filterMarca" class="form-select form-select-sm">
+                            <option value="">-- Todas las Marcas --</option>
+                            {% set marcas = [] %}
+                            {% for it in items %}
+                                {% if it.marca and it.marca not in marcas %}
+                                    {% set _ = marcas.append(it.marca) %}
+                                    <option value="{{ it.marca }}">{{ it.marca }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Filtrar por Nº de Ítem:</label>
+                        <select id="filterItemNum" class="form-select form-select-sm">
+                            <option value="">-- Todos los Ítems --</option>
+                            {% set item_nums = [] %}
+                            {% for it in items %}
+                                {% set num_str = it.numero_item|string %}
+                                {% if num_str not in item_nums %}
+                                    {% set _ = item_nums.append(num_str) %}
+                                    <option value="{{ num_str }}">Ítem {{ num_str }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="itemsTable">
+                    <thead class="table-light text-muted small text-uppercase">
+                        <tr>
+                            <th style="width: 60px;">Ítem</th>
+                            <th style="width: 140px;">NCM / Posición</th>
+                            <th style="width: 120px;" class="text-primary fw-bold">MARCA</th>
+                            <th style="width: 150px;">Código / EAN</th>
+                            <th style="min-width: 320px;">Descripción de la Mercadería</th>
+                            <th class="text-end" style="width: 100px;">Cantidad</th>
+                            <th class="text-end" style="width: 110px;">Unitario</th>
+                            <th class="text-end" style="width: 120px;">FOB Total</th>
+                            <th class="text-center" style="width: 50px;">Pág</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsTableBody">
+                        {% if items %}
+                            {% for it in items %}
+                            <tr class="item-row" 
+                                id="item-{{ it.id }}"
+                                data-item-num="{{ it.numero_item }}"
+                                data-ncm="{{ it.codigo_ncm or '' }}"
+                                data-marca="{{ it.marca or '' }}"
+                                data-codigo="{{ it.codigo_producto or '' }}"
+                                data-desc="{{ it.descripcion or '' }}">
+                                <td class="fw-semibold">{{ it.numero_item }}{% if it.numero_subitem %}.{{ it.numero_subitem }}{% endif %}</td>
+                                <td class="font-monospace small fw-bold">{{ it.codigo_ncm or '-' }}</td>
+                                <td>
+                                    <span class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1">
+                                        {{ it.marca or 'Sin Marca' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if it.codigo_producto %}
+                                        <code class="text-dark fw-bold bg-light px-2 py-1 rounded border font-monospace">{{ it.codigo_producto }}</code>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="fw-medium text-dark" style="font-size: 0.9rem;">
+                                    {{ it.descripcion or '-' }}
+                                </td>
+                                <td class="text-end font-monospace fw-semibold">
+                                    {{ "{:,.2f}".format(it.cantidad) if it.cantidad is not none else '-' }}
+                                </td>
+                                <td class="text-end small">${{ "{:,.2f}".format(it.valor_unitario) if it.valor_unitario else '-' }}</td>
+                                <td class="text-end fw-semibold text-dark">${{ "{:,.2f}".format(it.valor_total) if it.valor_total else '-' }}</td>
+                                <td class="text-center text-muted small">{{ it.pagina_origen or 1 }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr id="noItemsRow">
+                                <td colspan="9" class="text-center py-4 text-muted">No se extrajeron sub-ítems tabulares para este despacho.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- COLUMNA DERECHA: KPIs Columnar y Tabla de Auditoría Completa (Sin paneles tachados) -->
+    <div class="col-xxl-4 col-xl-4 col-lg-5">
+        
+        <!-- KPI 1: Identificación Oficial y Dueño -->
+        <div class="card border-0 shadow-sm rounded-3 mb-3">
+            <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center">
+                <span class="fw-bold small text-dark"><i class="bi bi-file-earmark-text-fill text-primary me-2"></i>Identificación Oficial</span>
+                <span class="badge bg-light text-muted border small">Cabecera</span>
+            </div>
+            <div class="card-body p-3">
+                <div class="d-flex flex-column gap-2">
+                    {% if despacho.propietario %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Dueño / Cliente:</span>
+                        <span class="badge bg-primary fs-6 px-3 py-1 shadow-sm"><i class="bi bi-person-fill me-1"></i>{{ despacho.propietario }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.numero_despacho %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Nº Despacho:</span>
+                        <span class="badge bg-dark fs-6 px-3 py-1 font-monospace shadow-sm">{{ despacho.numero_despacho }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.fecha_despacho %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Fecha Oficial:</span>
+                        <span class="badge bg-info text-dark fs-6 px-3 py-1 shadow-sm"><i class="bi bi-calendar3 me-1"></i>{{ despacho.fecha_despacho.strftime('%d/%m/%Y') }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.canal %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Canal Asignado:</span>
+                        <span class="badge {% if despacho.canal == 'VERDE' %}bg-success{% elif despacho.canal == 'NARANJA' %}bg-warning text-dark{% else %}bg-danger{% endif %} fs-6 px-3 py-1 shadow-sm">
+                            <i class="bi bi-flag-fill me-1"></i>{{ despacho.canal }}
+                        </span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.aduana %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Aduana:</span>
+                        <span class="badge bg-secondary fs-6 px-3 py-1 shadow-sm">{{ despacho.aduana }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.regimen %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Régimen:</span>
+                        <span class="badge bg-light text-dark border fs-6 px-3 py-1">{{ despacho.regimen }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 2: Valores Financieros y Liquidación -->
+        <div class="card border-0 shadow-sm rounded-3 mb-3">
+            <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center">
+                <span class="fw-bold small text-dark"><i class="bi bi-cash-coin text-success me-2"></i>Valores Financieros & Impuestos</span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle small">{{ despacho.moneda or 'USD' }}</span>
+            </div>
+            <div class="card-body p-3">
+                <div class="d-flex flex-column gap-2">
+                    {% if despacho.valor_fob is not none and despacho.valor_fob > 0 %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Valor FOB:</span>
+                        <span class="badge bg-primary fs-6 px-3 py-1 shadow-sm">${{ "{:,.2f}".format(despacho.valor_fob) }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.valor_flete is not none and despacho.valor_flete > 0 %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Flete:</span>
+                        <span class="badge bg-info text-dark fs-6 px-3 py-1 shadow-sm">${{ "{:,.2f}".format(despacho.valor_flete) }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.valor_seguro is not none and despacho.valor_seguro > 0 %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Seguro:</span>
+                        <span class="badge bg-warning text-dark fs-6 px-3 py-1 shadow-sm">${{ "{:,.2f}".format(despacho.valor_seguro) }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.valor_cif is not none and despacho.valor_cif > 0 %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-success-subtle border border-success rounded">
+                        <span class="text-success fw-bold small">Valor CIF Total:</span>
+                        <span class="badge bg-success fs-5 px-3 py-1 shadow-sm">${{ "{:,.2f}".format(despacho.valor_cif) }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.tipo_cambio %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Tipo de Cambio:</span>
+                        <span class="badge bg-dark fs-6 px-3 py-1 font-monospace">{{ "{:,.2f}".format(despacho.tipo_cambio) }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.valor_imponible %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Valor Imponible (Gs):</span>
+                        <span class="badge bg-secondary fs-6 px-3 py-1 font-monospace">Gs. {{ "{:,.0f}".format(despacho.valor_imponible) }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.total_general %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-danger-subtle border border-danger rounded">
+                        <span class="text-danger fw-bold small">Total Tributos (Gs):</span>
+                        <span class="badge bg-danger fs-6 px-3 py-1 font-monospace shadow-sm">Gs. {{ "{:,.0f}".format(despacho.total_general) }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 3: Partes Intervinientes y Transporte -->
+        <div class="card border-0 shadow-sm rounded-3 mb-3">
+            <div class="card-header bg-white py-2 px-3 border-bottom">
+                <span class="fw-bold small text-dark"><i class="bi bi-people-fill text-primary me-2"></i>Partes & Transporte</span>
+            </div>
+            <div class="card-body p-3">
+                <div class="d-flex flex-column gap-2">
+                    {% if despacho.importador_nombre %}
+                    <div class="p-2 bg-light rounded border">
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">IMPORTADOR:</small>
+                        <span class="badge bg-primary text-white fs-6 px-2 py-1 text-wrap text-start mt-1 d-block"><i class="bi bi-building me-1"></i>{{ despacho.importador_nombre }}</span>
+                        {% if despacho.importador_documento %}
+                            <small class="text-muted font-monospace d-block mt-1">RUC: <strong>{{ despacho.importador_documento }}</strong></small>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.exportador_nombre %}
+                    <div class="p-2 bg-light rounded border">
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">PROVEEDOR / EXPORTADOR:</small>
+                        <span class="badge bg-success text-white fs-6 px-2 py-1 text-wrap text-start mt-1 d-block"><i class="bi bi-shop me-1"></i>{{ despacho.exportador_nombre }}</span>
+                        {% if despacho.pais_origen %}
+                            <small class="text-muted d-block mt-1">País: <span class="badge bg-success-subtle text-success-emphasis border">{{ despacho.pais_origen }}</span></small>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.despachante_nombre %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Despachante:</span>
+                        <span class="badge bg-warning text-dark fs-6 px-3 py-1 shadow-sm"><i class="bi bi-briefcase-fill me-1"></i>{{ despacho.despachante_nombre }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.bl or despacho.awb %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">BL / AWB:</span>
+                        <span class="badge bg-indigo text-white fs-6 px-3 py-1 shadow-sm" style="background-color: #6366f1;">{{ despacho.bl or despacho.awb }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.contenedor %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Contenedor:</span>
+                        <span class="badge bg-teal text-white fs-6 px-3 py-1 shadow-sm" style="background-color: #0d9488;"><i class="bi bi-box-fill me-1"></i>{{ despacho.contenedor }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.peso_neto %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Kilo Neto:</span>
+                        <span class="badge bg-teal text-white fs-6 px-3 py-1 font-monospace" style="background-color: #0284c7;">{{ "{:,.2f}".format(despacho.peso_neto) }} Kg</span>
+                    </div>
+                    {% endif %}
+
+                    {% if despacho.cantidad_bultos %}
+                    <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded border">
+                        <span class="text-muted small fw-semibold">Bultos:</span>
+                        <span class="badge bg-secondary fs-6 px-3 py-1">{{ "{:,.0f}".format(despacho.cantidad_bultos) }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI 4: TABLA DE AUDITORÍA COMPLETA DE CAMPOS EXTRAÍDOS CON NOMBRES EN ESPAÑOL Y FORMATO 0,000.00 -->
+        <div class="card border-0 shadow-sm rounded-3">
+            <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center">
+                <span class="fw-bold small text-dark"><i class="bi bi-table text-info me-2"></i>Auditoría de Campos Extraídos</span>
+                <span class="badge bg-light text-muted border small">Valores Normalizados</span>
+            </div>
+            <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                <table class="table table-bordered table-sm mb-0 align-middle small">
+                    <thead class="table-light text-muted text-uppercase sticky-top" style="font-size: 0.72rem;">
+                        <tr>
+                            <th>Campo</th>
+                            <th>Valor Normalizado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set campos_lista = [
+                            ('numero_despacho', 'Nº Despacho'),
+                            ('fecha_despacho', 'Fecha Oficial'),
+                            ('importador_nombre', 'Importador'),
+                            ('importador_documento', 'RUC / Doc'),
+                            ('importador_direccion', 'Dirección'),
+                            ('exportador_nombre', 'Proveedor'),
+                            ('pais_origen', 'País Origen'),
+                            ('despachante_nombre', 'Despachante'),
+                            ('aduana', 'Aduana'),
+                            ('regimen', 'Régimen'),
+                            ('canal', 'Canal Asignado'),
+                            ('valor_fob', 'Valor FOB (USD)'),
+                            ('valor_flete', 'Flete (USD)'),
+                            ('valor_seguro', 'Seguro (USD)'),
+                            ('valor_cif', 'Valor CIF (USD)'),
+                            ('tipo_cambio', 'Tipo de Cambio'),
+                            ('valor_imponible', 'Valor Imponible (Gs)'),
+                            ('total_general', 'Total Tributos (Gs)'),
+                            ('peso_neto', 'Peso Neto (Kg)'),
+                            ('peso_bruto', 'Peso Bruto (Kg)'),
+                            ('cantidad_bultos', 'Bultos'),
+                            ('bl', 'Doc BL/AWB'),
+                            ('contenedor', 'Contenedor')
+                        ] %}
+                        {% for campo_key, campo_label in campos_lista %}
+                            {% set val = getattr(despacho, campo_key, None) %}
+                            {% if val is not none and val != '' %}
+                            <tr>
+                                <td class="fw-semibold text-muted" style="font-size: 0.75rem;">{{ campo_label }}</td>
+                                <td>
+                                    {% if campo_key == 'canal' %}
+                                        <span class="badge {% if val == 'VERDE' %}bg-success{% elif val == 'NARANJA' %}bg-warning text-dark{% else %}bg-danger{% endif %} px-2 py-1 shadow-2xs">
+                                            <i class="bi bi-flag-fill me-1"></i>{{ val }}
+                                        </span>
+                                    {% else %}
+                                        <span class="fw-bold font-monospace text-dark">{{ format_smart_value(val, campo_key) }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const liveSearchInput = document.getElementById('itemLiveSearch');
+        const filterNCM = document.getElementById('filterNCM');
+        const filterMarca = document.getElementById('filterMarca');
+        const filterItemNum = document.getElementById('filterItemNum');
+        const rows = document.querySelectorAll('.item-row');
+        const visibleCountSpan = document.getElementById('visibleItemCount');
+
+        function applyItemFilters() {
+            const query = (liveSearchInput?.value || '').toLowerCase().trim();
+            const ncmVal = (filterNCM?.value || '').trim();
+            const marcaVal = (filterMarca?.value || '').toLowerCase().trim();
+            const itemVal = (filterItemNum?.value || '').trim();
+
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                const rowNcm = row.getAttribute('data-ncm') || '';
+                const rowMarca = (row.getAttribute('data-marca') || '').toLowerCase();
+                const rowItem = row.getAttribute('data-item-num') || '';
+
+                const matchesQuery = !query || text.includes(query);
+                const matchesNCM = !ncmVal || rowNcm === ncmVal;
+                const matchesMarca = !marcaVal || rowMarca === marcaVal;
+                const matchesItem = !itemVal || rowItem === itemVal;
+
+                if (matchesQuery && matchesNCM && matchesMarca && matchesItem) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            if (visibleCountSpan) {
+                visibleCountSpan.textContent = visibleCount;
+            }
+        }
+
+        liveSearchInput?.addEventListener('input', applyItemFilters);
+        filterNCM?.addEventListener('change', applyItemFilters);
+        filterMarca?.addEventListener('change', applyItemFilters);
+        filterItemNum?.addEventListener('change', applyItemFilters);
+
+        window.resetItemFilters = function() {
+            if (liveSearchInput) liveSearchInput.value = '';
+            if (filterNCM) filterNCM.value = '';
+            if (filterMarca) filterMarca.value = '';
+            if (filterItemNum) filterItemNum.value = '';
+            applyItemFilters();
+        };
+
+        // Resaltado automático si se viene desde el catálogo de mercancías
+        const urlParams = new URLSearchParams(window.location.search);
+        const highlightId = urlParams.get('highlight_item') || (window.location.hash ? window.location.hash.replace('#item-', '') : null);
+
+        if (highlightId) {
+            const targetRow = document.getElementById(`item-${highlightId}`);
+            if (targetRow) {
+                targetRow.classList.add('highlight-target-item');
+                setTimeout(() => {
+                    targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
+            }
+        }
+    });
+</script>
+
+<!-- Modal de Visor PDF Nativo -->
+<div class="modal fade" id="pdfViewerModal" tabindex="-1" aria-labelledby="pdfViewerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width: 92vw;">
+        <div class="modal-content border-0 shadow-lg" style="height: 90vh;">
+            <div class="modal-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
+                <h6 class="modal-title small fw-semibold mb-0" id="pdfViewerModalLabel">
+                    <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i> {{ despacho.nombre_archivo_original or 'Despacho Aduanero PDF' }}
+                </h6>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="/despachos/{{ despacho.id }}/pdf" target="_blank" class="btn btn-sm btn-outline-light py-0 px-2 small">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Abrir en pestaña
+                    </a>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0 h-100">
+                <iframe src="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" class="w-100 h-100 border-0" type="application/pdf"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

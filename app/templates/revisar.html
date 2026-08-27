@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Revisar Despacho {{ despacho.numero_despacho }} | Revisión Humana{% endblock %}
+{% block page_title %}Revisión de Despacho Aduanero{% endblock %}
+
+{% block extra_head %}
+<script src="/static/js/pdf.min.js"></script>
+<script src="/static/js/pdf-viewer.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <!-- Header de la pantalla de revisión -->
+    <div class="col-12 d-flex justify-content-between align-items-center bg-white p-3 rounded-3 shadow-sm mb-2">
+        <div>
+            <span class="badge {% if despacho.estado_procesamiento == 'REVISAR' %}bg-warning text-dark{% else %}bg-primary{% endif %} me-2">
+                {{ despacho.estado_procesamiento }}
+            </span>
+            <span class="fw-bold fs-6 text-dark">{{ despacho.nombre_archivo_original }}</span>
+            <span class="text-muted small ms-2">| Confianza general: <strong>{{ "{:.0%}".format(despacho.confianza_promedio) }}</strong></span>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/despachos/{{ despacho.id }}" class="btn btn-outline-secondary btn-sm">Cancelar</a>
+            <button type="submit" form="reviewForm" class="btn btn-success btn-sm px-4 fw-semibold shadow-sm">
+                <i class="bi bi-check-circle-fill me-1"></i> Guardar y Confirmar
+            </button>
+        </div>
+    </div>
+
+    <!-- COLUMNA IZQUIERDA: Visor PDF Nativo Profesional -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-3 h-100 d-flex flex-column">
+            <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
+                <span class="small fw-semibold"><i class="bi bi-file-earmark-pdf-fill me-1 text-danger"></i> Documento Original ({{ despacho.nombre_archivo_original or 'PDF' }})</span>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="/despachos/{{ despacho.id }}/pdf" target="_blank" class="btn btn-sm btn-outline-light py-0 px-2 small" title="Abrir en pestaña nueva">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Abrir en pestaña
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0 flex-grow-1" style="min-height: 850px; height: 850px;">
+                {% if pdf_exists %}
+                    <iframe src="/despachos/{{ despacho.id }}/pdf#toolbar=1&navpanes=1" class="w-100 h-100 border-0 rounded-bottom" style="min-height: 850px; display: block;" type="application/pdf"></iframe>
+                {% else %}
+                    <div class="d-flex flex-column align-items-center justify-content-center h-100 p-5 text-center bg-light">
+                        <i class="bi bi-file-earmark-pdf text-warning mb-3" style="font-size: 3.5rem;"></i>
+                        <h6 class="fw-bold text-dark mb-2">Archivo PDF físico no encontrado en esta computadora</h6>
+                        <p class="text-muted small mb-3" style="max-width: 400px;">
+                            El despacho fue sincronizado desde la nube. Todos los datos, cabeceras y mercancías extraídos están disponibles en el formulario de la derecha.
+                        </p>
+                        <a href="/configuracion" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-google me-1"></i> Sincronizar desde Google Drive
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+
+    <!-- COLUMNA DERECHA: Formulario de Corrección y Revisión -->
+    <div class="col-lg-6">
+        <form id="reviewForm" method="POST" action="/revisar/{{ despacho.id }}" class="card border-0 shadow-sm rounded-3 h-100">
+            <div class="card-header bg-white py-2 border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-pencil-square me-2 text-primary"></i>Campos Extraídos para Verificación</h6>
+                <span class="small text-muted">Ajuste los datos si detecta inconsistencias</span>
+            </div>
+            <div class="card-body overflow-auto p-4" style="max-height: 750px;">
+                
+                <!-- Sección 1: Identificación y Dueño -->
+                <h6 class="text-uppercase text-muted fw-bold small mb-3 border-bottom pb-2">1. Identificación y Dueño del Despacho</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold text-primary"><i class="bi bi-person-fill me-1"></i>Dueño / Propietario Asignado</label>
+                        <input type="text" name="propietario" class="form-control form-control-sm border-primary" value="{{ despacho.propietario or '' }}" placeholder="Nombre del cliente o dueño...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Número de Despacho</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="numero_despacho" class="form-control" value="{{ despacho.numero_despacho or '' }}" required>
+                            {% set m = metadata.get('numero_despacho', {}) %}
+                            <span class="input-group-text {% if m.get('confidence', 0) >= 0.9 %}bg-success-subtle text-success{% elif m.get('confidence', 0) >= 0.7 %}bg-warning-subtle text-warning{% else %}bg-danger-subtle text-danger{% endif %}" title="Confianza: {{ m.get('confidence', 0) }}">
+                                <i class="bi bi-shield-check"></i>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Fecha de Despacho</label>
+                        <input type="date" name="fecha_despacho" class="form-control form-control-sm" value="{{ despacho.fecha_despacho.strftime('%Y-%m-%d') if despacho.fecha_despacho else '' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Aduana</label>
+                        <input type="text" name="aduana" class="form-control form-control-sm" value="{{ despacho.aduana or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Régimen</label>
+                        <input type="text" name="regimen" class="form-control form-control-sm" value="{{ despacho.regimen or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Canal</label>
+                        <select name="canal" class="form-select form-select-sm">
+                            <option value="">-- Canal --</option>
+                            <option value="VERDE" {% if despacho.canal == 'VERDE' %}selected{% endif %}>VERDE</option>
+                            <option value="NARANJA" {% if despacho.canal == 'NARANJA' %}selected{% endif %}>NARANJA</option>
+                            <option value="ROJO" {% if despacho.canal == 'ROJO' %}selected{% endif %}>ROJO</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Sección 2: Importador & Despachante -->
+                <h6 class="text-uppercase text-muted fw-bold small mb-3 border-bottom pb-2">2. Importador y Proveedor</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-8">
+                        <label class="form-label small fw-semibold">Nombre / Razón Social Importador</label>
+                        <input type="text" name="importador_nombre" class="form-control form-control-sm" value="{{ despacho.importador_nombre or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">RUC / Documento</label>
+                        <input type="text" name="importador_documento" class="form-control form-control-sm" value="{{ despacho.importador_documento or '' }}">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label small fw-semibold">Exportador / Proveedor</label>
+                        <input type="text" name="exportador_nombre" class="form-control form-control-sm" value="{{ despacho.exportador_nombre or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">País Proveedor</label>
+                        <input type="text" name="exportador_pais" class="form-control form-control-sm" value="{{ despacho.exportador_pais or '' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">Despachante</label>
+                        <input type="text" name="despachante_nombre" class="form-control form-control-sm" value="{{ despacho.despachante_nombre or '' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold">BL / AWB</label>
+                        <input type="text" name="bl" class="form-control form-control-sm" value="{{ despacho.bl or despacho.awb or '' }}">
+                    </div>
+                </div>
+
+                <!-- Sección 3: Valores Financieros -->
+                <h6 class="text-uppercase text-muted fw-bold small mb-3 border-bottom pb-2">3. Valores Financieros y Tributos</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold">FOB ($)</label>
+                        <input type="number" step="0.01" name="valor_fob" class="form-control form-control-sm" value="{{ despacho.valor_fob or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Flete ($)</label>
+                        <input type="number" step="0.01" name="valor_flete" class="form-control form-control-sm" value="{{ despacho.valor_flete or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold">Seguro ($)</label>
+                        <input type="number" step="0.01" name="valor_seguro" class="form-control form-control-sm" value="{{ despacho.valor_seguro or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold text-success">CIF ($)</label>
+                        <input type="number" step="0.01" name="valor_cif" class="form-control form-control-sm border-success" value="{{ despacho.valor_cif or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Moneda</label>
+                        <input type="text" name="moneda" class="form-control form-control-sm" value="{{ despacho.moneda or 'USD' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Tipo de Cambio</label>
+                        <input type="number" step="0.01" name="tipo_cambio" class="form-control form-control-sm" value="{{ despacho.tipo_cambio or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Total Impuestos (Gs)</label>
+                        <input type="number" step="1" name="total_general" class="form-control form-control-sm" value="{{ despacho.total_general or '' }}">
+                    </div>
+                </div>
+
+                <!-- Sección 4: Pesos y Bultos -->
+                <h6 class="text-uppercase text-muted fw-bold small mb-3 border-bottom pb-2">4. Pesos y Bultos</h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Peso Neto (Kg)</label>
+                        <input type="number" step="0.001" name="peso_neto" class="form-control form-control-sm" value="{{ despacho.peso_neto or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Peso Bruto (Kg)</label>
+                        <input type="number" step="0.001" name="peso_bruto" class="form-control form-control-sm" value="{{ despacho.peso_bruto or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Cantidad Bultos</label>
+                        <input type="number" step="1" name="cantidad_bultos" class="form-control form-control-sm" value="{{ despacho.cantidad_bultos or '' }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-semibold">Observaciones / Notas</label>
+                        <textarea name="observaciones" class="form-control form-control-sm" rows="2">{{ despacho.observaciones or '' }}</textarea>
+                    </div>
+                </div>
+
+            </div>
+            <div class="card-footer bg-white border-top p-3 d-flex justify-content-end gap-2">
+                <a href="/despachos" class="btn btn-light border btn-sm">Volver a la lista</a>
+                <button type="submit" class="btn btn-success btn-sm px-4 fw-bold">
+                    <i class="bi bi-save me-1"></i> Guardar Cambios y Confirmar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% endblock %}
+
+

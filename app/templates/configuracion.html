@@ -1,0 +1,1071 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración de Sistema & Turso Cloud | AduanaDoc{% endblock %}
+{% block page_title %}Configuración de Base de Datos & Nube{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Columna Principal: Conexión Turso Database -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm rounded-3 mb-4">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-cloud-check-fill text-primary fs-4"></i>
+                    <div>
+                        <h6 class="mb-0 fw-bold text-dark">Conexión con Turso Cloud Database</h6>
+                        <small class="text-muted">Base de datos distribuida en la nube (libSQL / SQLite)</small>
+                    </div>
+                </div>
+                {% if is_configured %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                        <i class="bi bi-check-circle-fill me-1"></i>Configurado
+                    </span>
+                {% else %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1">
+                        <i class="bi bi-exclamation-circle me-1"></i>Pendiente de Token
+                    </span>
+                {% endif %}
+            </div>
+            <div class="card-body p-4">
+                <p class="text-muted small mb-4">
+                    Al configurar Turso, podrás subir todos los despachos extraídos a la nube para que cualquier otra computadora con el sistema pueda descargar y consultar la información en tiempo real.
+                </p>
+
+                <form id="tursoConfigForm" onsubmit="event.preventDefault(); guardarConfig();">
+                    <!-- URL de Base de Datos -->
+                    <div class="mb-3">
+                        <label for="inputTursoUrl" class="form-label fw-semibold text-dark small">
+                            <i class="bi bi-link-45deg me-1 text-primary"></i>URL de la Base de Datos Turso:
+                        </label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light text-muted"><i class="bi bi-database"></i></span>
+                            <input type="text" 
+                                   id="inputTursoUrl" 
+                                   class="form-control font-monospace" 
+                                   value="{{ turso_url }}" 
+                                   placeholder="libsql://despachos-alifarhat.aws-us-east-1.turso.io" 
+                                   required>
+                        </div>
+                        <div class="form-text small" style="font-size: 0.72rem;">
+                            URL del clúster de Turso proporcionada al crear la base de datos.
+                        </div>
+                    </div>
+
+                    <!-- Token de Autenticación / API Token -->
+                    <div class="mb-4">
+                        <label for="inputTursoToken" class="form-label fw-semibold text-dark small">
+                            <i class="bi bi-key-fill me-1 text-warning"></i>API Auth Token de Turso:
+                        </label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light text-muted"><i class="bi bi-shield-lock"></i></span>
+                            <input type="password" 
+                                   id="inputTursoToken" 
+                                   class="form-control font-monospace" 
+                                   value="{{ turso_token }}" 
+                                   placeholder="Pega aquí tu token (eyJhbGciOi...)" 
+                                   required>
+                            <button class="btn btn-outline-secondary" type="button" id="toggleTokenVisibility" title="Mostrar/Ocultar Token" onclick="toggleTokenView()">
+                                <i class="bi bi-eye" id="eyeIcon"></i>
+                            </button>
+                        </div>
+                        <div class="form-text small" style="font-size: 0.72rem;">
+                            Token de acceso generado en la consola de Turso o mediante <code>turso db tokens create despachos-alifarhat</code>.
+                        </div>
+                    </div>
+
+                    <!-- Alerta de Respuesta / Estado -->
+                    <div id="statusAlert" class="alert d-none py-2 small mb-3" role="alert"></div>
+
+                    <!-- Botones de Acción -->
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="submit" class="btn btn-primary btn-sm px-3" id="btnGuardar">
+                            <i class="bi bi-save me-1"></i> Guardar Configuración
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3" id="btnTest" onclick="probarConexion()">
+                            <i class="bi bi-broadcast me-1"></i> Probar Conexión en Vivo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tarjeta de Sincronización en la Nube -->
+        <div class="card border-0 shadow-sm rounded-3 mb-4">
+            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center gap-2">
+                <i class="bi bi-arrow-repeat text-success fs-5"></i>
+                <h6 class="mb-0 fw-bold text-dark">Acciones de Sincronización Turso Cloud</h6>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="p-3 border rounded-3 bg-light h-100 d-flex flex-column justify-content-between">
+                            <div>
+                                <h6 class="fw-bold text-dark mb-1"><i class="bi bi-cloud-arrow-up-fill text-primary me-2"></i>Subir a Turso (Push)</h6>
+                                <p class="text-muted small mb-3">
+                                    Sube todos los despachos y mercancías de esta PC a la nube de Turso.
+                                </p>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm w-100" id="btnPush" onclick="ejecutarPush()">
+                                <i class="bi bi-cloud-upload me-1"></i> Subir Datos Locales a Turso
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="p-3 border rounded-3 bg-light h-100 d-flex flex-column justify-content-between">
+                            <div>
+                                <h6 class="fw-bold text-dark mb-1"><i class="bi bi-cloud-arrow-down-fill text-success me-2"></i>Descargar de Turso (Pull)</h6>
+                                <p class="text-muted small mb-3">
+                                    Descarga y actualiza los despachos de Turso Cloud a la base local de esta PC.
+                                </p>
+                            </div>
+                            <button class="btn btn-outline-success btn-sm w-100" id="btnPull" onclick="ejecutarPull()">
+                                <i class="bi bi-cloud-download me-1"></i> Descargar Datos a esta PC
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tarjeta de Sincronización con Google Drive Folder -->
+        <div class="card border-0 shadow-sm rounded-3">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-google text-danger fs-5"></i>
+                    <div>
+                        <h6 class="mb-0 fw-bold text-dark">Google Drive Folder Sync</h6>
+                        <small class="text-muted">Escanear PDFs automáticamente sin duplicados</small>
+                    </div>
+                </div>
+                <span class="badge bg-primary-subtle text-primary border font-monospace">
+                    ID: {{ gdrive_folder_id }}
+                </span>
+            </div>
+            <div class="card-body p-4">
+                <p class="text-muted small mb-3">
+                    Examina la carpeta de Google Drive, procesa automáticamente los despachos nuevos que no hayan sido registrados y omite los duplicados.
+                </p>
+
+                <!-- Sección Auto-Vigilante en Segundo Plano -->
+                <div class="p-3 border rounded-3 bg-white mb-3 shadow-xs">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="status-indicator bg-success" id="watcherPulseIndicator"></span>
+                            <span class="fw-bold small text-dark">Auto-Vigilante en Segundo Plano (Daemon)</span>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="watcherToggleSwitch" checked onchange="toggleWatcherState(this.checked)">
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-2" style="font-size: 0.76rem;">
+                        Revisa la carpeta de Google Drive continuamente. Si alguien agrega un PDF nuevo, lo procesa automáticamente sin intervención manual.
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center text-muted small bg-light p-2 rounded-2" style="font-size: 0.72rem;">
+                        <div><i class="bi bi-clock-history me-1"></i>Último chequeo: <strong id="watcherLastChecked" class="text-dark">Iniciando...</strong></div>
+                        <div class="d-flex align-items-center gap-1">
+                            <span>Intervalo:</span>
+                            <select id="watcherIntervalSelect" class="form-select form-select-sm py-0 px-2" style="font-size: 0.72rem; width: auto;" onchange="updateWatcherInterval(this.value)">
+                                <option value="30">30 seg</option>
+                                <option value="60" selected>1 min</option>
+                                <option value="120">2 min</option>
+                                <option value="300">5 min</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Opción 1: Escaneo Directo por API de Google Drive -->
+                <div class="p-3 border rounded-3 bg-light mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold small text-dark"><i class="bi bi-cloud-arrow-down text-primary me-1"></i>Escaneo Manual por API de Google Drive</span>
+                        {% if has_credentials_file %}
+                            <span class="badge bg-success-subtle text-success small">Credenciales Activas</span>
+                        {% else %}
+                            <span class="badge bg-warning-subtle text-warning small">Requiere service_account.json</span>
+                        {% endif %}
+                    </div>
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-7">
+                            <input type="text" id="gdriveFolderIdInput" class="form-control form-control-sm font-monospace" value="{{ gdrive_folder_id }}" placeholder="Folder ID de Google Drive">
+                        </div>
+                        <div class="col-md-5">
+                            <button class="btn btn-primary btn-sm w-100" id="btnScanGDrive" onclick="scanGoogleDriveCloud()">
+                                <i class="bi bi-arrow-repeat me-1"></i> Escanear Ahora
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Opción 2: Escaneo de Carpeta Local Sincronizada de Google Drive -->
+                <div class="p-3 border rounded-3 bg-light">
+                    <div class="mb-2">
+                        <span class="fw-bold small text-dark"><i class="bi bi-folder2-open text-warning me-1"></i>Escaneo de Carpeta Local Sincronizada (Google Drive PC)</span>
+                        <small class="text-muted d-block" style="font-size: 0.72rem;">Si tienes Google Drive instalado en Windows (ej: J:\My Drive\...)</small>
+                    </div>
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-7">
+                            <input type="text" id="gdriveLocalPathInput" class="form-control form-control-sm" placeholder="Ruta local (ej: J:\My Drive\Despachos)">
+                        </div>
+                        <div class="col-md-5">
+                            <button class="btn btn-outline-dark btn-sm w-100" id="btnScanLocal" onclick="scanGoogleDriveLocal()">
+                                <i class="bi bi-folder-check me-1"></i> Escanear Carpeta Local
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alerta de Resultado de Escaneo -->
+                <div id="gdriveStatusAlert" class="alert d-none py-2 small mt-3 mb-0" role="alert"></div>
+            </div>
+        </div>
+
+        <!-- Tarjeta de Copias de Seguridad (Backup a Google Drive / ZIP) -->
+        <div class="card border-0 shadow-sm rounded-3 mt-4">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-file-earmark-zip-fill text-warning fs-4"></i>
+                    <div>
+                        <h6 class="mb-0 fw-bold text-dark">Copias de Seguridad (Backup ZIP & Google Drive)</h6>
+                        <small class="text-muted">Respaldo completo de base de datos, PDFs subidos y sistema</small>
+                    </div>
+                </div>
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                    <i class="bi bi-check2-circle me-1"></i>Auto-Backup Activo
+                </span>
+            </div>
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 bg-light p-3 rounded-3 border">
+                    <div>
+                        <span class="fw-semibold text-dark small d-block mb-1">
+                            <i class="bi bi-lightning-charge-fill text-warning me-1"></i>Respaldo Automático en Cada Despacho
+                        </span>
+                        <p class="text-muted small mb-0" style="font-size: 0.76rem;">
+                            Cada vez que se procesa o importa un despacho nuevo (manual o por Auto-Vigilante), el sistema genera automáticamente un <code>.ZIP</code> en <code>backups/</code> que se sincroniza en Google Drive.
+                        </p>
+                    </div>
+                    <button class="btn btn-warning btn-sm px-3 fw-bold text-dark shadow-sm" id="btnManualBackup" onclick="crearBackupDesdeConfig()">
+                        <i class="bi bi-cloud-arrow-up-fill me-1"></i> Crear Backup ZIP Ahora
+                    </button>
+                </div>
+
+                <div id="backupAlert" class="alert d-none py-2 small mb-3"></div>
+
+                <!-- Historial de Backups Disponibles -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-bold small text-dark"><i class="bi bi-clock-history me-1"></i>Historial de Respaldos Descargables</span>
+                    <button class="btn btn-link btn-sm text-decoration-none p-0" onclick="cargarHistorialBackups()" title="Actualizar lista">
+                        <i class="bi bi-arrow-clockwise"></i> Refrescar
+                    </button>
+                </div>
+
+                <div class="table-responsive border rounded-2" style="max-height: 240px; overflow-y: auto;">
+                    <table class="table table-hover table-sm align-middle mb-0 small">
+                        <thead class="table-light text-muted sticky-top">
+                            <tr>
+                                <th>Archivo ZIP</th>
+                                <th>Fecha</th>
+                                <th>Tamaño</th>
+                                <th class="text-end">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backupsTableBody">
+                            <tr>
+                                <td colspan="4" class="text-center py-3 text-muted">Cargando respaldos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Columna Lateral: Estado Local, Actualizaciones Multi-PC y Guía -->
+    <div class="col-lg-5">
+        
+        <!-- Tarjeta de Actualizaciones del Sistema (Multi-PC sin Pendrive) -->
+        <div class="card border-0 shadow-sm rounded-3 mb-4 border-primary">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-cloud-download-fill text-primary fs-5"></i>
+                    <div>
+                        <h6 class="mb-0 fw-bold text-dark">Actualizaciones Multi-PC</h6>
+                        <small class="text-muted">Actualiza otras computadoras sin usar pendrive</small>
+                    </div>
+                </div>
+                <span class="badge bg-primary fs-6 px-2 py-1 font-monospace">v{{ app_version }}</span>
+            </div>
+            <div class="card-body p-3">
+                <div class="p-3 bg-light rounded-3 border mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-semibold small text-dark">Versión Local en esta PC:</span>
+                        <strong class="font-monospace text-primary">v{{ app_version }}</strong>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm w-100" id="btnCheckUpdatesConfig" onclick="comprobarActualizacionesConfig()">
+                        <i class="bi bi-arrow-repeat me-1"></i> Comprobar si hay nueva versión
+                    </button>
+                    
+                    <div id="updateCheckResult" class="mt-2 d-none"></div>
+                </div>
+
+                <!-- Sincronización con Repositorio Git / GitHub -->
+                <div class="p-3 bg-white rounded-3 border mb-3 shadow-2xs" id="gitStatusContainer">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold small text-dark"><i class="bi bi-github me-1"></i>Repositorio Git / GitHub</span>
+                        <span class="badge bg-secondary-subtle text-secondary" id="gitBadgeState">Consultando...</span>
+                    </div>
+                    <div id="gitDetails" class="small text-muted mb-2 font-monospace" style="font-size: 0.73rem;">
+                        <span class="spinner-border spinner-border-sm me-1"></span> Leyendo repositorio...
+                    </div>
+                    <button class="btn btn-dark btn-sm w-100 fw-semibold" id="btnGitPull" onclick="ejecutarGitPull()" disabled>
+                        <i class="bi bi-arrow-down-circle me-1"></i> Sincronizar con Git (git pull)
+                    </button>
+                    <div id="gitPullResult" class="mt-2 d-none"></div>
+                </div>
+
+                <!-- Acordeón / Modo Desarrollador para Publicar Actualizaciones ZIP -->
+                <div class="border rounded-2 p-2 bg-white">
+                    <button class="btn btn-link btn-sm text-decoration-none text-muted w-100 text-start d-flex justify-content-between align-items-center" type="button" data-bs-toggle="collapse" data-bs-target="#developerPublishCard">
+                        <span><i class="bi bi-file-earmark-zip text-dark me-1"></i> <strong>Fallback ZIP (Publicar Versión Manual)</strong></span>
+                        <i class="bi bi-chevron-down small"></i>
+                    </button>
+                    
+                    <div class="collapse pt-2 border-top mt-2" id="developerPublishCard">
+                        <p class="text-muted small mb-2" style="font-size: 0.74rem;">
+                            Empaqueta el código en <code>update_latest.zip</code> y genera <code>version.json</code> en Google Drive / red compartida para PCs sin Git.
+                        </p>
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold mb-1" style="font-size: 0.72rem;">Número de Nueva Versión (ej: 1.0.1, 1.1.0):</label>
+                            <input type="text" id="inputNewVersion" class="form-control form-control-sm font-monospace" placeholder="1.1.0" value="1.0.1">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold mb-1" style="font-size: 0.72rem;">Notas de la Versión / Changelog:</label>
+                            <input type="text" id="inputChangelog" class="form-control form-control-sm" placeholder="Ej: Agregado visor PDF y módulo de backups">
+                        </div>
+                        <button class="btn btn-success btn-sm w-100 fw-semibold" id="btnPublishUpdate" onclick="publicarNuevaVersion()">
+                            <i class="bi bi-cloud-upload-fill me-1"></i> Publicar Actualización ZIP
+                        </button>
+                        <div id="publishResultAlert" class="alert d-none py-1 small mt-2 mb-0"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tarjeta de Notificaciones Telegram & Webhooks -->
+        <div class="card border-0 shadow-sm rounded-3 mb-4">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-telegram text-primary fs-5"></i>
+                    <div>
+                        <h6 class="mb-0 fw-bold text-dark">Alertas Telegram & Webhook</h6>
+                        <small class="text-muted">Notificaciones automáticas en tiempo real</small>
+                    </div>
+                </div>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="notiToggleSwitch" {% if notifications_enabled %}checked{% endif %}>
+                </div>
+            </div>
+            <div class="card-body p-3">
+                <p class="text-muted small mb-3" style="font-size: 0.76rem;">
+                    Envía un mensaje de alerta a Telegram o a tu servidor Webhook cada vez que el Auto-Vigilante procese un despacho nuevo desde Google Drive.
+                </p>
+
+                <!-- Formulario Telegram -->
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold text-dark mb-1" style="font-size: 0.72rem;">
+                        <i class="bi bi-key-fill text-warning me-1"></i>Telegram Bot Token:
+                    </label>
+                    <input type="password" id="inputTelegramToken" class="form-control form-control-sm font-monospace" value="{{ telegram_bot_token }}" placeholder="123456789:ABCdefGHIjkl...">
+                </div>
+
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold text-dark mb-1" style="font-size: 0.72rem;">
+                        <i class="bi bi-chat-dots-fill text-primary me-1"></i>Telegram Chat ID:
+                    </label>
+                    <input type="text" id="inputTelegramChatId" class="form-control form-control-sm font-monospace" value="{{ telegram_chat_id }}" placeholder="-100123456789 o tu ID personal">
+                </div>
+
+                <!-- Formulario Webhook -->
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-dark mb-1" style="font-size: 0.72rem;">
+                        <i class="bi bi-globe me-1 text-secondary"></i>Webhook URL (Opcional):
+                    </label>
+                    <input type="text" id="inputWebhookUrl" class="form-control form-control-sm font-monospace" value="{{ webhook_url }}" placeholder="https://discord.com/api/webhooks/... o webhook custom">
+                </div>
+
+                <div id="notiAlert" class="alert d-none py-1 small mb-2"></div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm flex-fill fw-semibold" id="btnGuardarNoti" onclick="guardarNotificaciones()">
+                        <i class="bi bi-save me-1"></i> Guardar
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm flex-fill fw-semibold" id="btnTestNoti" onclick="probarNotificaciones()">
+                        <i class="bi bi-send me-1"></i> Enviar Prueba
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estado de la Base de Datos Local -->
+        <div class="card border-0 shadow-sm rounded-3 mb-4">
+            <div class="card-header bg-white py-3 border-bottom">
+                <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-hdd-stack-fill text-secondary me-2"></i>Base de Datos Local</h6>
+            </div>
+            <div class="card-body p-3">
+                <ul class="list-group list-group-flush small">
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span class="text-muted">Motor Local:</span>
+                        <span class="fw-semibold font-monospace">SQLite 3 (despachos.db)</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span class="text-muted">Total Despachos Registrados:</span>
+                        <span class="badge bg-primary rounded-pill">{{ total_despachos }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span class="text-muted">Total Mercancías / Ítems:</span>
+                        <span class="badge bg-info-subtle text-info-emphasis rounded-pill">{{ total_items }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span class="text-muted">Ubicación .env:</span>
+                        <span class="text-truncate text-muted font-monospace" style="max-width: 200px;" title="{{ env_path }}">.env</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Guía de Conexión entre Computadoras -->
+        <div class="card border-0 shadow-sm rounded-3 bg-light">
+            <div class="card-body p-3">
+                <h6 class="fw-bold text-dark mb-2"><i class="bi bi-info-circle text-primary me-2"></i>¿Cómo conectar otra PC?</h6>
+                <ol class="small text-muted ps-3 mb-0" style="line-height: 1.6;">
+                    <li>Copia esta misma aplicación en la otra computadora (o descárgala de Google Drive).</li>
+                    <li>Abre esta pantalla de <strong>Configuración</strong> en la otra PC.</li>
+                    <li>Pega la misma URL de Turso y el mismo Token de API.</li>
+                    <li>Presiona <strong>"Descargar de Turso (Pull)"</strong> para cargar todos los despachos automáticamente.</li>
+                    <li>Cada vez que haya actualizaciones, presiona <strong>"Actualizar Sistema en esta PC"</strong> sin usar pendrives.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function showAlert(msg, type = 'info') {
+        const el = document.getElementById('statusAlert');
+        el.className = `alert alert-${type} py-2 small mb-3`;
+        el.innerHTML = msg;
+        el.classList.remove('d-none');
+    }
+
+    function toggleTokenView() {
+        const tokenInput = document.getElementById('inputTursoToken');
+        const eyeIcon = document.getElementById('eyeIcon');
+        if (tokenInput.type === 'password') {
+            tokenInput.type = 'text';
+            eyeIcon.className = 'bi bi-eye-slash';
+        } else {
+            tokenInput.type = 'password';
+            eyeIcon.className = 'bi bi-eye';
+        }
+    }
+
+    async function guardarConfig() {
+        const url = document.getElementById('inputTursoUrl').value.trim();
+        const token = document.getElementById('inputTursoToken').value.trim();
+        const btn = document.getElementById('btnGuardar');
+
+        if (!url || !token) {
+            showAlert('Por favor completa tanto la URL como el Token de API.', 'warning');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...';
+
+        try {
+            const resp = await fetch('/configuracion/api/guardar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({database_url: url, auth_token: token})
+            });
+            const res = await resp.json();
+            if (resp.ok) {
+                showAlert('<i class="bi bi-check-circle-fill me-1"></i> ' + res.message, 'success');
+            } else {
+                showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + (res.detail || 'Error al guardar'), 'danger');
+            }
+        } catch (err) {
+            showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + err.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Configuración';
+        }
+    }
+
+    async function probarConexion() {
+        const url = document.getElementById('inputTursoUrl').value.trim();
+        const token = document.getElementById('inputTursoToken').value.trim();
+        const btn = document.getElementById('btnTest');
+
+        if (!url || !token) {
+            showAlert('Ingresa la URL y el Token para probar la conexión.', 'warning');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Conectando...';
+        showAlert('<span class="spinner-border spinner-border-sm me-1"></span> Probando conexión en vivo con Turso...', 'info');
+
+        try {
+            const resp = await fetch('/configuracion/api/test', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({database_url: url, auth_token: token})
+            });
+            const res = await resp.json();
+            if (resp.ok) {
+                showAlert('<i class="bi bi-check-circle-fill me-1"></i> ' + res.message, 'success');
+            } else {
+                showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + (res.detail || 'Error de conexión con Turso.'), 'danger');
+            }
+        } catch (err) {
+            showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + err.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-broadcast me-1"></i> Probar Conexión en Vivo';
+        }
+    }
+
+    async function ejecutarPush() {
+        const url = document.getElementById('inputTursoUrl').value.trim();
+        const token = document.getElementById('inputTursoToken').value.trim();
+        const btn = document.getElementById('btnPush');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Subiendo a Turso...';
+        showAlert('<span class="spinner-border spinner-border-sm me-1"></span> Subiendo todos los despachos y mercancías a Turso Cloud...', 'info');
+
+        try {
+            const resp = await fetch('/configuracion/api/push', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({database_url: url, auth_token: token})
+            });
+            const res = await resp.json();
+            if (resp.ok) {
+                showAlert('<i class="bi bi-check-circle-fill me-1"></i> ' + res.message, 'success');
+            } else {
+                showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + (res.detail || 'Error al subir.'), 'danger');
+            }
+        } catch (err) {
+            showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + err.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Subir Datos Locales a Turso';
+        }
+    }
+
+    async function ejecutarPull() {
+        const url = document.getElementById('inputTursoUrl').value.trim();
+        const token = document.getElementById('inputTursoToken').value.trim();
+        const btn = document.getElementById('btnPull');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Descargando de Turso...';
+        showAlert('<span class="spinner-border spinner-border-sm me-1"></span> Descargando base de datos desde Turso Cloud...', 'info');
+
+        try {
+            const resp = await fetch('/configuracion/api/pull', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({database_url: url, auth_token: token})
+            });
+            const res = await resp.json();
+            if (resp.ok) {
+                showAlert('<i class="bi bi-check-circle-fill me-1"></i> ' + res.message, 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + (res.detail || 'Error al descargar.'), 'danger');
+            }
+        } catch (err) {
+            showAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + err.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-cloud-download me-1"></i> Descargar Datos a esta PC';
+        }
+    }
+
+    function showGDriveAlert(msg, type = 'info') {
+        const el = document.getElementById('gdriveStatusAlert');
+        el.className = `alert alert-${type} py-2 small mt-3 mb-0`;
+        el.innerHTML = msg;
+        el.classList.remove('d-none');
+    }
+
+    async function scanGoogleDriveCloud() {
+        const folderId = document.getElementById('gdriveFolderIdInput').value.trim();
+        const btn = document.getElementById('btnScanGDrive');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Escaneando...';
+        showGDriveAlert('<span class="spinner-border spinner-border-sm me-1"></span> Conectando a Google Drive y buscando PDFs...', 'info');
+
+        try {
+            const resp = await fetch('/configuracion/api/gdrive/scan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({folder_id: folderId, propietario: 'Google Drive'})
+            });
+            const res = await resp.json();
+            if (resp.ok) {
+                showGDriveAlert('<i class="bi bi-check-circle-fill me-1"></i> ' + res.message, 'success');
+            } else {
+                showGDriveAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + (res.detail || 'Error al escanear Drive.'), 'danger');
+            }
+        } catch (err) {
+            showGDriveAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + err.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Escanear Google Drive';
+        }
+    }
+
+    async function scanGoogleDriveLocal() {
+        const path = document.getElementById('gdriveLocalPathInput').value.trim();
+        const btn = document.getElementById('btnScanLocal');
+
+        if (!path) {
+            showGDriveAlert('Ingresa la ruta de la carpeta local de Google Drive.', 'warning');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Escaneando...';
+        showGDriveAlert('<span class="spinner-border spinner-border-sm me-1"></span> Escaneando carpeta local...', 'info');
+
+        try {
+            const resp = await fetch('/configuracion/api/gdrive/scan-local', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({local_path: path, propietario: 'Google Drive PC'})
+            });
+            const res = await resp.json();
+            if (resp.ok) {
+                showGDriveAlert('<i class="bi bi-check-circle-fill me-1"></i> ' + res.message, 'success');
+            } else {
+                showGDriveAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + (res.detail || 'Error al escanear carpeta.'), 'danger');
+            }
+        } catch (err) {
+            showGDriveAlert('<i class="bi bi-x-circle-fill me-1"></i> ' + err.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-folder-check me-1"></i> Escanear Carpeta Local';
+        }
+    }
+
+    async function pollWatcherStatus() {
+        try {
+            const resp = await fetch('/configuracion/api/gdrive/watcher/status');
+            if (resp.ok) {
+                const data = await resp.json();
+                const indicator = document.getElementById('watcherPulseIndicator');
+                const switchEl = document.getElementById('watcherToggleSwitch');
+                const lastCheckedEl = document.getElementById('watcherLastChecked');
+                const selectEl = document.getElementById('watcherIntervalSelect');
+
+                if (switchEl) switchEl.checked = data.is_enabled;
+                if (indicator) {
+                    indicator.className = data.is_enabled ? 'status-indicator bg-success' : 'status-indicator bg-secondary';
+                }
+                if (lastCheckedEl) {
+                    lastCheckedEl.textContent = data.last_checked_at || 'Esperando...';
+                }
+                if (selectEl && !selectEl.matches(':focus')) {
+                    selectEl.value = data.interval_seconds;
+                }
+            }
+        } catch (e) {}
+    }
+
+    async function toggleWatcherState(enabled) {
+        try {
+            await fetch('/configuracion/api/gdrive/watcher/toggle', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled: enabled})
+            });
+            pollWatcherStatus();
+        } catch (e) {}
+    }
+
+    async function updateWatcherInterval(val) {
+        try {
+            await fetch('/configuracion/api/gdrive/watcher/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({interval_seconds: parseInt(val)})
+            });
+            pollWatcherStatus();
+        } catch (e) {}
+    }
+
+    // ==========================================
+    // Módulo de Copias de Seguridad (Backup)
+    // ==========================================
+    async function cargarHistorialBackups() {
+        const tbody = document.getElementById('backupsTableBody');
+        if (!tbody) return;
+
+        try {
+            const resp = await fetch('/api/backup/listar');
+            if (resp.ok) {
+                const data = await resp.json();
+                const backups = data.backups || [];
+                if (backups.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">Aún no hay respaldos generados.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = backups.map(b => `
+                    <tr>
+                        <td>
+                            <i class="bi bi-file-earmark-zip-fill text-warning me-1"></i>
+                            <span class="font-monospace fw-semibold">${b.filename}</span>
+                        </td>
+                        <td class="text-muted">${b.created_at}</td>
+                        <td><span class="badge bg-light text-dark border">${b.size_formatted}</span></td>
+                        <td class="text-end">
+                            <a href="${b.download_url}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Descargar ZIP">
+                                <i class="bi bi-download"></i> Descargar
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1" onclick="eliminarBackup('${b.filename}')" title="Eliminar">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-2">Error al cargar historial de backups.</td></tr>';
+        }
+    }
+
+    async function crearBackupDesdeConfig() {
+        const btn = document.getElementById('btnManualBackup');
+        const alertEl = document.getElementById('backupAlert');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Creando ZIP...';
+        alertEl.className = 'alert alert-info py-2 small mb-3';
+        alertEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Empaquetando base de datos, PDFs y sistema...';
+        alertEl.classList.remove('d-none');
+
+        try {
+            const resp = await fetch('/api/backup/crear', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({reason: 'CONFIGURACION_MANUAL'})
+            });
+            const res = await resp.json();
+            if (resp.ok && res.success) {
+                alertEl.className = 'alert alert-success py-2 small mb-3';
+                alertEl.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> <strong>¡Backup generado con éxito!</strong> Archivo: <code>${res.filename}</code> (${res.size_mb} MB) guardado en <code>backups/</code>.`;
+                cargarHistorialBackups();
+            } else {
+                alertEl.className = 'alert alert-danger py-2 small mb-3';
+                alertEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error: ${res.detail || res.error || 'Error al generar el respaldo'}`;
+            }
+        } catch (err) {
+            alertEl.className = 'alert alert-danger py-2 small mb-3';
+            alertEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error de conexión: ${err.message}`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-cloud-arrow-up-fill me-1"></i> Crear Backup ZIP Ahora';
+        }
+    }
+
+    async function eliminarBackup(filename) {
+        if (!confirm(`¿Deseas eliminar el archivo de respaldo '${filename}'?`)) return;
+        try {
+            const resp = await fetch(`/api/backup/${filename}`, { method: 'DELETE' });
+            if (resp.ok) {
+                cargarHistorialBackups();
+            } else {
+                alert('No se pudo eliminar el archivo.');
+            }
+        } catch (e) {
+            alert('Error de conexión al eliminar: ' + e.message);
+        }
+    }
+
+    // ==========================================
+    // Módulo de Actualizaciones Multi-PC
+    // ==========================================
+    async function comprobarActualizacionesConfig() {
+        const btn = document.getElementById('btnCheckUpdatesConfig');
+        const resEl = document.getElementById('updateCheckResult');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Verificando...';
+        resEl.classList.remove('d-none');
+        resEl.innerHTML = '<div class="small text-muted"><span class="spinner-border spinner-border-sm me-1"></span> Consultando Google Drive / Red...</div>';
+
+        try {
+            const resp = await fetch('/api/updates/check');
+            const data = await resp.json();
+            if (resp.ok) {
+                if (data.has_update) {
+                    resEl.innerHTML = `
+                        <div class="alert alert-warning py-2 small mb-0 mt-2">
+                            <div class="fw-bold"><i class="bi bi-stars text-warning me-1"></i> ¡Nueva versión disponible: v${data.latest_version}!</div>
+                            <div class="text-muted mb-2">${data.changelog || 'Nuevas mejoras incluidas'} (${data.file_size_mb || 0} MB)</div>
+                            <button class="btn btn-dark btn-sm w-100 fw-bold" onclick="aplicarActualizacionConfig()">
+                                <i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar Sistema en esta PC
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    resEl.innerHTML = `
+                        <div class="alert alert-success py-2 small mb-0 mt-2">
+                            <i class="bi bi-check-circle-fill me-1"></i> <strong>Tu sistema está al día.</strong> Versión v${data.current_version}.
+                        </div>
+                    `;
+                }
+            } else {
+                resEl.innerHTML = `<div class="alert alert-danger py-1 small mb-0 mt-2">Error al verificar: ${data.detail || 'Error desconocido'}</div>`;
+            }
+        } catch (err) {
+            resEl.innerHTML = `<div class="alert alert-danger py-1 small mb-0 mt-2">Error de conexión: ${err.message}</div>`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Comprobar si hay nueva versión';
+        }
+    }
+
+    async function aplicarActualizacionConfig() {
+        if (!confirm('¿Deseas actualizar el sistema ahora? Se creará un respaldo preventivo de la base de datos antes de aplicar los cambios.')) return;
+
+        const resEl = document.getElementById('updateCheckResult');
+        resEl.innerHTML = '<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span> Aplicando actualización y respaldando datos... Por favor espera...</div>';
+
+        try {
+            const resp = await fetch('/api/updates/apply', { method: 'POST' });
+            const res = await resp.json();
+            if (resp.ok && res.success) {
+                resEl.innerHTML = `
+                    <div class="alert alert-success py-2 small mb-0">
+                        <i class="bi bi-check-circle-fill me-1"></i> <strong>${res.message}</strong> Reiniciando aplicación...
+                    </div>
+                `;
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                resEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0">Error: ${res.detail || res.error}</div>`;
+            }
+        } catch (err) {
+            resEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0">Error de conexión: ${err.message}</div>`;
+        }
+    }
+
+    async function publicarNuevaVersion() {
+        const ver = document.getElementById('inputNewVersion').value.trim();
+        const changelog = document.getElementById('inputChangelog').value.trim();
+        const btn = document.getElementById('btnPublishUpdate');
+        const alertEl = document.getElementById('publishResultAlert');
+
+        if (!ver) {
+            alert('Por favor ingresa un número de versión.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Empaquetando y Publicando...';
+        alertEl.classList.add('d-none');
+
+        try {
+            const resp = await fetch('/api/updates/publish', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({version: ver, changelog: changelog})
+            });
+            const res = await resp.json();
+            if (resp.ok && res.success) {
+                alertEl.className = 'alert alert-success py-1 small mt-2 mb-0';
+                alertEl.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> <strong>¡Versión v${res.version} publicada con éxito!</strong> Las demás computadoras recibirán la notificación de actualización automáticamente.`;
+                alertEl.classList.remove('d-none');
+            } else {
+                alertEl.className = 'alert alert-danger py-1 small mt-2 mb-0';
+                alertEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error: ${res.detail || res.error}`;
+                alertEl.classList.remove('d-none');
+            }
+        } catch (err) {
+            alertEl.className = 'alert alert-danger py-1 small mt-2 mb-0';
+            alertEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error de conexión: ${err.message}`;
+            alertEl.classList.remove('d-none');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-cloud-upload-fill me-1"></i> Publicar Actualización ZIP';
+        }
+    }
+
+    // ==========================================
+    // Módulo de Git / GitHub
+    // ==========================================
+    async function cargarEstadoGit() {
+        const detailsEl = document.getElementById('gitDetails');
+        const badgeEl = document.getElementById('gitBadgeState');
+        const btnPull = document.getElementById('btnGitPull');
+
+        try {
+            const resp = await fetch('/api/updates/git/status');
+            const data = await resp.json();
+
+            if (data.has_git) {
+                badgeEl.className = 'badge bg-success-subtle text-success';
+                badgeEl.textContent = 'Git Activo';
+                btnPull.disabled = false;
+
+                detailsEl.innerHTML = `
+                    <div><strong>Rama:</strong> <span class="text-primary">${data.branch}</span></div>
+                    <div><strong>Commit:</strong> <span class="text-dark">${data.commit_hash}</span> - ${data.commit_msg || ''} (${data.commit_date || ''})</div>
+                    ${data.remote_url ? `<div class="text-truncate text-muted" title="${data.remote_url}"><strong>Remoto:</strong> ${data.remote_url}</div>` : ''}
+                `;
+            } else {
+                badgeEl.className = 'badge bg-warning-subtle text-warning-emphasis';
+                badgeEl.textContent = 'Sin Repo Git';
+                btnPull.disabled = true;
+                detailsEl.innerHTML = `<span class="text-muted">${data.message || 'No se detectó carpeta .git. Usa el actualizador ZIP.'}</span>`;
+            }
+        } catch (e) {
+            badgeEl.className = 'badge bg-secondary';
+            badgeEl.textContent = 'Desconectado';
+            detailsEl.textContent = 'No se pudo consultar el estado de Git.';
+        }
+    }
+
+    async function ejecutarGitPull() {
+        const btn = document.getElementById('btnGitPull');
+        const resEl = document.getElementById('gitPullResult');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Ejecutando git pull...';
+        resEl.className = 'alert alert-info py-2 small mt-2 mb-0';
+        resEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Respaldando base de datos y descargando cambios de Git...';
+        resEl.classList.remove('d-none');
+
+        try {
+            const resp = await fetch('/api/updates/git/pull', { method: 'POST' });
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                resEl.className = 'alert alert-success py-2 small mt-2 mb-0';
+                resEl.innerHTML = `
+                    <i class="bi bi-check-circle-fill me-1"></i> <strong>${data.message}</strong>
+                    ${data.backup_file ? `<div class="text-muted small">Respaldo preventivo: ${data.backup_file}</div>` : ''}
+                `;
+                cargarEstadoGit();
+            } else {
+                resEl.className = 'alert alert-danger py-2 small mt-2 mb-0';
+                resEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error: ${data.detail || data.error || 'Error al ejecutar git pull'}`;
+            }
+        } catch (err) {
+            resEl.className = 'alert alert-danger py-2 small mt-2 mb-0';
+            resEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error de conexión: ${err.message}`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Sincronizar con Git (git pull)';
+        }
+    }
+
+    // ==========================================
+    // Módulo de Notificaciones Telegram / Webhook
+    // ==========================================
+    async function guardarNotificaciones() {
+        const token = document.getElementById('inputTelegramToken').value.trim();
+        const chatId = document.getElementById('inputTelegramChatId').value.trim();
+        const webhook = document.getElementById('inputWebhookUrl').value.trim();
+        const enabled = document.getElementById('notiToggleSwitch').checked;
+        const btn = document.getElementById('btnGuardarNoti');
+        const alertEl = document.getElementById('notiAlert');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...';
+
+        try {
+            const resp = await fetch('/configuracion/api/notificaciones/guardar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    telegram_bot_token: token,
+                    telegram_chat_id: chatId,
+                    webhook_url: webhook,
+                    notifications_enabled: enabled
+                })
+            });
+            const res = await resp.json();
+            if (resp.ok) {
+                alertEl.className = 'alert alert-success py-1 small mb-2';
+                alertEl.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> ' + res.message;
+            } else {
+                alertEl.className = 'alert alert-danger py-1 small mb-2';
+                alertEl.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i> ' + (res.detail || 'Error al guardar');
+            }
+            alertEl.classList.remove('d-none');
+        } catch (err) {
+            alertEl.className = 'alert alert-danger py-1 small mb-2';
+            alertEl.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i> ' + err.message;
+            alertEl.classList.remove('d-none');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar';
+        }
+    }
+
+    async function probarNotificaciones() {
+        const token = document.getElementById('inputTelegramToken').value.trim();
+        const chatId = document.getElementById('inputTelegramChatId').value.trim();
+        const webhook = document.getElementById('inputWebhookUrl').value.trim();
+        const btn = document.getElementById('btnTestNoti');
+        const alertEl = document.getElementById('notiAlert');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Enviando...';
+        alertEl.className = 'alert alert-info py-1 small mb-2';
+        alertEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Enviando alerta de prueba...';
+        alertEl.classList.remove('d-none');
+
+        try {
+            const resp = await fetch('/configuracion/api/notificaciones/test', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    telegram_bot_token: token,
+                    telegram_chat_id: chatId,
+                    webhook_url: webhook
+                })
+            });
+            const res = await resp.json();
+            if (resp.ok && res.success) {
+                alertEl.className = 'alert alert-success py-1 small mb-2';
+                alertEl.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>¡Éxito!</strong> ' + res.message;
+            } else {
+                alertEl.className = 'alert alert-danger py-1 small mb-2';
+                alertEl.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i> Error: ' + (res.detail || res.error || 'Fallo al enviar prueba');
+            }
+        } catch (err) {
+            alertEl.className = 'alert alert-danger py-1 small mb-2';
+            alertEl.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i> Error de conexión: ' + err.message;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-send me-1"></i> Enviar Prueba';
+        }
+    }
+
+    // Iniciar sondeo periódico de estado y cargar historial de backups
+    document.addEventListener('DOMContentLoaded', () => {
+        pollWatcherStatus();
+        cargarHistorialBackups();
+        cargarEstadoGit();
+        setInterval(pollWatcherStatus, 10000);
+    });
+</script>
+{% endblock %}

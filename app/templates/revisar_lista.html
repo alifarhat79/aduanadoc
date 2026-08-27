@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Pendientes de Revisión | Sistema de Despachos{% endblock %}
+{% block page_title %}Despachos Pendientes de Revisión Humana{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm rounded-3">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <div>
+            <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Documentos para Validar</h6>
+            <small class="text-muted">Despachos con baja confianza o con campos pendientes de verificación</small>
+        </div>
+        <span class="badge bg-warning text-dark px-3 py-2 fs-6">{{ despachos|length }} pendiente(s)</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light text-muted small text-uppercase">
+                    <tr>
+                        <th>Nº Despacho</th>
+                        <th>Fecha</th>
+                        <th>Importador</th>
+                        <th>Archivo Original</th>
+                        <th>Confianza</th>
+                        <th>Estado</th>
+                        <th class="text-end">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if despachos %}
+                        {% for d in despachos %}
+                        <tr>
+                            <td class="fw-bold text-primary">{{ d.numero_despacho or 'S/N (' ~ d.id ~ ')' }}</td>
+                            <td>{{ d.fecha_despacho.strftime('%d/%m/%Y') if d.fecha_despacho else '-' }}</td>
+                            <td>{{ d.importador_nombre or 'No identificado' }}</td>
+                            <td class="text-truncate" style="max-width: 220px;" title="{{ d.nombre_archivo_original }}">
+                                {{ d.nombre_archivo_original }}
+                            </td>
+                            <td>
+                                <span class="badge {% if d.confianza_promedio >= 0.9 %}bg-success{% elif d.confianza_promedio >= 0.7 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                                    {{ "{:.0%}".format(d.confianza_promedio) }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                                    {{ d.estado_procesamiento }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <a href="/revisar/{{ d.id }}" class="btn btn-warning btn-sm d-inline-flex align-items-center gap-1 shadow-sm">
+                                    <i class="bi bi-pencil-square"></i> Revisar Ahora
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">
+                                <i class="bi bi-check-circle-fill text-success fs-2 d-block mb-2"></i>
+                                ¡Excelente! No hay documentos pendientes de revisión humana.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

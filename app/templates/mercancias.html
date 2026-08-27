@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+
+{% block title %}Tabla Consolidada de Mercancías | AduanaDoc{% endblock %}
+{% block page_title %}Catálogo Consolidado de Mercancías e Ítems{% endblock %}
+
+{% block content %}
+<!-- Mini KPIs de Marcas (Píldoras Interactivas - Al hacer clic filtra la tabla) -->
+<div class="card border-0 shadow-sm rounded-3 mb-4">
+    <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-tags-fill text-primary fs-5"></i>
+            <span class="fw-bold text-dark small text-uppercase">Marcas Destacadas (Clic para filtrar en el acto)</span>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="filterByMarca('')" style="font-size: 0.75rem;">
+                <i class="bi bi-x-circle me-1"></i>Todas las Marcas
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-3">
+        <div class="d-flex gap-2 flex-wrap align-items-center" id="brandPillsContainer">
+            <button type="button" class="btn btn-sm btn-light border marca-pill active fw-semibold shadow-2xs" onclick="filterByMarca('')" data-marca="">
+                <i class="bi bi-grid-fill me-1 text-primary"></i> Todas ({{ total_items }})
+            </button>
+            {% for m in marca_kpis %}
+                {% if m.marca %}
+                <button type="button" 
+                        class="btn btn-sm btn-light border marca-pill fw-semibold shadow-2xs d-flex align-items-center gap-1"
+                        onclick="filterByMarca('{{ m.marca }}')" 
+                        data-marca="{{ m.marca }}">
+                    <span class="text-primary">{{ m.marca }}</span>
+                    <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-0" style="font-size: 0.7rem;">{{ m.total_items }}</span>
+                </button>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Resumen y Filtros Principales -->
+<div class="card border-0 shadow-sm rounded-3 mb-4">
+    <div class="card-body p-3">
+        <div class="row g-3 align-items-center">
+            <!-- Totales Clave -->
+            <div class="col-xl-4 col-lg-5">
+                <div class="d-flex gap-3 align-items-center bg-light p-2 px-3 rounded-3 border">
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">MERCANCÍAS</small>
+                        <span class="fw-bold text-dark fs-5" id="kpiCount">{{ total_items }}</span>
+                    </div>
+                    <div class="vr"></div>
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">CANTIDAD TOTAL</small>
+                        <span class="fw-bold text-primary fs-5" id="kpiQty">{{ "{:,.2f}".format(total_cantidad_filtrada) }}</span>
+                    </div>
+                    <div class="vr"></div>
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">TOTAL FOB (USD)</small>
+                        <span class="fw-bold text-success fs-5" id="kpiFob">${{ "{:,.2f}".format(total_fob_filtrado) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buscador en Vivo General -->
+            <div class="col-xl-4 col-lg-4">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-primary"></i></span>
+                    <input type="text" id="liveSearchInput" class="form-control" placeholder="Buscar por producto, marca, código EAN, despacho, dueño...">
+                </div>
+            </div>
+
+            <!-- Botones de Exportación (Exportan TODO el filtrado en una sola tabla) -->
+            <div class="col-xl-4 col-lg-3 text-end">
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-success dropdown-toggle fw-semibold shadow-2xs" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-download me-1"></i> Exportar Filtrado
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2" href="#" onclick="triggerExport('excel')">
+                                <i class="bi bi-file-earmark-excel text-success fs-5"></i>
+                                <div>
+                                    <div class="fw-semibold">Excel (.xlsx)</div>
+                                    <small class="text-muted">Una sola tabla completa</small>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2" href="#" onclick="triggerExport('csv')">
+                                <i class="bi bi-filetype-csv text-primary fs-5"></i>
+                                <div>
+                                    <div class="fw-semibold">Google Sheets / CSV</div>
+                                    <small class="text-muted">Formato UTF-8 con BOM</small>
+                                </div>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros Dropdown Rápidos & Rango de Fechas -->
+        <div class="row g-2 pt-3 mt-1 border-top align-items-end">
+            <div class="col-xl-2 col-md-4 col-sm-6">
+                <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Marca:</label>
+                <select id="filterMarcaSelect" class="form-select form-select-sm">
+                    <option value="">-- Todas las Marcas --</option>
+                    {% for m in todas_marcas %}
+                    <option value="{{ m }}" {% if selected_marca == m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-4 col-sm-6">
+                <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">NCM / Posición:</label>
+                <select id="filterNcmSelect" class="form-select form-select-sm">
+                    <option value="">-- Todos los NCM --</option>
+                    {% for n in todos_ncms %}
+                    <option value="{{ n }}" {% if selected_ncm == n %}selected{% endif %}>{{ n }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-4 col-sm-6">
+                <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Dueño / Cliente:</label>
+                <select id="filterPropietarioSelect" class="form-select form-select-sm">
+                    <option value="">-- Todos los Dueños --</option>
+                    {% for p in todos_propietarios %}
+                    <option value="{{ p }}" {% if selected_propietario == p %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-xl-2 col-md-3 col-sm-6">
+                <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;"><i class="bi bi-calendar-event me-1 text-primary"></i>Fecha Desde:</label>
+                <input type="date" id="filterFechaDesde" class="form-control form-control-sm" value="{{ selected_fecha_desde }}">
+            </div>
+            <div class="col-xl-2 col-md-3 col-sm-6">
+                <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;"><i class="bi bi-calendar-event-fill me-1 text-primary"></i>Fecha Hasta:</label>
+                <input type="date" id="filterFechaHasta" class="form-control form-control-sm" value="{{ selected_fecha_hasta }}">
+            </div>
+            <div class="col-xl-2 col-md-6 col-sm-12">
+                <button class="btn btn-light btn-sm border w-100 fw-semibold" onclick="resetAllFilters()">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i> Limpiar Filtros
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de Mercancías con Paginación a 35 Filas por Página -->
+<div class="card border-0 shadow-sm rounded-3">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-box-seam me-2 text-warning"></i>Lista de Mercancías Consolidadas</h6>
+            <span class="badge bg-light text-muted border" id="pageIndicatorBadge">Página 1</span>
+        </div>
+        <div class="small text-muted" id="paginationSummary">
+            Mostrando 1 a 35 de {{ items|length }} mercancías
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="mercanciasTable">
+            <thead class="table-light text-muted small text-uppercase">
+                <tr>
+                    <th style="width: 130px;">Nº Despacho</th>
+                    <th style="width: 100px;">Fecha</th>
+                    <th style="width: 140px;">Dueño / Cliente</th>
+                    <th style="width: 50px;">Ítem</th>
+                    <th style="width: 120px;">NCM</th>
+                    <th style="width: 110px;" class="text-primary fw-bold">MARCA</th>
+                    <th style="width: 140px;">Código / EAN</th>
+                    <th style="min-width: 260px;">Descripción del Producto</th>
+                    <th class="text-end" style="width: 85px;">Cantidad</th>
+                    <th class="text-end" style="width: 95px;">Unitario</th>
+                    <th class="text-end" style="width: 105px;">FOB Total</th>
+                    <th class="text-center" style="width: 50px;">Acción</th>
+                </tr>
+            </thead>
+            <tbody id="mercanciasTableBody">
+                {% if items %}
+                    {% for it in items %}
+                    <tr class="mercancia-row"
+                        data-marca="{{ (it.marca or '')|lower }}"
+                        data-ncm="{{ it.codigo_ncm or '' }}"
+                        data-propietario="{{ (it.despacho.propietario or '')|lower }}"
+                        data-fecha="{{ it.despacho.fecha_despacho.isoformat() if it.despacho.fecha_despacho else '' }}"
+                        data-search="{{ (it.marca or '')|lower }} {{ (it.descripcion or '')|lower }} {{ (it.codigo_producto or '')|lower }} {{ (it.codigo_ncm or '')|lower }} {{ (it.despacho.numero_despacho or '')|lower }} {{ (it.despacho.importador_nombre or '')|lower }} {{ (it.despacho.propietario or '')|lower }}"
+                        data-cantidad="{{ it.cantidad or 0 }}"
+                        data-fob="{{ it.valor_total or 0 }}">
+                        <td>
+                            <a href="/despachos/{{ it.despacho_id }}?highlight_item={{ it.id }}#item-{{ it.id }}" class="fw-bold text-primary font-monospace text-decoration-none small">
+                                {{ it.despacho.numero_despacho or 'ID ' ~ it.despacho_id }}
+                            </a>
+                        </td>
+                        <td class="small text-muted font-monospace">
+                            {{ it.despacho.fecha_despacho.strftime('%d/%m/%Y') if it.despacho.fecha_despacho else '-' }}
+                        </td>
+                        <td>
+                            {% if it.despacho.propietario %}
+                                <span class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1">
+                                    <i class="bi bi-person-fill me-1"></i>{{ it.despacho.propietario }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted small">Sin Asignar</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-semibold small">{{ it.numero_item }}{% if it.numero_subitem %}.{{ it.numero_subitem }}{% endif %}</td>
+                        <td class="font-monospace small">{{ it.codigo_ncm or '-' }}</td>
+                        <td>
+                            <span class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1" style="cursor: pointer;" onclick="filterByMarca('{{ it.marca }}')">
+                                {{ it.marca or 'Sin Marca' }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if it.codigo_producto %}
+                                <code class="text-dark fw-bold bg-light px-2 py-1 rounded border font-monospace">{{ it.codigo_producto }}</code>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-medium text-dark small">
+                            {{ it.descripcion or '-' }}
+                        </td>
+                        <td class="text-end font-monospace fw-semibold small">
+                            {{ "{:,.2f}".format(it.cantidad) if it.cantidad is not none else '-' }}
+                        </td>
+                        <td class="text-end small">${{ "{:,.2f}".format(it.valor_unitario) if it.valor_unitario else '-' }}</td>
+                        <td class="text-end fw-semibold text-dark small">${{ "{:,.2f}".format(it.valor_total) if it.valor_total else '-' }}</td>
+                        <td class="text-center">
+                            <a href="/despachos/{{ it.despacho_id }}?highlight_item={{ it.id }}#item-{{ it.id }}" class="btn btn-sm btn-light border py-0 px-1" title="Ver Ítem en Despacho">
+                                <i class="bi bi-eye text-primary"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr id="emptyRow">
+                        <td colspan="11" class="text-center py-4 text-muted">No se encontraron mercancías registradas.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginación Interactiva (35 filas por página) -->
+    <div class="card-footer bg-white py-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">Filas por página: <strong>35</strong></span>
+        </div>
+        <nav aria-label="Navegación de mercancías">
+            <ul class="pagination pagination-sm mb-0 justify-content-center" id="paginationControls">
+                <!-- Controles generados dinámicamente por JavaScript -->
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const PAGE_SIZE = 35;
+        let currentPage = 1;
+
+        const rows = Array.from(document.querySelectorAll('.mercancia-row'));
+        const liveSearchInput = document.getElementById('liveSearchInput');
+        const filterMarcaSelect = document.getElementById('filterMarcaSelect');
+        const filterNcmSelect = document.getElementById('filterNcmSelect');
+        const filterPropietarioSelect = document.getElementById('filterPropietarioSelect');
+        const filterFechaDesde = document.getElementById('filterFechaDesde');
+        const filterFechaHasta = document.getElementById('filterFechaHasta');
+        const paginationControls = document.getElementById('paginationControls');
+        const paginationSummary = document.getElementById('paginationSummary');
+        const pageIndicatorBadge = document.getElementById('pageIndicatorBadge');
+        const kpiCount = document.getElementById('kpiCount');
+        const kpiQty = document.getElementById('kpiQty');
+        const kpiFob = document.getElementById('kpiFob');
+        const brandPills = document.querySelectorAll('.marca-pill');
+
+        let matchedRows = rows;
+
+        function applyFilters() {
+            const query = (liveSearchInput?.value || '').toLowerCase().trim();
+            const selectedMarca = (filterMarcaSelect?.value || '').toLowerCase().trim();
+            const selectedNcm = (filterNcmSelect?.value || '').trim();
+            const selectedProp = (filterPropietarioSelect?.value || '').toLowerCase().trim();
+            const fDesde = (filterFechaDesde?.value || '').trim();
+            const fHasta = (filterFechaHasta?.value || '').trim();
+
+            matchedRows = rows.filter(row => {
+                const searchData = row.getAttribute('data-search') || '';
+                const rowMarca = row.getAttribute('data-marca') || '';
+                const rowNcm = row.getAttribute('data-ncm') || '';
+                const rowProp = row.getAttribute('data-propietario') || '';
+                const rowFecha = (row.getAttribute('data-fecha') || '').trim();
+
+                const matchesQuery = !query || searchData.includes(query);
+                const matchesMarca = !selectedMarca || rowMarca === selectedMarca;
+                const matchesNcm = !selectedNcm || rowNcm === selectedNcm;
+                const matchesProp = !selectedProp || rowProp === selectedProp;
+                
+                let matchesFecha = true;
+                if (fDesde && rowFecha) {
+                    if (rowFecha < fDesde) matchesFecha = false;
+                } else if (fDesde && !rowFecha) {
+                    matchesFecha = false;
+                }
+
+                if (fHasta && rowFecha) {
+                    if (rowFecha > fHasta) matchesFecha = false;
+                } else if (fHasta && !rowFecha) {
+                    matchesFecha = false;
+                }
+
+                return matchesQuery && matchesMarca && matchesNcm && matchesProp && matchesFecha;
+            });
+
+            // Actualizar KPIs de totales filtrados
+            let totalQty = 0;
+            let totalFob = 0;
+            matchedRows.forEach(r => {
+                totalQty += parseFloat(r.getAttribute('data-cantidad') || 0);
+                totalFob += parseFloat(r.getAttribute('data-fob') || 0);
+            });
+
+            if (kpiCount) kpiCount.textContent = matchedRows.length;
+            if (kpiQty) kpiQty.textContent = totalQty.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            if (kpiFob) kpiFob.textContent = '$' + totalFob.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+            // Actualizar estado de píldoras de marca
+            brandPills.forEach(pill => {
+                const pillMarca = (pill.getAttribute('data-marca') || '').toLowerCase();
+                if ((!selectedMarca && !pillMarca) || (selectedMarca && pillMarca === selectedMarca)) {
+                    pill.classList.add('btn-primary', 'text-white');
+                    pill.classList.remove('btn-light', 'text-primary');
+                } else {
+                    pill.classList.remove('btn-primary', 'text-white');
+                    pill.classList.add('btn-light');
+                }
+            });
+
+            currentPage = 1;
+            renderPage();
+        }
+
+        function renderPage() {
+            const totalItems = matchedRows.length;
+            const totalPages = Math.ceil(totalItems / PAGE_SIZE) || 1;
+
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+
+            const startIndex = (currentPage - 1) * PAGE_SIZE;
+            const endIndex = Math.min(startIndex + PAGE_SIZE, totalItems);
+
+            // Ocultar todas las filas
+            rows.forEach(r => r.style.display = 'none');
+
+            // Mostrar solo las filas de la página activa
+            for (let i = startIndex; i < endIndex; i++) {
+                if (matchedRows[i]) {
+                    matchedRows[i].style.display = '';
+                }
+            }
+
+            // Actualizar resúmenes
+            if (pageIndicatorBadge) pageIndicatorBadge.textContent = `Página ${currentPage} de ${totalPages}`;
+            if (paginationSummary) {
+                if (totalItems === 0) {
+                    paginationSummary.textContent = 'No hay mercancías coincidentes';
+                } else {
+                    paginationSummary.textContent = `Mostrando ${startIndex + 1} a ${endIndex} de ${totalItems} mercancías`;
+                }
+            }
+
+            renderPaginationControls(totalPages);
+        }
+
+        function renderPaginationControls(totalPages) {
+            if (!paginationControls) return;
+            paginationControls.innerHTML = '';
+
+            if (totalPages <= 1) return;
+
+            // Botón Anterior
+            const prevLi = document.createElement('li');
+            prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            prevLi.innerHTML = `<a class="page-link" href="#" aria-label="Anterior">&laquo;</a>`;
+            prevLi.onclick = (e) => { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); window.scrollTo({top: 250, behavior: 'smooth'}); } };
+            paginationControls.appendChild(prevLi);
+
+            // Números de Página
+            let startP = Math.max(1, currentPage - 2);
+            let endP = Math.min(totalPages, startP + 4);
+            if (endP - startP < 4) startP = Math.max(1, endP - 4);
+
+            for (let p = startP; p <= endP; p++) {
+                const pageLi = document.createElement('li');
+                pageLi.className = `page-item ${p === currentPage ? 'active' : ''}`;
+                pageLi.innerHTML = `<a class="page-link" href="#">${p}</a>`;
+                const targetP = p;
+                pageLi.onclick = (e) => { e.preventDefault(); currentPage = targetP; renderPage(); window.scrollTo({top: 250, behavior: 'smooth'}); };
+                paginationControls.appendChild(pageLi);
+            }
+
+            // Botón Siguiente
+            const nextLi = document.createElement('li');
+            nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            nextLi.innerHTML = `<a class="page-link" href="#" aria-label="Siguiente">&raquo;</a>`;
+            nextLi.onclick = (e) => { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); window.scrollTo({top: 250, behavior: 'smooth'}); } };
+            paginationControls.appendChild(nextLi);
+        }
+
+        // Listeners de eventos
+        liveSearchInput?.addEventListener('input', applyFilters);
+        filterMarcaSelect?.addEventListener('change', applyFilters);
+        filterNcmSelect?.addEventListener('change', applyFilters);
+        filterPropietarioSelect?.addEventListener('change', applyFilters);
+        filterFechaDesde?.addEventListener('change', applyFilters);
+        filterFechaHasta?.addEventListener('change', applyFilters);
+
+        window.filterByMarca = function(marcaName) {
+            if (filterMarcaSelect) {
+                filterMarcaSelect.value = marcaName;
+            }
+            applyFilters();
+        };
+
+        window.resetAllFilters = function() {
+            if (liveSearchInput) liveSearchInput.value = '';
+            if (filterMarcaSelect) filterMarcaSelect.value = '';
+            if (filterNcmSelect) filterNcmSelect.value = '';
+            if (filterPropietarioSelect) filterPropietarioSelect.value = '';
+            if (filterFechaDesde) filterFechaDesde.value = '';
+            if (filterFechaHasta) filterFechaHasta.value = '';
+            applyFilters();
+        };
+
+        window.triggerExport = function(format) {
+            const query = (liveSearchInput?.value || '').trim();
+            const marca = (filterMarcaSelect?.value || '').trim();
+            const ncm = (filterNcmSelect?.value || '').trim();
+            const propietario = (filterPropietarioSelect?.value || '').trim();
+            const fechaDesde = (filterFechaDesde?.value || '').trim();
+            const fechaHasta = (filterFechaHasta?.value || '').trim();
+
+            const params = new URLSearchParams();
+            if (query) params.append('q', query);
+            if (marca) params.append('marca', marca);
+            if (ncm) params.append('ncm', ncm);
+            if (propietario) params.append('propietario', propietario);
+            if (fechaDesde) params.append('fecha_desde', fechaDesde);
+            if (fechaHasta) params.append('fecha_hasta', fechaHasta);
+
+            const exportUrl = `/mercancias/exportar/${format}?${params.toString()}`;
+            window.location.href = exportUrl;
+        };
+
+        // Renderizado inicial
+        applyFilters();
+    });
+</script>
+{% endblock %}

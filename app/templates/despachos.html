@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+
+{% block title %}Despachos | Sistema de Gestión Aduanera{% endblock %}
+{% block page_title %}Listado General de Despachos{% endblock %}
+
+{% block content %}
+<div class="card border-0 shadow-sm rounded-3">
+    <div class="card-body p-4">
+        <!-- Filtros y Búsqueda -->
+        <form method="GET" action="/despachos" class="row g-3 mb-4 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold text-muted">Búsqueda General</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" name="q" class="form-control" placeholder="Nº despacho, dueño, BL..." value="{{ q or '' }}">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold text-muted">Dueño / Cliente</label>
+                <input type="text" name="propietario" class="form-control" placeholder="Filtrar por dueño..." value="{{ propietario_sel or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold text-muted">Importador</label>
+                <select name="importador" class="form-select">
+                    <option value="">-- Todos los Importadores --</option>
+                    {% for imp in importadores %}
+                        <option value="{{ imp }}" {% if importador_sel == imp %}selected{% endif %}>{{ imp }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold text-muted">Estado</label>
+                <select name="estado" class="form-select">
+                    <option value="">-- Todos --</option>
+                    <option value="PROCESADO" {% if estado_sel == 'PROCESADO' %}selected{% endif %}>Procesado</option>
+                    <option value="REVISAR" {% if estado_sel == 'REVISAR' %}selected{% endif %}>Revisar</option>
+                    <option value="CONFIRMADO" {% if estado_sel == 'CONFIRMADO' %}selected{% endif %}>Confirmado</option>
+                    <option value="DUPLICADO" {% if estado_sel == 'DUPLICADO' %}selected{% endif %}>Duplicado</option>
+                </select>
+            </div>
+            <div class="col-md-1 d-flex gap-1">
+                <button type="submit" class="btn btn-primary w-100" title="Filtrar"><i class="bi bi-filter"></i></button>
+                <a href="/despachos" class="btn btn-light border" title="Limpiar"><i class="bi bi-arrow-counterclockwise"></i></a>
+            </div>
+        </form>
+
+        <!-- Barra de Acciones de Exportación Multi-Formato -->
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <span class="text-muted small">Mostrando <strong>{{ despachos|length }}</strong> registro(s)</span>
+            <div class="d-flex gap-2 flex-wrap">
+                <!-- 1. Excel -->
+                <a href="/exportar/excel{% if q or estado_sel or importador_sel or propietario_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}{% endif %}" class="btn btn-success btn-sm d-flex align-items-center gap-1 shadow-sm">
+                    <i class="bi bi-file-earmark-excel-fill"></i> Excel
+                </a>
+                <!-- 2. HTML -->
+                <a href="/exportar/html{% if q or estado_sel or importador_sel or propietario_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}{% endif %}" target="_blank" class="btn btn-primary btn-sm d-flex align-items-center gap-1 shadow-sm">
+                    <i class="bi bi-filetype-html"></i> HTML
+                </a>
+                <!-- 3. PDF -->
+                <a href="/exportar/pdf{% if q or estado_sel or importador_sel or propietario_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}{% endif %}" target="_blank" class="btn btn-danger btn-sm d-flex align-items-center gap-1 shadow-sm">
+                    <i class="bi bi-file-earmark-pdf-fill"></i> PDF
+                </a>
+                <!-- 4. Google Sheets -->
+                <a href="/exportar/google-sheet{% if q or estado_sel or importador_sel or propietario_sel %}?q={{ q or '' }}&estado={{ estado_sel or '' }}&importador={{ importador_sel or '' }}&propietario={{ propietario_sel or '' }}{% endif %}" class="btn btn-dark btn-sm d-flex align-items-center gap-1 shadow-sm" title="Descargar CSV compatible con Google Sheets">
+                    <i class="bi bi-google"></i> Google Sheets
+                </a>
+            </div>
+        </div>
+
+        <!-- Tabla -->
+        <div class="table-responsive">
+            <table class="table table-hover align-middle border-top">
+                <thead class="table-light text-muted small text-uppercase">
+                    <tr>
+                        <th>ID</th>
+                        <th>Dueño / Cliente</th>
+                        <th>Fecha</th>
+                        <th>Nº Despacho</th>
+                        <th>Aduana / Régimen</th>
+                        <th>Importador</th>
+                        <th>FOB ($)</th>
+                        <th>CIF ($)</th>
+                        <th>Tributos (Gs)</th>
+                        <th>Estado</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if despachos %}
+                        {% for d in despachos %}
+                        <tr class="despacho-row"
+                            data-id="{{ d.id }}"
+                            data-numero="{{ d.numero_despacho or 'S/N' }}"
+                            style="cursor: context-menu;">
+                            <td class="text-muted">{{ d.id }}</td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    <i class="bi bi-person-fill me-1 text-primary"></i>{{ d.propietario or 'Sin Asignar' }}
+                                </span>
+                            </td>
+                            <td>{{ d.fecha_despacho.strftime('%d/%m/%Y') if d.fecha_despacho else '-' }}</td>
+                            <td class="fw-bold">
+                                <a href="/despachos/{{ d.id }}" class="text-decoration-none text-primary">
+                                    {{ d.numero_despacho or 'S/N (' ~ d.id ~ ')' }}
+                                </a>
+                                {% if d.canal %}
+                                    <span class="badge ms-1 {% if d.canal == 'VERDE' %}bg-success{% elif d.canal == 'NARANJA' %}bg-warning text-dark{% else %}bg-danger{% endif %} small" style="font-size: 0.65rem;">
+                                        {{ d.canal }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="small">{{ d.aduana or '-' }}<br><span class="text-muted">{{ d.regimen or '' }}</span></td>
+                            <td class="text-truncate" style="max-width: 180px;" title="{{ d.importador_nombre }}">
+                                <strong>{{ d.importador_nombre or '-' }}</strong><br>
+                                <span class="text-muted small">RUC: {{ d.importador_documento or '-' }}</span>
+                            </td>
+                            <td class="fw-semibold">${{ "{:,.2f}".format(d.valor_fob) if d.valor_fob else '-' }}</td>
+                            <td class="fw-semibold text-success">${{ "{:,.2f}".format(d.valor_cif) if d.valor_cif else '-' }}</td>
+                            <td class="small">{{ "{:,.0f}".format(d.total_general) if d.total_general else '-' }}</td>
+                            <td>
+                                {% if d.estado_procesamiento == 'CONFIRMADO' %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">Confirmado</span>
+                                {% elif d.estado_procesamiento == 'REVISAR' %}
+                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">Revisar</span>
+                                {% elif d.estado_procesamiento == 'DUPLICADO' %}
+                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Duplicado</span>
+                                {% else %}
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Procesado</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-light border shadow-2xs px-2 py-1" 
+                                        type="button" 
+                                        title="Opciones (Clic derecho en fila)"
+                                        onclick="triggerMenuFromButton(event, {{ d.id }}, '{{ d.numero_despacho or 'S/N' }}')">
+                                    <i class="bi bi-three-dots-vertical"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="12" class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2 text-secondary"></i>
+                                No se encontraron despachos que coincidan con la búsqueda.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MENÚ CONTEXTUAL FLOTANTE (CLIC DERECHO NATIVO) -->
+<div id="customContextMenu" class="custom-context-menu shadow border rounded-3 py-1 bg-white" style="display: none; position: fixed; z-index: 1055; min-width: 230px;">
+    <div class="px-3 py-2 text-muted border-bottom bg-light d-flex justify-content-between align-items-center" style="font-size: 0.75rem; font-weight: 600;">
+        <span>DESPACHO: <strong id="ctxMenuDespachoNum" class="font-monospace text-primary"></strong></span>
+        <span class="badge bg-secondary-subtle text-secondary small" style="font-size: 0.65rem;">Opciones</span>
+    </div>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-primary fw-semibold" href="#" id="ctxOptInfo">
+        <i class="bi bi-info-circle-fill fs-6 text-primary"></i>
+        <div>
+            <div>Informaciones</div>
+            <small class="text-muted fw-normal" style="font-size: 0.72rem;">Auditoría de Campos Extraídos</small>
+        </div>
+    </a>
+    <hr class="dropdown-divider my-1">
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" id="ctxOptDetalle">
+        <i class="bi bi-eye text-secondary"></i> Abrir Ficha Completa
+    </a>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" id="ctxOptRevisar">
+        <i class="bi bi-pencil-square text-warning"></i> Revisar / Modificar
+    </a>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="#" target="_blank" id="ctxOptPdf">
+        <i class="bi bi-file-earmark-pdf text-danger"></i> Ver PDF Original
+    </a>
+    <hr class="dropdown-divider my-1">
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-success" href="#" id="ctxOptExcel">
+        <i class="bi bi-file-earmark-excel"></i> Exportar a Excel
+    </a>
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-danger" href="#" id="ctxOptPdfExport">
+        <i class="bi bi-file-earmark-pdf"></i> Exportar a PDF
+    </a>
+    <hr class="dropdown-divider my-1">
+    <a class="dropdown-item d-flex align-items-center gap-2 py-2 text-danger fw-semibold" href="#" id="ctxOptEliminar">
+        <i class="bi bi-trash3-fill"></i> Eliminar Despacho
+    </a>
+</div>
+
+<!-- Modal: Informaciones / Auditoría Completa de Campos Extraídos -->
+<div class="modal fade" id="auditInfoModal" tabindex="-1" aria-labelledby="auditInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light py-2">
+                <h6 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="auditInfoModalLabel">
+                    <i class="bi bi-info-circle-fill text-primary"></i>
+                    <span>Informaciones - Despacho <strong id="infoModalDespachoNum" class="font-monospace text-primary"></strong></span>
+                    <span id="infoModalCanalBadge"></span>
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <input type="text" id="auditSearchInput" class="form-control form-control-sm w-50" placeholder="Filtrar campos o valores...">
+                    <a id="infoDetailLink" href="#" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Abrir Ficha Técnica
+                    </a>
+                </div>
+                <div class="table-responsive" style="max-height: 440px; overflow-y: auto;">
+                    <table class="table table-sm table-bordered table-hover align-middle mb-0 small">
+                        <thead class="table-light text-muted text-uppercase sticky-top" style="font-size: 0.72rem;">
+                            <tr>
+                                <th style="width: 260px;">Campo</th>
+                                <th>Valor Normalizado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditInfoTableBody">
+                            <tr><td colspan="2" class="text-center py-3 text-muted">Cargando información...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const contextMenu = document.getElementById('customContextMenu');
+    let activeRow = null;
+    let auditInfoModalInstance = null;
+
+    function showContextMenuAt(x, y, despachoId, despachoNum) {
+        if (!contextMenu) return;
+
+        document.getElementById('ctxMenuDespachoNum').textContent = despachoNum;
+
+        document.getElementById('ctxOptInfo').onclick = (e) => { e.preventDefault(); hideContextMenu(); openInfoAuditModal(despachoId, despachoNum); };
+        document.getElementById('ctxOptDetalle').href = `/despachos/${despachoId}`;
+        document.getElementById('ctxOptRevisar').href = `/revisar/${despachoId}`;
+        document.getElementById('ctxOptPdf').href = `/despachos/${despachoId}/pdf`;
+        document.getElementById('ctxOptExcel').href = `/exportar/excel?q=${encodeURIComponent(despachoNum)}`;
+        document.getElementById('ctxOptPdfExport').href = `/exportar/pdf?q=${encodeURIComponent(despachoNum)}`;
+        document.getElementById('ctxOptEliminar').onclick = (e) => { e.preventDefault(); hideContextMenu(); confirmarEliminarDespacho(despachoId, despachoNum); };
+
+        contextMenu.style.display = 'block';
+
+        const menuWidth = contextMenu.offsetWidth || 230;
+        const menuHeight = contextMenu.offsetHeight || 280;
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+
+        let posX = x;
+        let posY = y;
+
+        if (posX + menuWidth > winWidth) posX = winWidth - menuWidth - 10;
+        if (posY + menuHeight > winHeight) posY = winHeight - menuHeight - 10;
+
+        contextMenu.style.left = `${posX}px`;
+        contextMenu.style.top = `${posY}px`;
+    }
+
+    function hideContextMenu() {
+        if (contextMenu) contextMenu.style.display = 'none';
+        if (activeRow) {
+            activeRow.classList.remove('table-row-ctx-active');
+            activeRow = null;
+        }
+    }
+
+    document.querySelectorAll('.despacho-row').forEach(row => {
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (activeRow) activeRow.classList.remove('table-row-ctx-active');
+            activeRow = row;
+            activeRow.classList.add('table-row-ctx-active');
+
+            const id = row.getAttribute('data-id');
+            const num = row.getAttribute('data-numero');
+            showContextMenuAt(e.clientX, e.clientY, id, num);
+        });
+    });
+
+    window.triggerMenuFromButton = function(e, id, num) {
+        e.stopPropagation();
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        showContextMenuAt(rect.left - 180, rect.bottom + 5, id, num);
+    };
+
+    document.addEventListener('click', (e) => {
+        if (contextMenu && !contextMenu.contains(e.target)) hideContextMenu();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') hideContextMenu();
+    });
+
+    window.openInfoAuditModal = async function(despachoId, despachoNum) {
+        document.getElementById('infoModalDespachoNum').textContent = despachoNum;
+        document.getElementById('infoDetailLink').href = `/despachos/${despachoId}`;
+        const tbody = document.getElementById('auditInfoTableBody');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando auditoría de campos...</td></tr>';
+        
+        const modalEl = document.getElementById('auditInfoModal');
+        auditInfoModalInstance = new bootstrap.Modal(modalEl);
+        auditInfoModalInstance.show();
+
+        try {
+            const resp = await fetch(`/despachos/api/${despachoId}/info`);
+            if (resp.ok) {
+                const data = await resp.json();
+                const canalBadge = document.getElementById('infoModalCanalBadge');
+                if (data.canal) {
+                    const bgClass = data.canal === 'VERDE' ? 'bg-success' : (data.canal === 'NARANJA' ? 'bg-warning text-dark' : 'bg-danger');
+                    canalBadge.innerHTML = `<span class="badge ${bgClass} ms-2"><i class="bi bi-flag-fill me-1"></i>${data.canal}</span>`;
+                } else {
+                    canalBadge.innerHTML = '';
+                }
+
+                renderAuditRows(data.campos || []);
+
+                document.getElementById('auditSearchInput').oninput = function() {
+                    const q = this.value.toLowerCase().trim();
+                    const filtered = (data.campos || []).filter(c => 
+                        (c.label || '').toLowerCase().includes(q) ||
+                        (c.campo || '').toLowerCase().includes(q) ||
+                        (c.valor || '').toLowerCase().includes(q)
+                    );
+                    renderAuditRows(filtered);
+                };
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-danger">Error al cargar datos.</td></tr>';
+            }
+        } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-danger">${err.message}</td></tr>`;
+        }
+    };
+
+    function renderAuditRows(campos) {
+        const tbody = document.getElementById('auditInfoTableBody');
+        if (campos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center py-3 text-muted">Sin campos coincidentes.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = campos.map(c => {
+            let valHtml = `<span class="fw-bold font-monospace text-dark">${c.valor}</span>`;
+            if (c.campo === 'canal') {
+                const bg = c.valor === 'VERDE' ? 'bg-success' : (c.valor === 'NARANJA' ? 'bg-warning text-dark' : 'bg-danger');
+                valHtml = `<span class="badge ${bg} px-2 py-1"><i class="bi bi-flag-fill me-1"></i>${c.valor}</span>`;
+            } else if (c.campo === 'propietario') {
+                valHtml = `<span class="badge bg-primary px-2 py-1"><i class="bi bi-person-fill me-1"></i>${c.valor}</span>`;
+            }
+
+            return `
+                <tr>
+                    <td class="fw-semibold text-muted" style="font-size: 0.82rem;">${c.label}</td>
+                    <td>${valHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+</script>
+{% endblock %}
