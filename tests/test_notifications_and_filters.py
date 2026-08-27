@@ -13,25 +13,20 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_db():
-    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    # Limpiar datos de prueba
-    db.query(DespachoItem).delete()
-    db.query(Despacho).delete()
-    db.commit()
 
-    # Crear despacho 1 (Fecha: 2026-08-10)
+    # Crear despacho 1 de prueba (Fecha: 2026-08-10)
     d1 = Despacho(
-        numero_despacho="26001IMPORT01",
+        numero_despacho="TEST26001IMPORT01",
         fecha_despacho=date(2026, 8, 10),
-        importador_nombre="IMPORTADORA ALFA SA",
-        propietario="CLIENTE ALFA",
+        importador_nombre="IMPORTADORA TEST ALFA SA",
+        propietario="CLIENTE TEST ALFA",
         canal="VERDE",
         valor_fob=15000.0,
         valor_cif=16200.0,
-        archivo_pdf="dummy1.pdf",
-        nombre_archivo_original="dummy1.pdf",
-        hash_archivo="hash_dummy_1"
+        archivo_pdf="dummy_test_1.pdf",
+        nombre_archivo_original="dummy_test_1.pdf",
+        hash_archivo="hash_dummy_test_1"
     )
     db.add(d1)
     db.flush()
@@ -41,7 +36,7 @@ def setup_db():
         numero_item=1,
         codigo_ncm="8517.13.00",
         codigo_producto="7891234567890",
-        descripcion="SMARTPHONE PRO MAX 256GB",
+        descripcion="SMARTPHONE PRO MAX 256GB TEST",
         marca="SAMSUNG",
         cantidad=10.0,
         valor_unitario=1500.0,
@@ -49,18 +44,18 @@ def setup_db():
     )
     db.add(item1)
 
-    # Crear despacho 2 (Fecha: 2026-08-25)
+    # Crear despacho 2 de prueba (Fecha: 2026-08-25)
     d2 = Despacho(
-        numero_despacho="26002IMPORT02",
+        numero_despacho="TEST26002IMPORT02",
         fecha_despacho=date(2026, 8, 25),
-        importador_nombre="IMPORTADORA BETA SRL",
-        propietario="CLIENTE BETA",
+        importador_nombre="IMPORTADORA TEST BETA SRL",
+        propietario="CLIENTE TEST BETA",
         canal="ROJO",
         valor_fob=8000.0,
         valor_cif=8900.0,
-        archivo_pdf="dummy2.pdf",
-        nombre_archivo_original="dummy2.pdf",
-        hash_archivo="hash_dummy_2"
+        archivo_pdf="dummy_test_2.pdf",
+        nombre_archivo_original="dummy_test_2.pdf",
+        hash_archivo="hash_dummy_test_2"
     )
     db.add(d2)
     db.flush()
@@ -70,7 +65,7 @@ def setup_db():
         numero_item=1,
         codigo_ncm="8471.30.12",
         codigo_producto="12345678",
-        descripcion="NOTEBOOK SLIM I7",
+        descripcion="NOTEBOOK SLIM I7 TEST",
         marca="DELL",
         cantidad=8.0,
         valor_unitario=1000.0,
@@ -78,14 +73,17 @@ def setup_db():
     )
     db.add(item2)
     db.commit()
+
+    d1_id = d1.id
+    d2_id = d2.id
     db.close()
 
     yield
 
-    # Cleanup
+    # Cleanup específico solo de los registros de prueba
     db = SessionLocal()
-    db.query(DespachoItem).delete()
-    db.query(Despacho).delete()
+    db.query(DespachoItem).filter(DespachoItem.despacho_id.in_([d1_id, d2_id])).delete(synchronize_session=False)
+    db.query(Despacho).filter(Despacho.id.in_([d1_id, d2_id])).delete(synchronize_session=False)
     db.commit()
     db.close()
 
