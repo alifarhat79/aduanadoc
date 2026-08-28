@@ -237,21 +237,34 @@ class TursoService:
 
     async def pull_despachos_quick(self, db: Session) -> Dict[str, Any]:
         """
-        Sincronización rápida y canónica de despachos desde Turso Cloud hacia esta PC.
+        Sincronización rápida y canónica de despachos y mercancías desde Turso Cloud hacia esta PC.
         Mapea por 'numero_despacho' o 'hash_archivo' para que las alteraciones de Dueño (propietario),
-        canales y datos en PC2 o PC3 se apliquen inmediatamente al despacho correcto en PC1.
+        canales, datos y mercancías se apliquen inmediatamente al despacho correcto en cualquier PC.
         """
         if not self.is_configured():
             return {"success": False, "error": "Turso no configurado"}
 
-        # Consultar todos los despachos de Turso sin limitación arbitraria
-        query_stmts = [{"sql": "SELECT * FROM despachos ORDER BY id DESC;"}]
+        # Consultar todos los despachos y mercancías de Turso
+        query_stmts = [
+            {"sql": "SELECT * FROM despachos ORDER BY id DESC;"},
+            {"sql": "SELECT * FROM despacho_items;"}
+        ]
         res = await self.execute_raw(query_stmts)
 
-        despachos_result = res.get("results", [])[0].get("response", {}).get("result", {})
+        results = res.get("results", [])
+        if not results:
+            return {"success": False, "error": "No se recibieron datos de Turso"}
+
+        despachos_result = results[0].get("response", {}).get("result", {})
+        items_result = results[1].get("response", {}).get("result", {}) if len(results) > 1 else {}
+
         desp_cols = [c["name"] for c in despachos_result.get("cols", [])]
         desp_rows = despachos_result.get("rows", [])
 
+        item_cols = [c["name"] for c in items_result.get("cols", [])]
+        item_rows = items_result.get("rows", [])
+
+        turso_id_to_local_id: Dict[int, int] = {}
         updated_count = 0
         inserted_count = 0
         inserted_despachos = []
@@ -265,83 +278,108 @@ class TursoService:
             num_desp = (row_dict.get("numero_despacho") or "").strip()
             hash_arch = (row_dict.get("hash_archivo") or "").strip()
             nombre_arch = (row_dict.get("nombre_archivo_original") or "").strip()
-            turso_id = row_dict.get("id")
+            turso_id = int(row_dict.get("id")) if row_dict.get("id") is not None else None
 
             # 1. Búsqueda canónica en la base local:
-            # Primero por Nº de Despacho (clave de negocio aduanera)
             existing = None
             if num_desp and num_desp not in ("", "S/N", "None"):
                 existing = db.query(Despacho).filter(Despacho.numero_despacho == num_desp).first()
 
-            # Segundo por Hash de archivo
             if not existing and hash_arch:
                 existing = db.query(Despacho).filter(Despacho.hash_archivo == hash_arch).first()
 
-            # Tercero por Nombre de archivo
             if not existing and nombre_arch:
                 existing = db.query(Despacho).filter(Despacho.nombre_archivo_original == nombre_arch).first()
 
-            # Cuarto por ID si no hubo match
             if not existing and turso_id is not None:
-                existing = db.query(Despacho).filter(Despacho.id == int(turso_id)).first()
+                existing = db.query(Despacho).filter(Despacho.id == turso_id).first()
 
-            if existing:
-                # Actualizar campos del despacho local existente (sin modificar su id primario local)
-                for col in Despacho.__table__.columns:
-                    col_name = col.name
-                    if col_name == "id":
-                        continue
-                    if col_name in row_dict:
-                        val = row_dict[col_name]
-                        try:
-                            if val is None or val == "":
-                                setattr(existing, col_name, None)
-                            elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
-                                setattr(existing, col_name, float(val))
-                            elif "int" in str(col.type).lower():
-                                setattr(existing, col_name, int(val))
-                            elif "date" in str(col.type).lower():
-                                if "T" in str(val):
-                                    setattr(existing, col_name, datetime.fromisoformat(str(val)))
-                                else:
-                                    setattr(existing, col_name, date.fromisoformat(str(val)))
-                            elif "json" in str(col.type).lower():
-                                setattr(existing, col_name, json.loads(str(val)) if isinstance(val, str) else val)
+            is_new = False
+            if not existing:
+                existing = Despacho()
+                db.add(existing)
+                is_new = True
+
+            for col in Despacho.__table__.columns:
+                col_name = col.name
+                if col_name == "id" and existing.id:
+                    continue
+                if col_name in row_dict:
+                    val = row_dict[col_name]
+                    try:
+                        if val is None or val == "":
+                            setattr(existing, col_name, None)
+                        elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
+                            setattr(existing, col_name, float(val))
+                        elif "int" in str(col.type).lower():
+                            setattr(existing, col_name, int(val))
+                        elif "date" in str(col.type).lower():
+                            if "T" in str(val):
+                                setattr(existing, col_name, datetime.fromisoformat(str(val)))
                             else:
-                                setattr(existing, col_name, str(val))
-                        except Exception:
-                            setattr(existing, col_name, str(val) if val is not None else None)
-                updated_count += 1
-            else:
-                # Insertar nuevo despacho local
-                new_d = Despacho()
-                for col in Despacho.__table__.columns:
-                    col_name = col.name
-                    if col_name == "id":
-                        continue
-                    if col_name in row_dict:
-                        val = row_dict[col_name]
-                        try:
-                            if val is None or val == "":
-                                setattr(new_d, col_name, None)
-                            elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
-                                setattr(new_d, col_name, float(val))
-                            elif "int" in str(col.type).lower():
-                                setattr(new_d, col_name, int(val))
-                            elif "date" in str(col.type).lower():
-                                if "T" in str(val):
-                                    setattr(new_d, col_name, datetime.fromisoformat(str(val)))
-                                else:
-                                    setattr(new_d, col_name, date.fromisoformat(str(val)))
-                            elif "json" in str(col.type).lower():
-                                setattr(new_d, col_name, json.loads(str(val)) if isinstance(val, str) else val)
-                            else:
-                                setattr(new_d, col_name, str(val))
-                        except Exception:
-                            setattr(new_d, col_name, str(val) if val is not None else None)
-                db.add(new_d)
-                inserted_despachos.append(new_d)
+                                setattr(existing, col_name, date.fromisoformat(str(val)))
+                        elif "json" in str(col.type).lower():
+                            setattr(existing, col_name, json.loads(str(val)) if isinstance(val, str) else val)
+                        else:
+                            setattr(existing, col_name, str(val))
+                    except Exception:
+                        setattr(existing, col_name, str(val) if val is not None else None)
+
+            db.flush()
+            if turso_id is not None:
+                turso_id_to_local_id[turso_id] = existing.id
+
+            if is_new:
+                inserted_despachos.append(existing)
                 inserted_count += 1
+            else:
+                updated_count += 1
+
+        db.commit()
+
+        # 2. Agrupar Items por turso_despacho_id e insertarlos
+        items_by_turso_desp: Dict[int, List[Dict[str, Any]]] = {}
+        for row in item_rows:
+            row_dict = {}
+            for col, val_obj in zip(item_cols, row):
+                val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                row_dict[col] = val
+
+            t_desp_id = int(row_dict.get("despacho_id")) if row_dict.get("despacho_id") is not None else None
+            if t_desp_id is not None:
+                if t_desp_id not in items_by_turso_desp:
+                    items_by_turso_desp[t_desp_id] = []
+                items_by_turso_desp[t_desp_id].append(row_dict)
+
+        imported_items_count = 0
+        for t_desp_id, t_items in items_by_turso_desp.items():
+            loc_id = turso_id_to_local_id.get(t_desp_id)
+            if not loc_id:
+                continue
+
+            # Reemplazar ítems locales con los de la nube
+            db.query(DespachoItem).filter(DespachoItem.despacho_id == loc_id).delete()
+            for i_data in t_items:
+                item_obj = DespachoItem(despacho_id=loc_id)
+                for col in DespachoItem.__table__.columns:
+                    col_name = col.name
+                    if col_name in ("id", "despacho_id"):
+                        continue
+                    if col_name in i_data:
+                        val = i_data[col_name]
+                        try:
+                            if val is None or val == "":
+                                setattr(item_obj, col_name, None)
+                            elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
+                                setattr(item_obj, col_name, float(val))
+                            elif "int" in str(col.type).lower():
+                                setattr(item_obj, col_name, int(val))
+                            else:
+                                setattr(item_obj, col_name, str(val))
+                        except Exception:
+                            setattr(item_obj, col_name, str(val) if val is not None else None)
+                db.add(item_obj)
+                imported_items_count += 1
 
         db.commit()
 
@@ -374,7 +412,8 @@ class TursoService:
             "success": True,
             "despachos_actualizados": updated_count,
             "despachos_nuevos": inserted_count,
-            "message": f"Sincronizados {updated_count + inserted_count} despachos desde Turso Cloud ({updated_count} actualizados, {inserted_count} nuevos)."
+            "items_sincronizados": imported_items_count,
+            "message": f"Sincronizados {updated_count + inserted_count} despachos y {imported_items_count} mercancías desde Turso Cloud."
         }
 
     async def pull_all_from_turso(self, db: Session) -> Dict[str, Any]:
