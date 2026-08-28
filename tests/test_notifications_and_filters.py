@@ -257,6 +257,21 @@ def test_git_status_and_pull_endpoints():
     data = resp_status.json()
     assert "has_git" in data
 
+
+def test_pagination_preserves_year_and_origin_filters():
+    """Prueba que los enlaces de paginación preserven los filtros de año y país de origen."""
+    resp = client.get("/despachos?anio=2026&origen=PARAGUAY&page=1")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "anio=2026" in html
+    assert "origen=PARAGUAY" in html
+
+    # Probar alias ano y year
+    resp_ano = client.get("/despachos?ano=2026&page=1")
+    assert resp_ano.status_code == 200
+    assert "anio=2026" in resp_ano.text
+
+
     # 2. Git Pull (con simulación para no modificar el entorno de trabajo real)
     with patch.object(UpdaterService, "git_pull") as mock_pull:
         mock_pull.return_value = {

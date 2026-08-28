@@ -216,7 +216,7 @@
             <nav aria-label="Paginación de despachos">
                 <ul class="pagination pagination-sm mb-0">
                     <li class="page-item {% if not has_prev %}disabled{% endif %}">
-                        <a class="page-link" href="?page={{ prev_page }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}{% if importador_sel %}&importador={{ importador_sel }}{% endif %}{% if propietario_sel %}&propietario={{ propietario_sel }}{% endif %}">
+                        <a class="page-link" href="?page={{ prev_page }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}{% if importador_sel %}&importador={{ importador_sel }}{% endif %}{% if propietario_sel %}&propietario={{ propietario_sel }}{% endif %}{% if origen_sel %}&origen={{ origen_sel }}{% endif %}{% if anio_sel %}&anio={{ anio_sel }}{% endif %}">
                             <i class="bi bi-chevron-left"></i> Anterior
                         </a>
                     </li>
@@ -227,14 +227,14 @@
 
                     {% for p in range(start_p, end_p + 1) %}
                     <li class="page-item {% if p == page %}active{% endif %}">
-                        <a class="page-link" href="?page={{ p }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}{% if importador_sel %}&importador={{ importador_sel }}{% endif %}{% if propietario_sel %}&propietario={{ propietario_sel }}{% endif %}">
+                        <a class="page-link" href="?page={{ p }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}{% if importador_sel %}&importador={{ importador_sel }}{% endif %}{% if propietario_sel %}&propietario={{ propietario_sel }}{% endif %}{% if origen_sel %}&origen={{ origen_sel }}{% endif %}{% if anio_sel %}&anio={{ anio_sel }}{% endif %}">
                             {{ p }}
                         </a>
                     </li>
                     {% endfor %}
 
                     <li class="page-item {% if not has_next %}disabled{% endif %}">
-                        <a class="page-link" href="?page={{ next_page }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}{% if importador_sel %}&importador={{ importador_sel }}{% endif %}{% if propietario_sel %}&propietario={{ propietario_sel }}{% endif %}">
+                        <a class="page-link" href="?page={{ next_page }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}{% if estado_sel %}&estado={{ estado_sel }}{% endif %}{% if importador_sel %}&importador={{ importador_sel }}{% endif %}{% if propietario_sel %}&propietario={{ propietario_sel }}{% endif %}{% if origen_sel %}&origen={{ origen_sel }}{% endif %}{% if anio_sel %}&anio={{ anio_sel }}{% endif %}">
                             Siguiente <i class="bi bi-chevron-right"></i>
                         </a>
                     </li>

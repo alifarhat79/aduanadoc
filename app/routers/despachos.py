@@ -24,11 +24,14 @@ async def list_despachos_view(
     propietario: Optional[str] = Query(None),
     origen: Optional[str] = Query(None),
     anio: Optional[str] = Query(None),
+    ano: Optional[str] = Query(None),
+    year: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(35, ge=10, le=100),
     db: Session = Depends(get_db)
 ):
     """Vista de tabla principal de despachos ordenada por fecha más reciente y con paginación."""
+    anio_val = (anio or ano or year or "").strip() or None
     query = db.query(Despacho)
 
     if q:
@@ -61,8 +64,8 @@ async def list_despachos_view(
     if origen:
         query = query.filter(Despacho.pais_origen.ilike(f"%{origen}%"))
 
-    if anio:
-        query = query.filter(func.strftime("%Y", Despacho.fecha_despacho) == str(anio).strip())
+    if anio_val:
+        query = query.filter(func.strftime("%Y", Despacho.fecha_despacho) == str(anio_val).strip())
 
     # Ordenar por fecha más reciente primero (y por ID secundario)
     query = query.order_by(desc(Despacho.fecha_despacho), desc(Despacho.id))
@@ -88,7 +91,7 @@ async def list_despachos_view(
             "importador_sel": importador,
             "propietario_sel": propietario,
             "origen_sel": origen,
-            "anio_sel": anio,
+            "anio_sel": anio_val,
             "importadores": importadores,
             "origenes": origenes,
             "anios": anios,
