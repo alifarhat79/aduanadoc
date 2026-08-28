@@ -352,7 +352,7 @@
                         </div>
                     </div>
 
-                    <button class="btn btn-dark btn-sm w-100 fw-semibold mt-1" id="btnGitPull" onclick="ejecutarGitPull()" disabled>
+                    <button class="btn btn-dark btn-sm w-100 fw-semibold mt-1 shadow-sm" id="btnGitPull" onclick="ejecutarGitPull()">
                         <i class="bi bi-arrow-down-circle me-1"></i> Sincronizar Cambios Rápidos (git pull)
                     </button>
                     <div id="gitPullResult" class="mt-2 d-none"></div>
@@ -965,10 +965,12 @@
             const resp = await fetch('/api/updates/git/status');
             const data = await resp.json();
 
+            btnPull.disabled = false;
+
             if (data.has_git) {
                 badgeEl.className = 'badge bg-success-subtle text-success';
                 badgeEl.textContent = 'Git Activo';
-                btnPull.disabled = false;
+                btnPull.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Sincronizar Cambios Rápidos (git pull)';
                 if (data.remote_url && repoInput) {
                     repoInput.value = data.remote_url;
                 }
@@ -981,13 +983,14 @@
             } else {
                 badgeEl.className = 'badge bg-warning-subtle text-warning-emphasis';
                 badgeEl.textContent = 'Sin Repo Git';
-                btnPull.disabled = true;
-                detailsEl.innerHTML = `<span class="text-muted">${data.message || 'Sin repositorio Git local. Presiona "Conectar" para descargar o vincular con GitHub directamente.'}</span>`;
+                btnPull.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Conectar y Sincronizar con GitHub';
+                detailsEl.innerHTML = `<span class="text-muted">${data.message || 'Sin repositorio Git local. Presiona el botón para conectar y descargar actualizaciones automáticamente.'}</span>`;
             }
         } catch (e) {
             badgeEl.className = 'badge bg-secondary';
             badgeEl.textContent = 'Desconectado';
-            detailsEl.textContent = 'No se pudo consultar el estado de Git.';
+            btnPull.disabled = false;
+            detailsEl.textContent = 'Estado de Git no disponible. Puedes pulsar Sincronizar para reintentar.';
         }
     }
 

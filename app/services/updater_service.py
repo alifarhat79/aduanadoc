@@ -326,17 +326,15 @@ class UpdaterService:
                 "message": f"Git detectado pero ocurrió un error al consultar estado: {str(e)}"
             }
 
-    def git_pull(self) -> Dict[str, Any]:
+    def git_pull(self, repo_url: str = "https://github.com/alifarhat79/aduanadoc.git") -> Dict[str, Any]:
         """
         Ejecuta git pull para descargar y aplicar cambios desde el repositorio remoto.
+        Si la PC no tiene .git inicializado, ejecuta automáticamente la conexión/sincronización con GitHub.
         Realiza un respaldo preventivo de la base de datos antes de proceder.
         """
         git_dir = BASE_DIR / ".git"
         if not git_dir.exists():
-            return {
-                "success": False,
-                "error": "No se detectó un repositorio Git local (.git no encontrado)."
-            }
+            return self.connect_git_repo(repo_url=repo_url)
 
         # 1. Respaldo preventivo
         backup_svc = BackupService()
@@ -344,6 +342,7 @@ class UpdaterService:
 
         import subprocess
         try:
+            # Intentar git pull
             proc = subprocess.run(
                 ["git", "pull", "--ff-only"],
                 cwd=str(BASE_DIR),
@@ -355,8 +354,19 @@ class UpdaterService:
             stdout = proc.stdout.strip()
             stderr = proc.stderr.strip()
 
+            if proc.returncode != 0:
+                # Intentar git pull origin main
+                proc = subprocess.run(
+                    ["git", "pull", "origin", "main"],
+                    cwd=str(BASE_DIR),
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                stdout = proc.stdout.strip()
+                stderr = proc.stderr.strip()
+
             if proc.returncode == 0:
-                # Obtener nuevo commit
                 status = self.get_git_status()
                 return {
                     "success": True,
@@ -366,16 +376,11 @@ class UpdaterService:
                     "message": f"Sincronización Git exitosa: {stdout}"
                 }
             else:
-                return {
-                    "success": False,
-                    "error": stderr or stdout or "Error al ejecutar git pull",
-                    "output": stdout
-                }
+                # Fallback a reconexión con GitHub
+                return self.connect_git_repo(repo_url=repo_url)
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Excepción al ejecutar git pull: {str(e)}"
-            }
+            logger.warning(f"[UpdaterService] Error en git pull, usando fallback: {e}")
+            return self.connect_git_repo(repo_url=repo_url)
 
     def connect_git_repo(self, repo_url: str = "https://github.com/alifarhat79/aduanadoc.git") -> Dict[str, Any]:
         """Inicializa y vincula el repositorio Git si está instalado, o descarga y aplica el código directamente desde GitHub."""
