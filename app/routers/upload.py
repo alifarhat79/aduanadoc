@@ -91,15 +91,18 @@ async def process_batch_files(
                 noti = NotificationService()
                 if noti.enabled and (noti.telegram_token or noti.webhook_url):
                     desp_dict = {
-                        "numero_despacho": despacho.numero_despacho,
-                        "importador_nombre": despacho.importador_nombre,
+                        "numero_despacho": despacho.numero_despacho or "S/N",
+                        "importador_nombre": despacho.importador_nombre or "No identificado",
+                        "propietario": despacho.propietario or "Sin Asignar",
+                        "canal": despacho.canal or "VERDE",
+                        "valor_fob": despacho.valor_fob or 0.0,
+                        "valor_cif": despacho.valor_cif or 0.0,
                         "fecha_despacho": despacho.fecha_despacho.strftime("%d/%m/%Y") if despacho.fecha_despacho else "-",
-                        "valor_fob": despacho.valor_fob,
                         "nombre_archivo_original": despacho.nombre_archivo_original or filename,
                     }
-                    noti.notify_new_despacho(despacho_dict=desp_dict, items_count=len(despacho.items), source="Importación Manual")
-            except Exception:
-                pass
+                    noti.notify_new_despacho(despacho_dict=desp_dict, items_count=len(despacho.items), source="Carga Manual")
+            except Exception as n_err:
+                logger.warning(f"No se pudo enviar notificación de nuevo despacho: {n_err}")
 
             results.append({
                 "filename": filename,

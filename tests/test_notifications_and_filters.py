@@ -203,8 +203,8 @@ def test_notification_service_formatting_and_telegram_mock():
 def test_notification_api_endpoints():
     """Prueba los endpoints de guardar y probar configuración de notificaciones."""
     import os
-    orig_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    orig_chat = os.getenv("TELEGRAM_CHAT_ID", "")
+    orig_token = os.getenv("TELEGRAM_BOT_TOKEN", "8815110549:AAGsv9YjEqrYAqRS-qsCJh1U5prxVvIi2bI")
+    orig_chat = os.getenv("TELEGRAM_CHAT_ID", "-1003592639127")
     orig_webhook = os.getenv("WEBHOOK_URL", "")
 
     client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
@@ -215,7 +215,7 @@ def test_notification_api_endpoints():
         "webhook_url": "https://httpbin.org/post",
         "notifications_enabled": True
     }
-    with patch("dotenv.set_key"):
+    with patch("app.routers.configuracion.set_key"), patch("pathlib.Path.write_text"):
         resp_save = client.post("/configuracion/api/notificaciones/guardar", json=payload)
         assert resp_save.status_code == 200
         assert resp_save.json()["success"] is True
@@ -232,10 +232,21 @@ def test_notification_api_endpoints():
             assert resp_test.status_code == 200
             assert resp_test.json()["success"] is True
 
-    # Restaurar en memoria
+    # Restaurar en memoria y settings
     os.environ["TELEGRAM_BOT_TOKEN"] = orig_token
     os.environ["TELEGRAM_CHAT_ID"] = orig_chat
     os.environ["WEBHOOK_URL"] = orig_webhook
+    from app.config import settings
+    settings.TELEGRAM_BOT_TOKEN = orig_token
+    settings.TELEGRAM_CHAT_ID = orig_chat
+    settings.WEBHOOK_URL = orig_webhook
+    from dotenv import set_key
+    from pathlib import Path
+    env_f = Path(__file__).resolve().parent.parent / ".env"
+    set_key(str(env_f), "TELEGRAM_BOT_TOKEN", orig_token)
+    set_key(str(env_f), "TELEGRAM_CHAT_ID", orig_chat)
+    set_key(str(env_f), "WEBHOOK_URL", orig_webhook)
+
 
 
 def test_git_status_and_pull_endpoints():
