@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title AduanaDcc - Aplicar Parche de Actualización
+title AduanaDoc - Aplicar Parche de Actualizacion
 cd /d "%~dp0"
 
 echo ==================================================================
-echo  ɥ AduanaDcc - Actualizador de Parche en 1 Clic
+echo  📦 AduanaDoc - Actualizador de Parche en 1 Clic
 echo ==================================================================
 echo.
 

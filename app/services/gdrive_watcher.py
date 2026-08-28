@@ -58,9 +58,13 @@ class GDriveWatcher:
 
     async def _perform_scan(self):
         """Ejecuta un escaneo seguro en un hilo para no bloquear el bucle de eventos."""
+        # 1. Verificar si las librerías de Google API están instaladas
+        if not GoogleDriveService.is_api_available():
+            return
+
         gdrive = GoogleDriveService()
         
-        # Verificar si existe el archivo de credenciales
+        # 2. Verificar si existe el archivo de credenciales
         import os
         from pathlib import Path
         cred_path = Path(gdrive.credentials_file)

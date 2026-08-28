@@ -20,8 +20,24 @@ class GoogleDriveService:
         self.folder_id = folder_id or os.getenv("GDRIVE_FOLDER_ID", "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv")
         self.credentials_file = credentials_file or os.getenv("GDRIVE_CREDENTIALS_FILE", "./service_account.json")
 
+    @staticmethod
+    def is_api_available() -> bool:
+        """Verifica si las librerías de Google API están instaladas."""
+        try:
+            import google.oauth2.service_account
+            import googleapiclient.discovery
+            return True
+        except ImportError:
+            return False
+
     def get_drive_service(self):
         """Inicializa el cliente de Google Drive API usando Service Account si existe el archivo."""
+        if not self.is_api_available():
+            raise ModuleNotFoundError(
+                "Las librerías de Google API no están instaladas en este entorno de Python. "
+                "Para activarlo, ejecuta: pip install google-api-python-client google-auth"
+            )
+
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
 
