@@ -185,68 +185,73 @@
                     </div>
                 </div>
             </div>
-    <!-- Modal Premium de Auto-Actualización (Multi-PC) -->
-    <div class="modal fade" id="premiumAutoUpdateModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered" style="max-width: 480px;">
-            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden" style="background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); color: #f8fafc; box-shadow: 0 20px 40px rgba(0,0,0,0.6) !important;">
+    <!-- Overlay Standalone de Auto-Actualización (Anti-AdBlock / Multi-PC) -->
+    <div id="sysAppOverlayUpgrade" style="position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 2147483647; background: rgba(10, 15, 29, 0.90); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: none; align-items: center; justify-content: center; padding: 20px; font-family: system-ui, -apple-system, sans-serif;">
+        <div style="max-width: 480px; width: 100%; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); color: #f8fafc; border-radius: 24px; box-shadow: 0 25px 60px rgba(0,0,0,0.85), 0 0 40px rgba(59, 130, 246, 0.2); border: 1px solid rgba(255,255,255,0.12); overflow: hidden; position: relative;">
+            
+            <!-- Encabezado con Icono Circular Glow -->
+            <div style="padding: 32px 24px 16px 24px; text-align: center; position: relative;">
+                <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 140px; height: 140px; background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, rgba(0,0,0,0) 70%); filter: blur(16px); pointer-events: none;"></div>
                 
-                <!-- Encabezado con Icono Pulsante y Glow -->
-                <div class="p-4 text-center position-relative pb-2">
-                    <div class="position-absolute top-0 start-50 translate-middle-x mt-2" style="width: 130px; height: 130px; background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, rgba(0,0,0,0) 70%); filter: blur(12px); pointer-events: none;"></div>
-                    
-                    <div class="mb-3 d-inline-block position-relative">
-                        <div id="updateIconWrapper" class="d-flex align-items-center justify-content-center rounded-circle shadow-lg" style="width: 76px; height: 76px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); box-shadow: 0 0 25px rgba(59, 130, 246, 0.7) !important;">
-                            <i class="bi bi-cloud-arrow-down-fill fs-1 text-white" id="updateMainIcon"></i>
-                        </div>
-                    </div>
-
-                    <h4 class="fw-bold mb-1 text-white" id="updateModalTitle">Actualizando AduanaDoc</h4>
-                    <p class="small mb-1" id="updateModalSubtitle" style="color: #94a3b8;">
-                        Nueva versión: <span class="badge bg-primary px-2 py-1 font-monospace" id="updateTargetVersion">...</span>
-                    </p>
-                    <div class="small fw-semibold text-warning text-truncate px-3" id="updateCommitMsg" style="font-size: 0.78rem;"></div>
+                <div style="display: inline-flex; align-items: center; justify-content: center; width: 78px; height: 78px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); box-shadow: 0 0 30px rgba(59, 130, 246, 0.65); margin-bottom: 16px; position: relative;" id="sysUpgradeIconBox">
+                    <svg id="sysUpgradeIconSvg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: #ffffff;">
+                        <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+                        <path d="M12 12v9"></path>
+                        <path d="m8 17 4 4 4-4"></path>
+                    </svg>
                 </div>
 
-                <!-- Cuerpo con Barra de Progreso y Fases -->
-                <div class="p-4 pt-2">
-                    <!-- Barra de Progreso y Porcentaje -->
-                    <div class="mb-2 d-flex justify-content-between align-items-center">
-                        <span class="small fw-semibold" id="updateCurrentStepText" style="color: #cbd5e1; font-size: 0.82rem;">Iniciando actualización...</span>
-                        <span class="fw-bold font-monospace text-primary-subtle" id="updatePercentText" style="color: #60a5fa; font-size: 1.15rem;">0%</span>
-                    </div>
-                    
-                    <div class="progress mb-3 rounded-pill" style="height: 12px; background-color: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255,255,255,0.08);">
-                        <div id="updateProgressBar" class="progress-bar progress-bar-striped progress-bar-animated rounded-pill" role="progressbar" style="width: 0%; background: linear-gradient(90deg, #3b82f6, #60a5fa, #38bdf8); transition: width 0.4s ease;"></div>
-                    </div>
+                <h3 style="font-size: 1.35rem; font-weight: 700; color: #ffffff; margin: 0 0 6px 0;" id="sysUpgradeTitle">Actualizando AduanaDoc</h3>
+                <p style="font-size: 0.85rem; color: #94a3b8; margin: 0;">
+                    Nueva versión detectada: <span style="background: #2563eb; color: #ffffff; padding: 2px 8px; border-radius: 6px; font-family: monospace; font-weight: 600;" id="sysUpgradeVersionBadge">...</span>
+                </p>
+                <div style="margin-top: 8px; font-size: 0.78rem; color: #fde047; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;" id="sysUpgradeNote"></div>
+            </div>
 
-                    <!-- Fases de Instalación -->
-                    <div class="bg-black bg-opacity-30 rounded-3 p-3 border border-white border-opacity-10 mb-3">
-                        <div class="d-flex align-items-center gap-2 mb-2" id="step1Row">
-                            <i class="bi bi-circle-fill text-muted" id="step1Icon" style="font-size: 0.65rem;"></i>
-                            <span class="small text-muted" id="step1Text">1. Descargando paquete oficial de GitHub</span>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 mb-2" id="step2Row">
-                            <i class="bi bi-circle-fill text-muted" id="step2Icon" style="font-size: 0.65rem;"></i>
-                            <span class="small text-muted" id="step2Text">2. Creando respaldo preventivo de seguridad</span>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 mb-2" id="step3Row">
-                            <i class="bi bi-circle-fill text-muted" id="step3Icon" style="font-size: 0.65rem;"></i>
-                            <span class="small text-muted" id="step3Text">3. Instalando y actualizando archivos del sistema</span>
-                        </div>
-                        <div class="d-flex align-items-center gap-2" id="step4Row">
-                            <i class="bi bi-circle-fill text-muted" id="step4Icon" style="font-size: 0.65rem;"></i>
-                            <span class="small text-muted" id="step4Text">4. Finalizando y reiniciando sistema</span>
-                        </div>
-                    </div>
+            <!-- Cuerpo con Barra de Progreso y Fases -->
+            <div style="padding: 12px 24px 28px 24px;">
+                <!-- Indicador Porcentaje -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 0.82rem; font-weight: 600; color: #cbd5e1;" id="sysUpgradeStepDesc">Iniciando actualización...</span>
+                    <span style="font-size: 1.15rem; font-weight: 700; font-family: monospace; color: #60a5fa;" id="sysUpgradePercent">0%</span>
+                </div>
 
-                    <div id="updateErrorAlert" class="alert alert-danger py-2 small d-none mb-3" style="background-color: #ef4444; color: #fff; border: 0;"></div>
+                <!-- Barra de Progreso -->
+                <div style="width: 100%; height: 12px; background: rgba(255, 255, 255, 0.1); border-radius: 999px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 18px;">
+                    <div id="sysUpgradeBarFill" style="width: 0%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #3b82f6, #60a5fa, #38bdf8); transition: width 0.4s ease, background 0.4s ease;"></div>
+                </div>
 
-                    <div class="d-flex justify-content-between align-items-center">
-                        <small class="text-muted" style="font-size: 0.72rem; color: #94a3b8 !important;">
-                            <i class="bi bi-shield-check me-1 text-success"></i>Base de datos y PDFs 100% protegidos.
-                        </small>
-                        <button type="button" class="btn btn-outline-light btn-sm d-none" id="btnCerrarModalUpdate" data-bs-dismiss="modal">Cerrar</button>
+                <!-- Fases -->
+                <div style="background: rgba(0, 0, 0, 0.35); border-radius: 12px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;" id="sysStep1Row">
+                        <span id="sysStep1Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block;"></span>
+                        <span id="sysStep1Txt" style="font-size: 0.8rem; color: #94a3b8;">1. Descargando paquete oficial desde GitHub</span>
                     </div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;" id="sysStep2Row">
+                        <span id="sysStep2Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block;"></span>
+                        <span id="sysStep2Txt" style="font-size: 0.8rem; color: #94a3b8;">2. Creando respaldo preventivo de seguridad</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;" id="sysStep3Row">
+                        <span id="sysStep3Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block;"></span>
+                        <span id="sysStep3Txt" style="font-size: 0.8rem; color: #94a3b8;">3. Instalando y actualizando archivos del sistema</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;" id="sysStep4Row">
+                        <span id="sysStep4Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #64748b; display: inline-block;"></span>
+                        <span id="sysStep4Txt" style="font-size: 0.8rem; color: #94a3b8;">4. Finalizando y reiniciando sistema</span>
+                    </div>
+                </div>
+
+                <!-- Mensaje de Error si ocurre -->
+                <div id="sysUpgradeErrBox" style="display: none; padding: 10px 14px; border-radius: 8px; background: #ef4444; color: #ffffff; font-size: 0.8rem; margin-bottom: 14px;"></div>
+
+                <!-- Footer con Botón Cancelar/Cerrar si falla -->
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.72rem; color: #94a3b8;">
+                        🔒 Base de datos y PDFs 100% protegidos.
+                    </span>
+                    <button type="button" id="sysUpgradeBtnDismiss" onclick="document.getElementById('sysAppOverlayUpgrade').style.display='none'" style="display: none; background: transparent; border: 1px solid rgba(255,255,255,0.3); color: #ffffff; padding: 4px 12px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">
+                        Cerrar
+                    </button>
                 </div>
             </div>
         </div>
@@ -443,8 +448,13 @@
         let autoUpdateModalInstance = null;
         let updateInProgress = false;
 
+        // ==========================================
+        // Sistema Standalone Anti-AdBlock de Auto-Actualización
+        // ==========================================
+        let upgradeInProgress = false;
+
         async function checkGlobalUpdates() {
-            if (updateInProgress) return;
+            if (upgradeInProgress) return;
             try {
                 const resp = await fetch('/api/updates/check');
                 if (resp.ok) {
@@ -463,10 +473,10 @@
                             navBtn.classList.add('d-flex');
                         }
 
-                        // Abrir modal de actualización automáticamente
+                        // Abrir overlay automáticamente de inmediato
                         setTimeout(() => {
                             lanzarModalActualizacionPremium(data);
-                        }, 800);
+                        }, 600);
                     }
                 }
             } catch (err) {
@@ -475,128 +485,125 @@
         }
 
         window.lanzarModalActualizacionPremium = async function(data) {
-            if (updateInProgress) return;
-            updateInProgress = true;
+            if (upgradeInProgress) return;
+            upgradeInProgress = true;
 
-            const modalEl = document.getElementById('premiumAutoUpdateModal');
-            if (modalEl) {
-                try {
-                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                        autoUpdateModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
-                        autoUpdateModalInstance.show();
-                    } else {
-                        modalEl.classList.add('show');
-                        modalEl.style.display = 'block';
-                        document.body.classList.add('modal-open');
-                    }
-                } catch (e) {
-                    modalEl.classList.add('show');
-                    modalEl.style.display = 'block';
-                }
+            const overlay = document.getElementById('sysAppOverlayUpgrade');
+            if (overlay) {
+                overlay.style.display = 'flex';
             }
 
-            const targetVerEl = document.getElementById('updateTargetVersion');
-            const commitMsgEl = document.getElementById('updateCommitMsg');
-            const pBar = document.getElementById('updateProgressBar');
-            const pText = document.getElementById('updatePercentText');
-            const stepText = document.getElementById('updateCurrentStepText');
-            const errAlert = document.getElementById('updateErrorAlert');
-            const btnCerrar = document.getElementById('btnCerrarModalUpdate');
-            const iconWrapper = document.getElementById('updateIconWrapper');
-            const mainIcon = document.getElementById('updateMainIcon');
+            const verBadge = document.getElementById('sysUpgradeVersionBadge');
+            const noteEl = document.getElementById('sysUpgradeNote');
+            const barFill = document.getElementById('sysUpgradeBarFill');
+            const pctText = document.getElementById('sysUpgradePercent');
+            const stepDesc = document.getElementById('sysUpgradeStepDesc');
+            const errBox = document.getElementById('sysUpgradeErrBox');
+            const btnDismiss = document.getElementById('sysUpgradeBtnDismiss');
+            const iconBox = document.getElementById('sysUpgradeIconBox');
+            const iconSvg = document.getElementById('sysUpgradeIconSvg');
+            const titleEl = document.getElementById('sysUpgradeTitle');
 
-            if (targetVerEl) targetVerEl.textContent = data?.latest_version || 'Última Versión';
-            if (commitMsgEl) commitMsgEl.textContent = data?.changelog ? `"${data.changelog}"` : 'Mejoras y correcciones automáticas de AduanaDoc';
-            if (errAlert) errAlert.classList.add('d-none');
-            if (btnCerrar) btnCerrar.classList.add('d-none');
+            if (verBadge) verBadge.textContent = data?.latest_version || 'Última';
+            if (noteEl) noteEl.textContent = data?.changelog ? `"${data.changelog}"` : 'Mejoras automáticas del sistema AduanaDoc';
+            if (errBox) errBox.style.display = 'none';
+            if (btnDismiss) btnDismiss.style.display = 'none';
 
-            const setStep = (stepNum, percent, statusMsg) => {
-                if (pBar) pBar.style.width = percent + '%';
-                if (pText) pText.textContent = percent + '%';
-                if (stepText) stepText.textContent = statusMsg;
+            const setStepState = (stepNum, pct, msg) => {
+                if (barFill) barFill.style.width = pct + '%';
+                if (pctText) pctText.textContent = pct + '%';
+                if (stepDesc) stepDesc.textContent = msg;
 
                 for (let i = 1; i <= 4; i++) {
-                    const row = document.getElementById(`step${i}Row`);
-                    const icon = document.getElementById(`step${i}Icon`);
-                    const text = document.getElementById(`step${i}Text`);
-                    if (!row || !icon || !text) continue;
+                    const dot = document.getElementById(`sysStep${i}Dot`);
+                    const txt = document.getElementById(`sysStep${i}Txt`);
+                    if (!dot || !txt) continue;
 
                     if (i < stepNum) {
-                        icon.className = 'bi bi-check-circle-fill text-success fs-6';
-                        text.className = 'small text-success fw-semibold';
+                        dot.style.background = '#10b981';
+                        dot.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.8)';
+                        txt.style.color = '#34d399';
+                        txt.style.fontWeight = '600';
                     } else if (i === stepNum) {
-                        icon.className = 'spinner-border spinner-border-sm text-primary';
-                        text.className = 'small text-white fw-bold';
+                        dot.style.background = '#60a5fa';
+                        dot.style.boxShadow = '0 0 10px rgba(96, 165, 250, 0.9)';
+                        txt.style.color = '#ffffff';
+                        txt.style.fontWeight = '700';
                     } else {
-                        icon.className = 'bi bi-circle-fill text-muted';
-                        text.className = 'small text-muted';
+                        dot.style.background = '#475569';
+                        dot.style.boxShadow = 'none';
+                        txt.style.color = '#94a3b8';
+                        txt.style.fontWeight = '400';
                     }
                 }
             };
 
             // Fase 1: Descargando
-            setStep(1, 20, 'Conectando con GitHub y descargando archivos...');
+            setStepState(1, 20, 'Conectando con GitHub y descargando archivos...');
 
-            // Iniciar llamada de actualización
-            const updatePromise = fetch('/api/updates/apply', { method: 'POST' });
+            // Disparar la llamada de actualización al backend
+            const updateCall = fetch('/api/updates/apply', { method: 'POST' });
 
-            // Simulación visual suave mientras se procesa la descarga
+            // Simulación visual progresiva fluida
+            await new Promise(r => setTimeout(r, 700));
+            setStepState(1, 40, 'Descargando paquete oficial desde GitHub...');
             await new Promise(r => setTimeout(r, 800));
-            setStep(1, 40, 'Descargando paquete oficial de GitHub...');
-            await new Promise(r => setTimeout(r, 900));
 
             // Fase 2: Respaldo preventivo
-            setStep(2, 65, 'Generando respaldo preventivo de tu base de datos...');
-            await new Promise(r => setTimeout(r, 900));
+            setStepState(2, 65, 'Generando respaldo de seguridad de tu base de datos...');
+            await new Promise(r => setTimeout(r, 800));
 
             // Fase 3: Instalación de archivos
-            setStep(3, 85, 'Instalando y verificando archivos del sistema...');
+            setStepState(3, 85, 'Instalando y verificando archivos del sistema...');
 
             try {
-                const resp = await updatePromise;
+                const resp = await updateCall;
                 const res = await resp.json();
 
                 if (resp.ok && res.success) {
                     // Fase 4: Éxito total
-                    setStep(5, 100, '¡Sistema actualizado con éxito! Reiniciando...');
-                    
+                    setStepState(5, 100, '¡Sistema actualizado con éxito! Reiniciando...');
+
                     for (let i = 1; i <= 4; i++) {
-                        const icon = document.getElementById(`step${i}Icon`);
-                        const text = document.getElementById(`step${i}Text`);
-                        if (icon) icon.className = 'bi bi-check-circle-fill text-success fs-6';
-                        if (text) text.className = 'small text-success fw-semibold';
+                        const dot = document.getElementById(`sysStep${i}Dot`);
+                        const txt = document.getElementById(`sysStep${i}Txt`);
+                        if (dot) {
+                            dot.style.background = '#10b981';
+                            dot.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.8)';
+                        }
+                        if (txt) {
+                            txt.style.color = '#34d399';
+                            txt.style.fontWeight = '600';
+                        }
                     }
 
-                    if (pBar) pBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
-                    if (pText) pText.style.color = '#34d399';
-                    if (iconWrapper) {
-                        iconWrapper.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
-                        iconWrapper.style.boxShadow = '0 0 30px rgba(16, 185, 129, 0.8) !important';
+                    if (barFill) barFill.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
+                    if (pctText) pctText.style.color = '#34d399';
+                    if (iconBox) {
+                        iconBox.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                        iconBox.style.boxShadow = '0 0 35px rgba(16, 185, 129, 0.85)';
                     }
-                    if (mainIcon) mainIcon.className = 'bi bi-check2-circle fs-1 text-white';
-
-                    const titleEl = document.getElementById('updateModalTitle');
-                    const subtitleEl = document.getElementById('updateModalSubtitle');
+                    if (iconSvg) {
+                        iconSvg.innerHTML = '<path d="M20 6L9 17l-5-5"/>';
+                    }
                     if (titleEl) titleEl.textContent = '¡Actualización Completada!';
-                    if (subtitleEl) subtitleEl.innerHTML = '<span class="text-success fw-bold">Tu sistema está al día y protegido.</span>';
 
                     setTimeout(() => {
                         window.location.reload();
-                    }, 1800);
+                    }, 1600);
 
                 } else {
-                    throw new Error(res.detail || res.error || 'Error al aplicar actualización');
+                    throw new Error(res.detail || res.error || 'Error al procesar actualización');
                 }
             } catch (err) {
-                updateInProgress = false;
-                if (errAlert) {
-                    errAlert.textContent = 'Error: ' + err.message;
-                    errAlert.classList.remove('d-none');
+                upgradeInProgress = false;
+                if (errBox) {
+                    errBox.textContent = 'Aviso: ' + err.message;
+                    errBox.style.display = 'block';
                 }
-                if (stepText) stepText.textContent = 'Hubo un inconveniente durante la actualización.';
-                if (btnCerrar) btnCerrar.classList.remove('d-none');
-                if (mainIcon) mainIcon.className = 'bi bi-exclamation-triangle-fill fs-1 text-white';
-                if (iconWrapper) iconWrapper.style.background = 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)';
+                if (stepDesc) stepDesc.textContent = 'No se pudo completar la actualización automática.';
+                if (btnDismiss) btnDismiss.style.display = 'block';
+                if (iconBox) iconBox.style.background = 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)';
             }
         };
 
