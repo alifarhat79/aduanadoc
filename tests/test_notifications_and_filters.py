@@ -204,7 +204,7 @@ def test_notification_api_endpoints():
     """Prueba los endpoints de guardar y probar configuración de notificaciones."""
     import os
     orig_token = os.getenv("TELEGRAM_BOT_TOKEN", "8815110549:AAGsv9YjEqrYAqRS-qsCJh1U5prxVvIi2bI")
-    orig_chat = os.getenv("TELEGRAM_CHAT_ID", "-1003592639127")
+    orig_chat = os.getenv("TELEGRAM_CHAT_ID", "67567393,817311653")
     orig_webhook = os.getenv("WEBHOOK_URL", "")
 
     client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
