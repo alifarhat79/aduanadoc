@@ -207,9 +207,10 @@ async def scan_gdrive_api(
 
     service = GoogleDriveService(folder_id=folder_id)
     try:
-        results = await service.scan_and_process(db, allow_duplicate=False, propietario=propietario)
-        procesados = results.get("procesados", 0)
-        duplicados = results.get("duplicados", 0)
+        import asyncio
+        results = await asyncio.to_thread(service.scan_and_process, db=db, allow_duplicate=False, propietario=propietario)
+        procesados = results.get("procesados", results.get("nuevos_procesados", 0))
+        duplicados = results.get("duplicados", results.get("omitidos_duplicados", 0))
         errores = results.get("errores", 0)
 
         return {
@@ -233,9 +234,10 @@ async def scan_gdrive_local_api(
 
     service = GoogleDriveService()
     try:
-        results = await service.scan_local_folder(db, payload.local_path, allow_duplicate=False, propietario=payload.propietario)
-        procesados = results.get("procesados", 0)
-        duplicados = results.get("duplicados", 0)
+        import asyncio
+        results = await asyncio.to_thread(service.scan_local_folder, db=db, local_path=payload.local_path, allow_duplicate=False, propietario=payload.propietario)
+        procesados = results.get("procesados", results.get("nuevos_procesados", 0))
+        duplicados = results.get("duplicados", results.get("omitidos_duplicados", 0))
         errores = results.get("errores", 0)
 
         return {

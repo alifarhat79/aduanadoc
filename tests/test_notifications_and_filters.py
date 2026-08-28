@@ -91,10 +91,16 @@ def setup_db():
 def test_mercancias_date_filter_html():
     """Prueba que el filtro por fechas restrinja los ítems en /mercancias."""
     # Filtrar solo el rango que incluye d1 (2026-08-01 a 2026-08-15)
-    response = client.get("/mercancias?fecha_desde=2026-08-15&fecha_hasta=2026-08-30")
-    assert response.status_code == 200
-    assert "TEST26002IMPORT02" in response.text
-    assert "TEST26001IMPORT01" not in response.text
+    resp1 = client.get("/mercancias?fecha_desde=2026-08-01&fecha_hasta=2026-08-15&q=TEST")
+    assert resp1.status_code == 200
+    assert "SMARTPHONE" in resp1.text
+    assert "NOTEBOOK" not in resp1.text
+
+    # Filtrar solo el rango que incluye d2 (2026-08-20 a 2026-08-30)
+    resp2 = client.get("/mercancias?fecha_desde=2026-08-20&fecha_hasta=2026-08-30&q=TEST")
+    assert resp2.status_code == 200
+    assert "SMARTPHONE" not in resp2.text
+    assert "NOTEBOOK" in resp2.text
 
 
 @pytest.mark.anyio
@@ -142,11 +148,6 @@ async def test_turso_canonical_sync_multi_pc():
     assert d_local.propietario == "PROPIETARIO ALTERADO EN PC2"
     assert d_local.canal == "NARANJA"
     db.close()
-
-    # Filtrar solo el rango que incluye d2 (2026-08-20 a 2026-08-30)
-    resp2 = client.get("/mercancias?fecha_desde=2026-08-20&fecha_hasta=2026-08-30&q=TEST")
-    assert resp2.status_code == 200
-    assert "SMARTPHONE" not in resp2.text
 
 
 def test_mercancias_date_filter_export_excel_and_csv():

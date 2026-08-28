@@ -39,10 +39,28 @@ class GoogleDriveService:
         creds = service_account.Credentials.from_service_account_file(str(cred_path), scopes=SCOPES)
         return build('drive', 'v3', credentials=creds)
 
-    def scan_and_process_folder(self, db: Session, propietario_default: str = "Google Drive") -> Dict[str, Any]:
+    def scan_and_process(
+        self,
+        db: Session,
+        allow_duplicate: bool = False,
+        propietario: Optional[str] = None,
+        propietario_default: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Alias para scan_and_process_folder."""
+        owner = propietario or propietario_default or "Google Drive"
+        return self.scan_and_process_folder(db=db, propietario_default=owner, allow_duplicate=allow_duplicate)
+
+    def scan_and_process_folder(
+        self,
+        db: Session,
+        propietario_default: str = "Google Drive",
+        allow_duplicate: bool = False,
+        propietario: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Escanea la carpeta de Google Drive por API, procesa los PDFs nuevos y omite duplicados.
         """
+        owner = propietario or propietario_default or "Google Drive"
         drive_service = self.get_drive_service()
         
         # Consultar archivos PDF en la carpeta (soporta Unidades Compartidas y Mi Unidad)
@@ -190,15 +208,25 @@ class GoogleDriveService:
         return {
             "total_encontrados": total_encontrados,
             "nuevos_procesados": nuevos_procesados,
+            "procesados": nuevos_procesados,
             "omitidos_duplicados": omitidos_duplicados,
+            "duplicados": omitidos_duplicados,
             "errores": errores,
             "detalles": detalles
         }
 
-    def scan_local_folder(self, db: Session, local_path: str, propietario_default: str = "Carpeta Local") -> Dict[str, Any]:
+    def scan_local_folder(
+        self,
+        db: Session,
+        local_path: str,
+        propietario_default: str = "Carpeta Local",
+        allow_duplicate: bool = False,
+        propietario: Optional[str] = None
+    ) -> Dict[str, Any]:
         r"""
         Escanea una carpeta local sincronizada de Google Drive en Windows (ej: J:\My Drive\...).
         """
+        owner = propietario or propietario_default or "Carpeta Local"
         folder = Path(local_path)
         if not folder.exists() or not folder.is_dir():
             raise FileNotFoundError(f"La carpeta local '{local_path}' no existe o no es accesible.")
@@ -318,7 +346,9 @@ class GoogleDriveService:
         return {
             "total_encontrados": total_encontrados,
             "nuevos_procesados": nuevos_procesados,
+            "procesados": nuevos_procesados,
             "omitidos_duplicados": omitidos_duplicados,
+            "duplicados": omitidos_duplicados,
             "errores": errores,
             "detalles": detalles
         }
