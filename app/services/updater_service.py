@@ -256,6 +256,10 @@ class UpdaterService:
         Para OTRAS PCs: Aplica la actualización automáticamente desde GitHub o ZIP,
         preservando intacta la base de datos (data/despachos.db), uploads y credenciales (.env).
         """
+        check = self.check_for_updates()
+        if check.get("source") == "github":
+            return self.connect_git_repo()
+
         # Si hay archivo ZIP local preparado, aplicarlo
         if self.update_zip_file.exists():
             return self._apply_zip_update()
