@@ -254,6 +254,7 @@ class TursoService:
 
         updated_count = 0
         inserted_count = 0
+        inserted_despachos = []
 
         for row in desp_rows:
             row_dict = {}
@@ -339,9 +340,36 @@ class TursoService:
                         except Exception:
                             setattr(new_d, col_name, str(val) if val is not None else None)
                 db.add(new_d)
+                inserted_despachos.append(new_d)
                 inserted_count += 1
 
         db.commit()
+
+        # Enviar notificación a Telegram por cada despacho nuevo traído de la nube
+        if inserted_despachos:
+            try:
+                from app.services.notification_service import NotificationService
+                noti = NotificationService()
+                if noti.enabled and (noti.telegram_token or noti.webhook_url):
+                    for d_new in inserted_despachos:
+                        desp_dict = {
+                            "numero_despacho": d_new.numero_despacho or "S/N",
+                            "importador_nombre": d_new.importador_nombre or "No identificado",
+                            "propietario": d_new.propietario or "Sin Asignar",
+                            "canal": d_new.canal or "VERDE",
+                            "valor_fob": d_new.valor_fob or 0.0,
+                            "valor_cif": d_new.valor_cif or 0.0,
+                            "fecha_despacho": d_new.fecha_despacho.strftime("%d/%m/%Y") if d_new.fecha_despacho else "-",
+                            "nombre_archivo_original": d_new.nombre_archivo_original or "despacho.pdf",
+                        }
+                        noti.notify_new_despacho(
+                            despacho_dict=desp_dict,
+                            items_count=len(d_new.items) if hasattr(d_new, 'items') and d_new.items else 0,
+                            source="Sincronización Nube (Turso)"
+                        )
+            except Exception as n_err:
+                logger.warning(f"Error enviando notificación tras sync nube: {n_err}")
+
         return {
             "success": True,
             "despachos_actualizados": updated_count,
@@ -369,6 +397,7 @@ class TursoService:
         turso_id_to_local_id: Dict[int, int] = {}
         imported_despachos = 0
         imported_items = 0
+        new_despachos_inserted = []
 
         # 1. Importar y reconciliar Despachos
         for row in desp_rows:
@@ -398,6 +427,7 @@ class TursoService:
             if not existing:
                 existing = Despacho()
                 db.add(existing)
+                new_despachos_inserted.append(existing)
 
             for col in Despacho.__table__.columns:
                 col_name = col.name
@@ -477,6 +507,31 @@ class TursoService:
                 imported_items += 1
 
         db.commit()
+
+        # Enviar notificación a Telegram por cada despacho nuevo traído de la nube
+        if new_despachos_inserted:
+            try:
+                from app.services.notification_service import NotificationService
+                noti = NotificationService()
+                if noti.enabled and (noti.telegram_token or noti.webhook_url):
+                    for d_new in new_despachos_inserted:
+                        desp_dict = {
+                            "numero_despacho": d_new.numero_despacho or "S/N",
+                            "importador_nombre": d_new.importador_nombre or "No identificado",
+                            "propietario": d_new.propietario or "Sin Asignar",
+                            "canal": d_new.canal or "VERDE",
+                            "valor_fob": d_new.valor_fob or 0.0,
+                            "valor_cif": d_new.valor_cif or 0.0,
+                            "fecha_despacho": d_new.fecha_despacho.strftime("%d/%m/%Y") if d_new.fecha_despacho else "-",
+                            "nombre_archivo_original": d_new.nombre_archivo_original or "despacho.pdf",
+                        }
+                        noti.notify_new_despacho(
+                            despacho_dict=desp_dict,
+                            items_count=len(d_new.items) if hasattr(d_new, 'items') and d_new.items else 0,
+                            source="Sincronización Nube Completa (Turso)"
+                        )
+            except Exception as n_err:
+                logger.warning(f"Error enviando notificación tras pull completo: {n_err}")
 
         return {
             "success": True,
