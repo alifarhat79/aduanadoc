@@ -1,5 +1,4 @@
 @echo off
-setlocal enabledelayedexpansion
 chcp 65001 >nul
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
@@ -12,67 +11,117 @@ echo      SISTEMA DE GESTION DE DESPACHOS ADUANEROS (AduanaDoc)
 echo ================================================================
 echo.
 
-REM 1. Buscar ejecutable de Python
-set PY_CMD=python
+REM --- 1. LOCALIZADOR INTELIGENTE DE PYTHON ---
+set "PY_CMD="
 
-where python >nul 2>&1
-if errorlevel 1 (
-    if exist "C:\Python314\python.exe" set PY_CMD=C:\Python314\python.exe
-    if exist "C:\Python312\python.exe" set PY_CMD=C:\Python312\python.exe
-    if exist "C:\Python311\python.exe" set PY_CMD=C:\Python311\python.exe
-    if exist "%LOCALAPPDATA%\Programs\Python\Python314\python.exe" set PY_CMD=%LOCALAPPDATA%\Programs\Python\Python314\python.exe
-    if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe
-    if exist "%LOCALAPPDATA%\Programs\Python\Python310\python.exe" set PY_CMD=%LOCALAPPDATA%\Programs\Python\Python310\python.exe
+REM Probar si python funciona directamente en PATH
+python --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=python"
+    goto :python_encontrado
 )
 
-echo [*] Utilizando Python: %PY_CMD%
+REM Probar py -3 launcher de Windows
+py -3 --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=py -3"
+    goto :python_encontrado
+)
 
-REM 2. Sincronizacion con Git (silenciosa y segura)
+REM Probar py launcher
+py --version >nul 2>&1
+if not errorlevel 1 (
+    set "PY_CMD=py"
+    goto :python_encontrado
+)
+
+REM Buscar en carpetas estandar de instalacion de Python en Windows
+for %%V in (314 313 312 311 310 39 38) do (
+    if exist "C:\Python%%V\python.exe" (
+        set "PY_CMD=C:\Python%%V\python.exe"
+        goto :python_encontrado
+    )
+    if exist "%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe" (
+        set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe"
+        goto :python_encontrado
+    )
+    if exist "%ProgramFiles%\Python%%V\python.exe" (
+        set "PY_CMD=%ProgramFiles%\Python%%V\python.exe"
+        goto :python_encontrado
+    )
+    if exist "%ProgramFiles(x86)%\Python%%V\python.exe" (
+        set "PY_CMD=%ProgramFiles(x86)%\Python%%V\python.exe"
+        goto :python_encontrado
+    )
+)
+
+REM Buscar dinamicamente en todo el directorio Programs\Python de AppData
+for /d %%D in ("%LOCALAPPDATA%\Programs\Python\Python*") do (
+    if exist "%%D\python.exe" (
+        set "PY_CMD=%%D\python.exe"
+        goto :python_encontrado
+    )
+)
+
+:python_no_encontrado
+echo [ERROR CRITICO] No se encontro Python instalado en esta computadora.
+echo.
+echo Para solucionarlo:
+echo 1. Descarga Python desde https://www.python.org/downloads/
+echo 2. AL INSTALAR, MARCA LA CASILLA: "Add python.exe to PATH"
+echo.
+echo Presiona cualquier tecla para salir...
+pause >nul
+exit /b 1
+
+:python_encontrado
+echo [*] Python detectado: %PY_CMD%
+%PY_CMD% --version
+echo.
+
+REM --- 2. SINCRONIZACION CON GIT (OPCIONAL Y SILENCIOSA) ---
 where git >nul 2>&1
 if not errorlevel 1 (
-    if not exist ".git" (
-        echo [*] Configurando vinculo con repositorio GitHub...
-        git init -q >nul 2>&1
-        git remote add origin https://github.com/alifarhat79/aduanadoc.git >nul 2>&1
-        git fetch origin main -q >nul 2>&1
-        git branch -M main >nul 2>&1
-        git reset --mixed origin/main >nul 2>&1
+    if exist ".git" (
+        echo [*] Sincronizando cambios de GitHub...
+        git pull origin main --autostash -q >nul 2>&1 || git pull origin main -q >nul 2>&1
     )
-    echo [*] Sincronizando cambios de GitHub...
-    git pull origin main --autostash -q >nul 2>&1 || git pull origin main -q >nul 2>&1
 )
 
-REM 3. Dependencias basicas
-echo [*] Verificando dependencias...
-"%PY_CMD%" -c "import fastapi, uvicorn, sqlalchemy, openpyxl, reportlab, httpx, dotenv" >nul 2>&1
+REM --- 3. VERIFICACION DE DEPENDENCIAS ---
+echo [*] Verificando dependencias del sistema...
+%PY_CMD% -c "import fastapi, uvicorn, sqlalchemy, openpyxl, reportlab, httpx, dotenv" >nul 2>&1
 if errorlevel 1 (
-    echo [*] Instalando dependencias necesarias (esto puede tardar unos segundos)...
-    "%PY_CMD%" -m pip install fastapi uvicorn sqlalchemy pydantic jinja2 python-multipart pymupdf pdfplumber openpyxl reportlab python-dotenv httpx pandas
+    echo [*] Instalando dependencias necesarias (por favor espera unos segundos)...
+    %PY_CMD% -m pip install -r requirements.txt
+    if errorlevel 1 (
+        echo [*] Instalando modulos principales directamente...
+        %PY_CMD% -m pip install fastapi uvicorn sqlalchemy pydantic jinja2 python-multipart pymupdf pdfplumber openpyxl reportlab python-dotenv httpx pandas
+    )
 )
 
-REM 4. Liberar puerto 8000 si un proceso anterior quedo colgado
+REM --- 4. LIBERAR PUERTO 8000 SI ESTA OCUPADO ---
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000" ^| findstr "LISTENING"') do (
     taskkill /F /PID %%a >nul 2>&1
 )
 
-REM 5. Abrir navegador
-echo [*] Abriendo navegador web en http://127.0.0.1:8000
-start "" cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:8000"
+REM --- 5. ABRIR NAVEGADOR E INICIAR SERVIDOR ---
+echo [*] Abriendo navegador en http://127.0.0.1:8000...
+start "" cmd /c "timeout /t 3 /nobreak >nul & start http://127.0.0.1:8000"
 
-REM 6. Iniciar Servidor FastAPI
-echo [*] Servidor iniciado correctamente en http://127.0.0.1:8000
+echo [*] Servidor AduanaDoc listo y en ejecucion.
 echo ================================================================
-echo   Para detener el servidor, cierra esta ventana.
+echo   Presiona CTRL + C o cierra esta ventana para detener.
 echo ================================================================
 echo.
-"%PY_CMD%" -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
-if errorlevel 1 (
-    echo.
-    echo ================================================================
-    echo [ERROR] El servidor se detuvo con codigo de error %errorlevel%.
-    echo ================================================================
-    echo.
-    pause
-)
+%PY_CMD% -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+echo.
+echo ================================================================
+echo [AVISO] El servidor se ha detenido con codigo: %errorlevel%.
+echo ================================================================
+echo.
+pause
+
 
