@@ -13,11 +13,20 @@ router = APIRouter(tags=["Dashboard"])
 @router.get("/", response_class=HTMLResponse)
 async def dashboard_view(request: Request, db: Session = Depends(get_db)):
     """Vista principal del Dashboard empresarial."""
+    # KPIs de Período y Empresas
     hoy = date.today()
+    primer_dia_anio = date(hoy.year, 1, 1)
     primer_dia_mes = hoy.replace(day=1)
 
+    despachos_este_anio = db.query(func.count(Despacho.id)).filter(Despacho.fecha_despacho >= primer_dia_anio).scalar() or 0
     despachos_este_mes = db.query(func.count(Despacho.id)).filter(Despacho.fecha_despacho >= primer_dia_mes).scalar() or 0
-    # KPIs
+
+    importadores_set = set(r[0] for r in db.query(Despacho.importador_nombre).filter(Despacho.importador_nombre.isnot(None), Despacho.importador_nombre != "").all() if r[0])
+    exportadores_set = set(r[0] for r in db.query(Despacho.exportador_nombre).filter(Despacho.exportador_nombre.isnot(None), Despacho.exportador_nombre != "").all() if r[0])
+    total_empresas = len(importadores_set.union(exportadores_set))
+    total_importadores = len(importadores_set)
+    total_exportadores = len(exportadores_set)
+
     total_despachos = db.query(func.count(Despacho.id)).scalar() or 0
     total_fob = db.query(func.sum(Despacho.valor_fob)).scalar() or 0.0
     
@@ -74,7 +83,12 @@ async def dashboard_view(request: Request, db: Session = Depends(get_db)):
 
     stats = {
         "total_despachos": total_despachos,
+        "despachos_este_anio": despachos_este_anio,
         "despachos_este_mes": despachos_este_mes,
+        "hoy_anio": hoy.year,
+        "total_empresas": total_empresas,
+        "total_importadores": total_importadores,
+        "total_exportadores": total_exportadores,
         "total_fob": total_fob,
         "total_cif": total_cif,
         "total_impuestos": total_impuestos,

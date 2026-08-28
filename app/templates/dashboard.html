@@ -48,30 +48,30 @@
         </div>
     </div>
 
-    <!-- 4. Tributos Pagos (Gs) -->
+    <!-- 4. Despachos por Período (Año y Mes) -->
     <div class="col-xl-2 col-md-4 col-sm-6">
         <div class="card border-0 shadow-sm rounded-3 h-100 bg-white p-3">
             <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.68rem;">Tributos Pagos</span>
-                <span class="badge bg-success-subtle text-success rounded-pill px-2 py-0" style="font-size: 0.65rem;">PYG (Gs)</span>
+                <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.68rem;">Despachos {{ hoy_anio }}</span>
+                <span class="badge bg-success-subtle text-success rounded-pill px-2 py-0" style="font-size: 0.65rem;">Año Activo</span>
             </div>
-            <h4 class="fw-bold my-1 text-success text-truncate" style="font-size: 1.15rem;" title="Gs. {{ '{:,.0f}'.format(total_tributos_pagos) }}">Gs. {{ "{:,.0f}".format(total_tributos_pagos) }}</h4>
+            <h4 class="fw-bold my-1 text-dark">{{ despachos_este_anio }}</h4>
             <div class="text-muted" style="font-size: 0.72rem;">
-                <i class="bi bi-cash-stack text-success me-1"></i>Liquidación fiscal
+                <i class="bi bi-calendar2-check text-success me-1"></i>Mes actual: <strong>{{ despachos_este_mes }}</strong>
             </div>
         </div>
     </div>
 
-    <!-- 5. Valor FOB Total -->
+    <!-- 5. Empresas Registradas -->
     <div class="col-xl-2 col-md-4 col-sm-6">
         <div class="card border-0 shadow-sm rounded-3 h-100 bg-white p-3">
             <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.68rem;">Valor FOB Total</span>
-                <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-0" style="font-size: 0.65rem;">USD ($)</span>
+                <span class="text-muted text-uppercase fw-semibold" style="font-size: 0.68rem;">Empresas Registradas</span>
+                <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-0" style="font-size: 0.65rem;">Clientes</span>
             </div>
-            <h4 class="fw-bold my-1 text-primary text-truncate" style="font-size: 1.15rem;" title="${{ '{:,.2f}'.format(total_fob) }}">${{ "{:,.2f}".format(total_fob) }}</h4>
+            <h4 class="fw-bold my-1 text-dark">{{ total_empresas }}</h4>
             <div class="text-muted" style="font-size: 0.72rem;">
-                <i class="bi bi-graph-up-arrow text-primary me-1"></i>Comercio exterior
+                <i class="bi bi-buildings text-primary me-1"></i>{{ total_importadores }} Import. • {{ total_exportadores }} Proveed.
             </div>
         </div>
     </div>
@@ -116,7 +116,7 @@
                         <span class="badge bg-primary text-white px-2 py-1">{{ ya.anio or 'S/F' }}</span>
                         <div class="text-start">
                             <div class="fw-bold text-dark" style="font-size: 0.8rem;">{{ ya.total_despachos }} despachos</div>
-                            <small class="text-muted" style="font-size: 0.68rem;">${{ "{:,.2f}".format(ya.total_fob or 0) }}</small>
+                            <small class="text-primary fw-semibold" style="font-size: 0.68rem;">Filtrar &rarr;</small>
                         </div>
                     </a>
                     {% endfor %}
