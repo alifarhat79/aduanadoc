@@ -962,35 +962,39 @@
         const repoInput = document.getElementById('gitRepoUrlInput');
 
         try {
-            const resp = await fetch('/api/updates/git/status');
+            const resp = await fetch('/api/updates/check');
             const data = await resp.json();
 
             btnPull.disabled = false;
 
-            if (data.has_git) {
-                badgeEl.className = 'badge bg-success-subtle text-success';
-                badgeEl.textContent = 'Git Activo';
-                btnPull.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Sincronizar Cambios Rápidos (git pull)';
-                if (data.remote_url && repoInput) {
-                    repoInput.value = data.remote_url;
-                }
-
+            if (data.has_update) {
+                badgeEl.className = 'badge bg-warning text-dark fw-bold';
+                badgeEl.innerHTML = '<i class="bi bi-stars text-danger me-1"></i> Update Disponible';
+                btnPull.className = 'btn btn-warning btn-sm w-100 fw-bold mt-1 shadow-sm border-warning';
+                btnPull.innerHTML = '<i class="bi bi-cloud-arrow-down-fill text-danger me-1"></i> Descargar e Instalar Actualización Ahora';
+                
                 detailsEl.innerHTML = `
-                    <div><strong>Rama:</strong> <span class="text-primary">${data.branch}</span></div>
-                    <div><strong>Commit:</strong> <span class="text-dark">${data.commit_hash}</span> - ${data.commit_msg || ''} (${data.commit_date || ''})</div>
-                    ${data.remote_url ? `<div class="text-truncate text-muted" title="${data.remote_url}"><strong>Remoto:</strong> ${data.remote_url}</div>` : ''}
+                    <div class="alert alert-warning py-2 px-3 small mb-2 border-warning text-dark">
+                        <div class="fw-bold"><i class="bi bi-stars text-danger me-1"></i> ¡Nueva versión disponible en GitHub!</div>
+                        <div class="mt-1"><strong>Commit:</strong> <code>${data.latest_version}</code></div>
+                        <div class="text-dark-emphasis">${data.changelog || 'Nuevas mejoras incluidas'}</div>
+                        ${data.released_at ? `<div class="text-muted" style="font-size: 0.7rem;">Fecha: ${data.released_at}</div>` : ''}
+                    </div>
                 `;
             } else {
-                badgeEl.className = 'badge bg-warning-subtle text-warning-emphasis';
-                badgeEl.textContent = 'Sin Repo Git';
-                btnPull.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Conectar y Sincronizar con GitHub';
-                detailsEl.innerHTML = `<span class="text-muted">${data.message || 'Sin repositorio Git local. Presiona el botón para conectar y descargar actualizaciones automáticamente.'}</span>`;
+                badgeEl.className = 'badge bg-success-subtle text-success';
+                badgeEl.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Al día';
+                btnPull.className = 'btn btn-dark btn-sm w-100 fw-semibold mt-1 shadow-sm';
+                btnPull.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Sincronizar Cambios con GitHub';
+                detailsEl.innerHTML = `
+                    <div class="text-success small"><i class="bi bi-check2-circle me-1"></i> <strong>Tu sistema está al día.</strong> (Commit: <code>${data.current_version || 'main'}</code>)</div>
+                `;
             }
         } catch (e) {
             badgeEl.className = 'badge bg-secondary';
             badgeEl.textContent = 'Desconectado';
             btnPull.disabled = false;
-            detailsEl.textContent = 'Estado de Git no disponible. Puedes pulsar Sincronizar para reintentar.';
+            detailsEl.textContent = 'Estado de actualizaciones no disponible.';
         }
     }
 
@@ -1000,10 +1004,14 @@
         const repoInput = document.getElementById('gitRepoUrlInput');
         const repoUrl = (repoInput ? repoInput.value.trim() : '') || 'https://github.com/alifarhat79/aduanadoc.git';
 
+        if (!confirm('🚀 ¿Deseas descargar y actualizar el sistema automáticamente desde GitHub?\n\nSe realizará un respaldo preventivo de la base de datos y se actualizarán todos los archivos.')) {
+            return;
+        }
+
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Conectando...';
         resEl.className = 'alert alert-info py-2 small mt-2 mb-0';
-        resEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Conectando con GitHub y descargando actualizaciones...';
+        resEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Descargando actualización de GitHub y respaldando base de datos...';
         resEl.classList.remove('d-none');
 
         try {
@@ -1015,8 +1023,8 @@
             const data = await resp.json();
             if (resp.ok && data.success) {
                 resEl.className = 'alert alert-success py-2 small mt-2 mb-0';
-                resEl.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> ${data.message || 'Conectado y actualizado con éxito.'}`;
-                cargarEstadoGit();
+                resEl.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> <strong>${data.message || 'Sistema actualizado con éxito.'}</strong> Reiniciando...`;
+                setTimeout(() => window.location.reload(), 1800);
             } else {
                 resEl.className = 'alert alert-danger py-2 small mt-2 mb-0';
                 resEl.innerHTML = `<i class="bi bi-x-circle-fill me-1"></i> Error: ${data.detail || data.error || 'No se pudo vincular'}`;
@@ -1034,10 +1042,14 @@
         const btn = document.getElementById('btnGitPull');
         const resEl = document.getElementById('gitPullResult');
 
+        if (!confirm('🚀 ¿Deseas actualizar el sistema a la última versión disponible?\n\nSe creará un respaldo de seguridad preventivo automáticamente.')) {
+            return;
+        }
+
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Ejecutando git pull...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando sistema...';
         resEl.className = 'alert alert-info py-2 small mt-2 mb-0';
-        resEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Respaldando base de datos y descargando cambios de Git...';
+        resEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Descargando actualización desde GitHub y respaldando base de datos...';
         resEl.classList.remove('d-none');
 
         try {

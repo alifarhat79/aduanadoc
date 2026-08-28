@@ -102,11 +102,120 @@ class UpdaterService:
                 "error": str(e)
             }
 
+    def _get_installed_commit(self) -> Dict[str, Any]:
+        """Obtiene la información del commit instalado actualmente en esta PC."""
+        ver_file = BASE_DIR / "data" / "installed_version.json"
+        if ver_file.exists():
+            try:
+                return json.loads(ver_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        # Si existe .git
+        git_dir = BASE_DIR / ".git"
+        if git_dir.exists():
+            import subprocess
+            try:
+                h_proc = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=5)
+                m_proc = subprocess.run(["git", "log", "-1", "--format=%s"], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=5)
+                d_proc = subprocess.run(["git", "log", "-1", "--format=%cd", "--date=relative"], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=5)
+                if h_proc.returncode == 0 and h_proc.stdout.strip():
+                    return {
+                        "commit_hash": h_proc.stdout.strip(),
+                        "commit_msg": m_proc.stdout.strip() if m_proc.returncode == 0 else "",
+                        "commit_date": d_proc.stdout.strip() if d_proc.returncode == 0 else "",
+                        "updated_at": datetime.now().isoformat()
+                    }
+            except Exception:
+                pass
+
+        return {
+            "commit_hash": settings.APP_VERSION,
+            "commit_msg": "Versión instalada",
+            "commit_date": "",
+            "updated_at": datetime.now().isoformat()
+        }
+
+    def _save_installed_commit(self, commit_hash: str, commit_msg: str = "", commit_date: str = ""):
+        """Guarda la versión y commit instalado en data/installed_version.json."""
+        ver_file = BASE_DIR / "data" / "installed_version.json"
+        ver_file.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "commit_hash": commit_hash,
+            "commit_msg": commit_msg,
+            "commit_date": commit_date,
+            "updated_at": datetime.now().isoformat()
+        }
+        ver_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def check_github_updates(self, repo_url: str = "https://github.com/alifarhat79/aduanadoc.git") -> Dict[str, Any]:
+        """
+        Consulta la API de GitHub para verificar si existen nuevos commits en la rama main.
+        Funciona en cualquier PC con o sin Git instalado.
+        """
+        import httpx
+        clean_url = repo_url.rstrip("/").removesuffix(".git")
+        parts = clean_url.split("github.com/")
+        if len(parts) < 2:
+            return {"has_update": False, "error": "URL de GitHub inválida"}
+
+        repo_slug = parts[1]
+        api_url = f"https://api.github.com/repos/{repo_slug}/commits/main"
+
+        try:
+            with httpx.Client(timeout=6.0, follow_redirects=True) as client:
+                resp = client.get(api_url, headers={"User-Agent": "AduanaDoc-Updater/1.0"})
+                if resp.status_code == 200:
+                    gh_data = resp.json()
+                    remote_sha = gh_data.get("sha", "")[:7]
+                    remote_full_sha = gh_data.get("sha", "")
+                    commit_obj = gh_data.get("commit", {})
+                    remote_msg = (commit_obj.get("message") or "").split("\n")[0]
+                    committer = commit_obj.get("committer", {})
+                    remote_date = committer.get("date", "")
+
+                    local_info = self._get_installed_commit()
+                    local_hash = (local_info.get("commit_hash") or "").strip()
+
+                    # Comparar si hay nuevo commit
+                    has_update = bool(remote_sha and local_hash and not local_hash.startswith(remote_sha) and not remote_full_sha.startswith(local_hash))
+
+                    return {
+                        "has_update": has_update,
+                        "latest_commit": remote_sha,
+                        "latest_full_commit": remote_full_sha,
+                        "latest_message": remote_msg,
+                        "latest_date": remote_date,
+                        "current_commit": local_hash,
+                        "message": f"¡Nueva actualización disponible en GitHub! ({remote_sha}: {remote_msg})" if has_update else "El sistema está actualizado a la última versión de GitHub."
+                    }
+                elif resp.status_code == 404:
+                    return {"has_update": False, "error": "Repositorio privado o no encontrado en GitHub"}
+                else:
+                    return {"has_update": False, "error": f"Respuesta de GitHub HTTP {resp.status_code}"}
+        except Exception as e:
+            logger.debug(f"[UpdaterService] No se pudo verificar GitHub (modo offline o timeout): {e}")
+            return {"has_update": False, "error": str(e)}
+
     def check_for_updates(self) -> Dict[str, Any]:
         """
-        Para OTRAS PCs: Consulta si existe una versión más reciente disponible en la carpeta compartida / Google Drive.
+        Para OTRAS PCs: Consulta si existe una versión más reciente disponible
+        ya sea en GitHub (primario y automático) o en Google Drive / ZIP (fallback).
         """
-        # 1. Intentar leer version.json local en updates/ (sincronizado por Google Drive Desktop)
+        # 1. Comprobación de GitHub en tiempo real
+        gh_check = self.check_github_updates()
+        if gh_check.get("has_update"):
+            return {
+                "has_update": True,
+                "source": "github",
+                "current_version": gh_check.get("current_commit") or settings.APP_VERSION,
+                "latest_version": gh_check.get("latest_commit"),
+                "changelog": gh_check.get("latest_message"),
+                "released_at": gh_check.get("latest_date"),
+                "message": gh_check.get("message")
+            }
+
+        # 2. Comprobación por archivo ZIP en updates/ (Google Drive)
         manifest = None
         if self.version_file.exists():
             try:
@@ -115,51 +224,60 @@ class UpdaterService:
             except Exception as e:
                 logger.warning(f"[UpdaterService] Error al leer version.json: {e}")
 
-        # 2. Si no hay archivo o para mayor seguridad, retornar estado
         current_v = settings.APP_VERSION
-        if not manifest or "version" not in manifest:
-            return {
-                "has_update": False,
-                "current_version": current_v,
-                "latest_version": current_v,
-                "message": "Sistema al día. No hay actualizaciones pendientes."
-            }
+        if manifest and "version" in manifest:
+            latest_v = manifest.get("version", current_v)
+            is_newer = self._is_version_newer(latest_v, current_v)
+            update_file_exists = self.update_zip_file.exists()
 
-        latest_v = manifest.get("version", current_v)
-        is_newer = self._is_version_newer(latest_v, current_v)
-        update_file_exists = self.update_zip_file.exists()
+            if is_newer and update_file_exists:
+                return {
+                    "has_update": True,
+                    "source": "zip",
+                    "current_version": current_v,
+                    "latest_version": latest_v,
+                    "changelog": manifest.get("changelog", ""),
+                    "released_at": manifest.get("released_at", ""),
+                    "file_size_mb": manifest.get("file_size_mb", 0),
+                    "update_file_ready": True,
+                    "message": f"¡Nueva actualización disponible en archivo ZIP: v{latest_v}!"
+                }
 
+        local_info = self._get_installed_commit()
         return {
-            "has_update": is_newer and update_file_exists,
-            "current_version": current_v,
-            "latest_version": latest_v,
-            "changelog": manifest.get("changelog", ""),
-            "released_at": manifest.get("released_at", ""),
-            "file_size_mb": manifest.get("file_size_mb", 0),
-            "update_file_ready": update_file_exists
+            "has_update": False,
+            "current_version": local_info.get("commit_hash") or current_v,
+            "latest_version": gh_check.get("latest_commit") or local_info.get("commit_hash") or current_v,
+            "message": "Sistema al día. No hay actualizaciones pendientes."
         }
 
     def apply_update(self) -> Dict[str, Any]:
         """
-        Para OTRAS PCs: Aplica la actualización descargando y sobreescribiendo los archivos de código,
+        Para OTRAS PCs: Aplica la actualización automáticamente desde GitHub o ZIP,
         preservando intacta la base de datos (data/despachos.db), uploads y credenciales (.env).
         """
+        # Si hay archivo ZIP local preparado, aplicarlo
+        if self.update_zip_file.exists():
+            return self._apply_zip_update()
+
+        # Si no hay ZIP local, descargar directamente desde GitHub
+        return self.connect_git_repo()
+
+    def _apply_zip_update(self) -> Dict[str, Any]:
+        """Aplica actualización desde el archivo update_latest.zip."""
         if not self.update_zip_file.exists():
             return {
                 "success": False,
                 "error": "No se encontró el archivo 'update_latest.zip' en la carpeta de actualizaciones."
             }
 
-        # 1. Realizar un RESPALDO PREVENTIVO de la base de datos antes de tocar código
         backup_svc = BackupService()
         backup_res = backup_svc.create_system_backup(reason="PRE_ACTUALIZACION", include_uploads=False, include_code=False)
 
-        # 2. Leer versión a instalar
         check = self.check_for_updates()
         new_version = check.get("latest_version", settings.APP_VERSION)
         old_version = settings.APP_VERSION
 
-        # 3. Lista negra de archivos que JAMÁS se deben sobreescribir
         protected_paths = {
             "data/despachos.db", "service_account.json", ".env"
         }
@@ -167,21 +285,14 @@ class UpdaterService:
         try:
             with zipfile.ZipFile(self.update_zip_file, 'r') as zipf:
                 for member in zipf.infolist():
-                    # Normalizar ruta
                     norm_path = member.filename.replace("\\", "/").strip("/")
-                    
-                    # Evitar path traversal
                     if ".." in norm_path or norm_path.startswith("/"):
                         continue
-
-                    # Proteger base de datos y credenciales
                     if any(norm_path.startswith(prot) or norm_path == prot for prot in protected_paths):
                         continue
-
                     if norm_path.startswith("uploads/") or norm_path.startswith("backups/"):
                         continue
 
-                    # Extraer de forma segura
                     dest_file = BASE_DIR / norm_path
                     if member.is_dir():
                         dest_file.mkdir(parents=True, exist_ok=True)
@@ -190,12 +301,11 @@ class UpdaterService:
                         with zipf.open(member) as src, open(dest_file, "wb") as dst:
                             shutil.copyfileobj(src, dst)
 
-            # 4. Actualizar versión en .env
             self._update_env_version(new_version)
             settings.APP_VERSION = new_version
+            self._save_installed_commit(new_version, f"Actualización ZIP v{new_version}")
 
             logger.info(f"[UpdaterService] ¡Sistema actualizado exitosamente de v{old_version} a v{new_version}!")
-
             return {
                 "success": True,
                 "old_version": old_version,
@@ -203,7 +313,6 @@ class UpdaterService:
                 "backup_file": backup_res.get("filename"),
                 "message": f"¡Sistema actualizado con éxito a la versión v{new_version}!"
             }
-
         except Exception as e:
             logger.error(f"[UpdaterService] Error al aplicar actualización: {e}", exc_info=True)
             return {
@@ -410,6 +519,8 @@ class UpdaterService:
                 subprocess.run([git_executable, "branch", "-M", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
                 subprocess.run([git_executable, "reset", "--mixed", "origin/main"], cwd=str(BASE_DIR), capture_output=True, timeout=15)
                 status = self.get_git_status()
+                if status.get("commit_hash"):
+                    self._save_installed_commit(status["commit_hash"], status.get("commit_msg", ""), status.get("commit_date", ""))
                 return {
                     "success": True,
                     "mode": "git_cli",
@@ -466,10 +577,19 @@ class UpdaterService:
                         with z.open(member) as source_file, open(target_path, "wb") as target_file:
                             shutil.copyfileobj(source_file, target_file)
 
+            # Consultar y guardar commit instalado
+            gh_info = self.check_github_updates(repo_url=repo_url)
+            installed_sha = gh_info.get("latest_commit") or "main"
+            installed_msg = gh_info.get("latest_message") or "Actualización desde GitHub"
+            installed_date = gh_info.get("latest_date") or ""
+            self._save_installed_commit(installed_sha, installed_msg, installed_date)
+
             return {
                 "success": True,
                 "mode": "http_direct",
-                "message": "¡Sistema actualizado exitosamente desde GitHub directamente (sin necesidad de instalar Git)!",
+                "message": f"¡Sistema actualizado exitosamente a la última versión de GitHub ({installed_sha})!",
+                "commit_hash": installed_sha,
+                "commit_msg": installed_msg,
                 "backup_file": backup_res.get("filename")
             }
         except Exception as e:

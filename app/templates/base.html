@@ -83,6 +83,9 @@
                                 </button>
                             </div>
                         </form>
+                        <button type="button" class="btn btn-warning btn-sm d-none align-items-center gap-1 shadow-sm fw-bold text-dark border-warning" id="btnNavbarUpdateAvailable" onclick="ejecutarActualizacionDesdeBanner()" title="Haz clic para actualizar el sistema automáticamente">
+                            <i class="bi bi-stars text-danger fs-6"></i> Actualización Disponible
+                        </button>
                         <button type="button" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm fw-semibold" id="btnGlobalSyncTurso" onclick="sincronizarTursoGlobal(true)" title="Descargar y sincronizar cambios de otras computadoras desde Turso Cloud">
                             <i class="bi bi-cloud-arrow-down-fill text-primary"></i> Sincronizar Nube
                         </button>
@@ -99,12 +102,12 @@
             <!-- Banner Global de Nueva Actualización Disponible -->
             <div id="globalUpdateBanner" class="alert alert-warning border-0 rounded-0 py-2 px-4 mb-0 d-none d-flex justify-content-between align-items-center shadow-sm" style="background-color: #fef08a; color: #854d0e;">
                 <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-stars fs-5 text-warning-emphasis"></i>
-                    <span><strong>¡Nueva Actualización Disponible!</strong> Versión <span id="bannerNewVersion" class="badge bg-dark"></span> <span id="bannerChangelog" class="text-muted small ms-1"></span></span>
+                    <i class="bi bi-stars fs-5 text-danger"></i>
+                    <span><strong>¡Nueva Actualización Disponible!</strong> <span id="bannerNewVersion" class="badge bg-dark font-monospace"></span> <span id="bannerChangelog" class="text-dark small ms-1 fw-semibold"></span></span>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <button class="btn btn-sm btn-dark fw-semibold" id="btnBannerUpdate" onclick="ejecutarActualizacionDesdeBanner()">
-                        <i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar en esta PC
+                    <button class="btn btn-sm btn-dark fw-bold d-flex align-items-center gap-1 shadow-sm" id="btnBannerUpdate" onclick="ejecutarActualizacionDesdeBanner()">
+                        <i class="bi bi-cloud-arrow-down-fill text-warning"></i> Descargar y Actualizar Ahora
                     </button>
                     <button type="button" class="btn-close" onclick="document.getElementById('globalUpdateBanner').classList.add('d-none')"></button>
                 </div>
@@ -382,10 +385,15 @@
                         const banner = document.getElementById('globalUpdateBanner');
                         const newVerBadge = document.getElementById('bannerNewVersion');
                         const changelogEl = document.getElementById('bannerChangelog');
+                        const navBtn = document.getElementById('btnNavbarUpdateAvailable');
                         if (banner && newVerBadge) {
-                            newVerBadge.textContent = 'v' + data.latest_version;
+                            newVerBadge.textContent = data.latest_version;
                             if (changelogEl) changelogEl.textContent = data.changelog ? `— ${data.changelog}` : '';
                             banner.classList.remove('d-none');
+                        }
+                        if (navBtn) {
+                            navBtn.classList.remove('d-none');
+                            navBtn.classList.add('d-flex');
                         }
                     }
                 }
@@ -395,10 +403,19 @@
         }
 
         window.ejecutarActualizacionDesdeBanner = async function() {
+            if (!confirm('🚀 ¿Deseas descargar e instalar la última actualización automáticamente?\n\nSe realizará un respaldo preventivo de tu base de datos y se aplicarán todas las mejoras.')) {
+                return;
+            }
+
             const btn = document.getElementById('btnBannerUpdate');
+            const navBtn = document.getElementById('btnNavbarUpdateAvailable');
             if (btn) {
                 btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando...';
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando sistema...';
+            }
+            if (navBtn) {
+                navBtn.disabled = true;
+                navBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando...';
             }
 
             try {
@@ -411,14 +428,22 @@
                     alert('⚠️ No se pudo aplicar la actualización: ' + (res.detail || res.error || 'Error desconocido'));
                     if (btn) {
                         btn.disabled = false;
-                        btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar en esta PC';
+                        btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Descargar y Actualizar Ahora';
+                    }
+                    if (navBtn) {
+                        navBtn.disabled = false;
+                        navBtn.innerHTML = '<i class="bi bi-stars text-danger fs-6"></i> Actualización Disponible';
                     }
                 }
             } catch (err) {
                 alert('⚠️ Error de conexión durante la actualización: ' + err.message);
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar en esta PC';
+                    btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Descargar y Actualizar Ahora';
+                }
+                if (navBtn) {
+                    navBtn.disabled = false;
+                    navBtn.innerHTML = '<i class="bi bi-stars text-danger fs-6"></i> Actualización Disponible';
                 }
             }
         };
