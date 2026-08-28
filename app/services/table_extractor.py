@@ -128,104 +128,104 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                     "pagina_origen": page_num
                 })
 
-    # 2. Si no hubo subitems, probar formato SOFIA Grid (ej. 1/13, 2/13 con bloques)
+    # 2. Si no hubo subitems, probar formato SOFIA Grid / Zona Franca (ej. 1/26, 2/26 con bloques)
     if not extracted_items:
+        # Pre-procesar y unir líneas continuas limpiando cabeceras de página
+        all_lines_data: List[Dict[str, Any]] = []
         for page_info in pages_data:
             text = page_info["text"]
             page_num = page_info["page_num"]
-            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            for l in text.splitlines():
+                l_str = l.strip()
+                if l_str and not l_str.startswith("DESPACHO NUMERO:") and not l_str.startswith("REGIMEN :") and not l_str.startswith("ADUANA :") and not l_str.startswith("USUARIO:"):
+                    all_lines_data.append({"line": l_str, "page": page_num})
+
+        i = 0
+        n = len(all_lines_data)
+        while i < n:
+            line = all_lines_data[i]["line"]
+            page_num = all_lines_data[i]["page"]
             
-            i = 0
-            n = len(lines)
-            while i < n:
-                line = lines[i]
-                m_grid = re.match(r"^(\d{1,3})\s*/\s*(\d{1,3})$", line)
-                if m_grid:
-                    item_nro = int(m_grid.group(1))
-                    total_items = int(m_grid.group(2))
+            # Match formato "1/26 N 3303.00.20.000W ..." o "1/26"
+            m_grid = re.match(r"^(\d{1,3})\s*/\s*(\d{1,3})(?:\s+[A-Z]\s+([0-9.]{6,15}[A-Za-z]?))?", line)
+            if m_grid:
+                item_nro = int(m_grid.group(1))
+                total_items = int(m_grid.group(2))
+                pos_aranc = m_grid.group(3) if m_grid.group(3) else None
 
-                    pos_aranc = None
-                    fob_factura = None
-                    desc = None
-                    marca = None
-                    cantidad = None
-                    unidad = None
-                    fob_uss = None
-                    kilo_neto = None
-                    pais_origen = None
-                    pais_proc = None
+                fob_factura = None
+                desc = None
+                marca = None
+                cantidad = None
+                unidad = None
+                fob_uss = None
+                kilo_neto = None
+                pais_origen = None
+                pais_proc = None
 
-                    j = i + 1
-                    while j < n and j < i + 40:
-                        # Posición arancelaria
-                        if not pos_aranc and (re.match(r"^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{3}[A-Z]?$", lines[j]) or re.match(r"^[0-9.]{6,15}[A-Z]?$", lines[j])):
-                            pos_aranc = lines[j]
+                j = i + 1
+                while j < n and j < i + 35:
+                    sub_line = all_lines_data[j]["line"]
+                    
+                    if j > i + 2 and re.match(r"^\d{1,3}\s*/\s*\d{1,3}", sub_line):
+                        break
 
-                        # FOB Factura
-                        if lines[j].upper() == "FOB FACTURA" and j + 1 < n:
-                            fob_factura = parse_currency(lines[j+1])
+                    # Posición arancelaria si no vino en la primera línea
+                    if not pos_aranc and (re.match(r"^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{3}[A-Z]?$", sub_line) or re.match(r"^[0-9.]{6,15}[A-Z]?$", sub_line)):
+                        pos_aranc = sub_line
 
-                        # Bloque Comercial
-                        if "DESCRIPCION EN TERMINOS COMERCIALES" in lines[j].upper():
-                            k = j + 1
-                            while k < n and k < j + 12:
-                                if "FOB U$S" in lines[k].upper() or "FOB USS" in lines[k].upper():
-                                    u_idx = None
-                                    for u_cand in range(k + 2, min(k + 8, n)):
-                                        if lines[u_cand].upper() in KNOWN_UNITS:
-                                            if re.match(r"^[0-9.,]+$", lines[u_cand - 1]):
-                                                u_idx = u_cand
-                                                break
+                    # FOB Factura
+                    if sub_line.upper() == "FOB FACTURA" and j + 1 < n:
+                        fob_factura = parse_currency(all_lines_data[j+1]["line"])
 
-                                    if u_idx:
-                                        unidad = lines[u_idx].upper()
-                                        cantidad = parse_currency(lines[u_idx - 1])
-                                        marca = lines[u_idx - 2] if (u_idx - 2 > k) else "Sin Marca"
-                                        desc_lines = lines[k + 1 : u_idx - 2] if (u_idx - 2 > k + 1) else [lines[k + 1]]
-                                        desc = " ".join(desc_lines)
-                                        if u_idx + 1 < n and re.match(r"^[0-9.,]+$", lines[u_idx + 1]):
-                                            fob_uss = parse_currency(lines[u_idx + 1])
-                                    break
-                                k += 1
+                    # Línea Comercial Directa: [DESCRIPCION] [MARCA] [CANT] [UNIDAD] [FOB]
+                    m_com = re.search(r"^(.*?)\s+([A-Za-z0-9.\-\s]+?)\s+([0-9.,]+)\s+(UNIDAD|KILOGRAMO|PAR|METRO|LITRO|DOCENA|CAJA|SET|BTO)\s+([0-9.,]+)$", sub_line, re.IGNORECASE)
+                    if m_com and not desc:
+                        desc = clean_text(m_com.group(1))
+                        marca = clean_text(m_com.group(2)) or "Sin Marca"
+                        cantidad = parse_currency(m_com.group(3)) or 1.0
+                        unidad = m_com.group(4).upper()
+                        fob_uss = parse_currency(m_com.group(5))
 
-                        # Bloque Kilo Neto / Países
-                        if "KILO NETO" in lines[j].upper() and j + 1 < n and "ESTADO" in lines[j+1].upper():
-                            k = j + 2
-                            if k < n and re.match(r"^[0-9.,]+$", lines[k]):
-                                k += 1
-                            if k + 2 < n:
-                                pais_origen = lines[k]
-                                pais_proc = lines[k+1]
-                                kilo_neto = parse_currency(lines[k+2])
+                    # Bloque Kilo Neto / Países
+                    if "KILO NETO" in sub_line.upper() and j + 1 < n and "ESTADO" in all_lines_data[j+1]["line"].upper():
+                        k = j + 2
+                        if k < n and re.match(r"^[0-9.,]+$", all_lines_data[k]["line"]):
+                            k += 1
+                        if k + 2 < n:
+                            pais_origen = all_lines_data[k]["line"]
+                            pais_proc = all_lines_data[k+1]["line"]
+                            kilo_neto = parse_currency(all_lines_data[k+2]["line"])
 
-                        if j > i + 3 and re.match(r"^\d{1,3}\s*/\s*\d{1,3}$", lines[j]):
-                            break
-                        if "HOJA" in lines[j] and "de" in lines[j]:
-                            break
+                    j += 1
 
-                        j += 1
+                if pos_aranc or fob_factura or desc:
+                    codigo_producto, descripcion = parse_observation_details(desc or "", marca or "")
+                    
+                    # Sanear valores astronómicos erróneos
+                    val_tot = fob_uss or fob_factura or 0.0
+                    if val_tot and val_tot > 5000000.0:
+                        val_tot = 0.0
 
-                    if pos_aranc or fob_factura or desc:
-                        codigo_producto, descripcion = parse_observation_details(desc or "", marca or "")
-                        extracted_items.append({
-                            "numero_item": item_nro,
-                            "numero_subitem": None,
-                            "codigo_ncm": pos_aranc,
-                            "codigo_producto": codigo_producto or None,
-                            "descripcion": descripcion or desc or f"Ítem {item_nro} - Posición {pos_aranc or 'N/A'}",
-                            "marca": marca or "Sin Marca",
-                            "cantidad": cantidad or 1.0,
-                            "unidad": unidad or "UNIDAD",
-                            "peso_neto": kilo_neto,
-                            "peso_bruto": None,
-                            "valor_unitario": round((fob_uss or fob_factura or 0) / (cantidad or 1), 2) if (fob_uss or fob_factura) and (cantidad and cantidad > 0) else None,
-                            "valor_total": fob_uss or fob_factura or 0.0,
-                            "pais_origen": pais_origen,
-                            "pais_procedencia": pais_proc,
-                            "pagina_origen": page_num
-                        })
-                        i = j - 1
-                i += 1
+                    extracted_items.append({
+                        "numero_item": item_nro,
+                        "numero_subitem": None,
+                        "codigo_ncm": pos_aranc,
+                        "codigo_producto": codigo_producto or None,
+                        "descripcion": descripcion or desc or f"Ítem {item_nro} - Posición {pos_aranc or 'N/A'}",
+                        "marca": marca or "Sin Marca",
+                        "cantidad": cantidad or 1.0,
+                        "unidad": unidad or "UNIDAD",
+                        "peso_neto": kilo_neto,
+                        "peso_bruto": None,
+                        "valor_unitario": round(val_tot / (cantidad or 1), 2) if (val_tot and cantidad and cantidad > 0) else None,
+                        "valor_total": val_tot,
+                        "pais_origen": pais_origen,
+                        "pais_procedencia": pais_proc,
+                        "pagina_origen": page_num
+                    })
+                    i = j - 1
+            i += 1
 
     # 3. Si aún no hay items, buscar formato estándar con expresiones regulares
     if not extracted_items:
