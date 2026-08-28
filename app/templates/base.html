@@ -185,70 +185,91 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
     <!-- ========================================================= -->
-    <!-- OVERLAY STANDALONE DE ACTUALIZACIÓN NUBE (100% INMUNE)    -->
+    <!-- MODAL ULTRA-PREMIUM CENTRADO DE ACTUALIZACIÓN NUBE        -->
     <!-- ========================================================= -->
-    <div id="sysAppOverlayUpgrade" style="position: fixed; inset: 0; z-index: 2147483647; background: rgba(8, 12, 24, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); display: none; align-items: center; justify-content: center; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        <div style="background: linear-gradient(145deg, #111827, #1e293b); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 50px rgba(59, 130, 246, 0.25); border-radius: 24px; width: 92%; max-width: 520px; padding: 32px; text-align: center; color: #f8fafc; position: relative;">
+    <div id="sysAppOverlayUpgrade" style="position: fixed; inset: 0; z-index: 2147483647; background: rgba(6, 10, 22, 0.88); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); display: none; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="background: linear-gradient(155deg, #131c31 0%, #0c1222 100%); border: 1px solid rgba(59, 130, 246, 0.35); box-shadow: 0 35px 80px -15px rgba(0, 0, 0, 0.95), 0 0 50px rgba(59, 130, 246, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.15); border-radius: 26px; width: 92%; max-width: 530px; padding: 36px 32px 30px; text-align: center; color: #f8fafc; position: relative; animation: modalPopSpring 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
             
-            <!-- Icono Central Pulsante -->
-            <div id="sysUpgradeIconBox" style="width: 80px; height: 80px; margin: 0 auto 20px; border-radius: 50%; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 35px rgba(37, 99, 235, 0.7); transition: all 0.5s ease;">
-                <svg id="sysUpgradeIconSvg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
+            <!-- Brillo de Fondo Hero -->
+            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 220px; height: 120px; background: radial-gradient(ellipse at top, rgba(59, 130, 246, 0.45) 0%, rgba(0,0,0,0) 70%); pointer-events: none; border-top-left-radius: 26px; border-top-right-radius: 26px;"></div>
+
+            <!-- Icono Central con Halo Pulsante -->
+            <div style="position: relative; display: inline-block; margin-bottom: 20px;">
+                <div id="sysUpgradeIconBox" style="width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 35px rgba(37, 99, 235, 0.8), inset 0 2px 4px rgba(255,255,255,0.4); transition: all 0.5s ease;">
+                    <svg id="sysUpgradeIconSvg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="animation: iconFloat 2.2s ease-in-out infinite;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                </div>
             </div>
 
-            <!-- Título y Versión -->
-            <h3 id="sysUpgradeTitle" style="font-size: 1.45rem; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.02em; color: #ffffff;">Actualizando AduanaDoc</h3>
+            <!-- Título y Badge de Versión -->
+            <h3 id="sysUpgradeTitle" style="font-size: 1.5rem; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.02em; color: #ffffff;">Actualizando AduanaDoc</h3>
+            
             <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px;">
-                <span style="font-size: 0.8rem; background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.5); color: #93c5fd; padding: 3px 12px; border-radius: 20px; font-weight: 700;">
-                    Versión <span id="sysUpgradeVersionBadge">GitHub</span>
+                <span style="font-size: 0.78rem; background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.5); color: #93c5fd; padding: 3px 12px; border-radius: 20px; font-weight: 700; letter-spacing: 0.03em;">
+                    Versión <span id="sysUpgradeVersionBadge">v1.2.0</span>
                 </span>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Instalación Automática</span>
+                <span style="font-size: 0.78rem; color: #94a3b8; font-weight: 500;">• Instalación Automática</span>
             </div>
 
-            <p id="sysUpgradeNote" style="font-size: 0.86rem; color: #94a3b8; line-height: 1.45; margin: 0 0 22px; max-height: 48px; overflow: hidden; text-overflow: ellipsis;">
+            <p id="sysUpgradeNote" style="font-size: 0.88rem; color: #94a3b8; line-height: 1.45; margin: 0 0 24px; min-height: 22px; max-height: 44px; overflow: hidden; text-overflow: ellipsis;">
                 Descargando e instalando las últimas mejoras del sistema...
             </p>
 
-            <!-- Barra de Progreso -->
-            <div style="background: rgba(255, 255, 255, 0.1); border-radius: 12px; height: 14px; overflow: hidden; position: relative; margin-bottom: 12px; border: 1px solid rgba(255, 255, 255, 0.08);">
-                <div id="sysUpgradeBarFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #60a5fa, #93c5fd); border-radius: 12px; transition: width 0.4s ease-out; box-shadow: 0 0 15px rgba(59, 130, 246, 0.8);"></div>
+            <!-- Barra de Progreso Ultra-Premium -->
+            <div style="background: rgba(0, 0, 0, 0.5); border-radius: 999px; height: 16px; overflow: hidden; position: relative; margin-bottom: 12px; border: 1px solid rgba(255, 255, 255, 0.12); padding: 2px;">
+                <div id="sysUpgradeBarFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #06b6d4 85%, #10b981 100%); border-radius: 999px; transition: width 0.45s ease-out; box-shadow: 0 0 20px rgba(59, 130, 246, 0.9);"></div>
             </div>
 
             <!-- Porcentaje y Estado -->
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 22px;">
                 <span id="sysUpgradeStepDesc" style="color: #cbd5e1; font-weight: 600;">Iniciando actualización...</span>
-                <span id="sysUpgradePercent" style="color: #60a5fa; font-weight: 800; font-size: 1.05rem;">0%</span>
+                <span id="sysUpgradePercent" style="color: #60a5fa; font-weight: 800; font-size: 1.15rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">0%</span>
             </div>
 
             <!-- Fases Paso a Paso -->
-            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px 20px; text-align: left; margin-bottom: 18px;">
+            <div style="background: rgba(10, 15, 28, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 16px 20px; text-align: left; margin-bottom: 18px;">
                 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
-                    <div id="sysStep1Dot" style="width: 11px; height: 11px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <div id="sysStep1Dot" style="width: 12px; height: 12px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
                     <span id="sysStep1Txt" style="font-size: 0.82rem; color: #94a3b8;">1. Descarga de archivos desde GitHub</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
-                    <div id="sysStep2Dot" style="width: 11px; height: 11px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <div id="sysStep2Dot" style="width: 12px; height: 12px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
                     <span id="sysStep2Txt" style="font-size: 0.82rem; color: #94a3b8;">2. Respaldo preventivo de base de datos</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
-                    <div id="sysStep3Dot" style="width: 11px; height: 11px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <div id="sysStep3Dot" style="width: 12px; height: 12px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
                     <span id="sysStep3Txt" style="font-size: 0.82rem; color: #94a3b8;">3. Reemplazo y verificación de paquetes</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <div id="sysStep4Dot" style="width: 11px; height: 11px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <div id="sysStep4Dot" style="width: 12px; height: 12px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
                     <span id="sysStep4Txt" style="font-size: 0.82rem; color: #94a3b8;">4. Finalización y reinicio automático</span>
                 </div>
             </div>
 
             <!-- Error Box y Botón Cerrar (Ocultos por defecto) -->
             <div id="sysUpgradeErrBox" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; font-size: 0.84rem; padding: 12px; border-radius: 10px; margin-bottom: 14px; text-align: left;"></div>
-            <button id="sysUpgradeBtnDismiss" onclick="document.getElementById('sysAppOverlayUpgrade').style.display='none'" style="display: none; width: 100%; background: #334155; color: #ffffff; border: none; padding: 10px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 0.88rem;">Cerrar</button>
+            <button id="sysUpgradeBtnDismiss" onclick="document.getElementById('sysAppOverlayUpgrade').style.display='none'" style="display: none; width: 100%; background: #334155; color: #ffffff; border: none; padding: 11px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 0.9rem;">Cerrar</button>
         </div>
     </div>
+
+    <style>
+        @keyframes modalPopSpring {
+            0% { transform: scale(0.85); opacity: 0; }
+            70% { transform: scale(1.02); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+    </style>
 
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -644,8 +665,12 @@
             }
         };
 
-        // Ejecutar comprobación al cargar
-        document.addEventListener('DOMContentLoaded', checkGlobalUpdates);
+        // Ejecutar comprobación al cargar de inmediato
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkGlobalUpdates);
+        } else {
+            checkGlobalUpdates();
+        }
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
