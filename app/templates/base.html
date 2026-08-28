@@ -463,13 +463,10 @@
                             navBtn.classList.add('d-flex');
                         }
 
-                        // Lanzar modal de actualización automáticamente
-                        const yaActualizadoReciente = sessionStorage.getItem('aduanadoc_just_updated');
-                        if (!yaActualizadoReciente) {
-                            setTimeout(() => {
-                                lanzarModalActualizacionPremium(data);
-                            }, 1200);
-                        }
+                        // Abrir modal de actualización automáticamente
+                        setTimeout(() => {
+                            lanzarModalActualizacionPremium(data);
+                        }, 800);
                     }
                 }
             } catch (err) {
@@ -482,11 +479,20 @@
             updateInProgress = true;
 
             const modalEl = document.getElementById('premiumAutoUpdateModal');
-            if (!autoUpdateModalInstance && modalEl) {
-                autoUpdateModalInstance = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
-            }
-            if (autoUpdateModalInstance) {
-                autoUpdateModalInstance.show();
+            if (modalEl) {
+                try {
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        autoUpdateModalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+                        autoUpdateModalInstance.show();
+                    } else {
+                        modalEl.classList.add('show');
+                        modalEl.style.display = 'block';
+                        document.body.classList.add('modal-open');
+                    }
+                } catch (e) {
+                    modalEl.classList.add('show');
+                    modalEl.style.display = 'block';
+                }
             }
 
             const targetVerEl = document.getElementById('updateTargetVersion');
@@ -569,10 +575,11 @@
                     }
                     if (mainIcon) mainIcon.className = 'bi bi-check2-circle fs-1 text-white';
 
-                    document.getElementById('updateModalTitle').textContent = '¡Actualización Completada!';
-                    document.getElementById('updateModalSubtitle').innerHTML = '<span class="text-success fw-bold">Tu sistema está al día y protegido.</span>';
+                    const titleEl = document.getElementById('updateModalTitle');
+                    const subtitleEl = document.getElementById('updateModalSubtitle');
+                    if (titleEl) titleEl.textContent = '¡Actualización Completada!';
+                    if (subtitleEl) subtitleEl.innerHTML = '<span class="text-success fw-bold">Tu sistema está al día y protegido.</span>';
 
-                    sessionStorage.setItem('aduanadoc_just_updated', 'true');
                     setTimeout(() => {
                         window.location.reload();
                     }, 1800);
@@ -640,8 +647,12 @@
             }
         };
 
-        // Ejecutar comprobación al cargar
-        document.addEventListener('DOMContentLoaded', checkGlobalUpdates);
+        // Ejecutar comprobación al cargar de inmediato
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkGlobalUpdates);
+        } else {
+            checkGlobalUpdates();
+        }
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
