@@ -185,6 +185,70 @@
                     </div>
                 </div>
             </div>
+    <!-- Modal Premium de Auto-Actualización (Multi-PC) -->
+    <div class="modal fade" id="premiumAutoUpdateModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 480px;">
+            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden" style="background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); color: #f8fafc; box-shadow: 0 20px 40px rgba(0,0,0,0.6) !important;">
+                
+                <!-- Encabezado con Icono Pulsante y Glow -->
+                <div class="p-4 text-center position-relative pb-2">
+                    <div class="position-absolute top-0 start-50 translate-middle-x mt-2" style="width: 130px; height: 130px; background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, rgba(0,0,0,0) 70%); filter: blur(12px); pointer-events: none;"></div>
+                    
+                    <div class="mb-3 d-inline-block position-relative">
+                        <div id="updateIconWrapper" class="d-flex align-items-center justify-content-center rounded-circle shadow-lg" style="width: 76px; height: 76px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); box-shadow: 0 0 25px rgba(59, 130, 246, 0.7) !important;">
+                            <i class="bi bi-cloud-arrow-down-fill fs-1 text-white" id="updateMainIcon"></i>
+                        </div>
+                    </div>
+
+                    <h4 class="fw-bold mb-1 text-white" id="updateModalTitle">Actualizando AduanaDoc</h4>
+                    <p class="small mb-1" id="updateModalSubtitle" style="color: #94a3b8;">
+                        Nueva versión: <span class="badge bg-primary px-2 py-1 font-monospace" id="updateTargetVersion">...</span>
+                    </p>
+                    <div class="small fw-semibold text-warning text-truncate px-3" id="updateCommitMsg" style="font-size: 0.78rem;"></div>
+                </div>
+
+                <!-- Cuerpo con Barra de Progreso y Fases -->
+                <div class="p-4 pt-2">
+                    <!-- Barra de Progreso y Porcentaje -->
+                    <div class="mb-2 d-flex justify-content-between align-items-center">
+                        <span class="small fw-semibold" id="updateCurrentStepText" style="color: #cbd5e1; font-size: 0.82rem;">Iniciando actualización...</span>
+                        <span class="fw-bold font-monospace text-primary-subtle" id="updatePercentText" style="color: #60a5fa; font-size: 1.15rem;">0%</span>
+                    </div>
+                    
+                    <div class="progress mb-3 rounded-pill" style="height: 12px; background-color: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255,255,255,0.08);">
+                        <div id="updateProgressBar" class="progress-bar progress-bar-striped progress-bar-animated rounded-pill" role="progressbar" style="width: 0%; background: linear-gradient(90deg, #3b82f6, #60a5fa, #38bdf8); transition: width 0.4s ease;"></div>
+                    </div>
+
+                    <!-- Fases de Instalación -->
+                    <div class="bg-black bg-opacity-30 rounded-3 p-3 border border-white border-opacity-10 mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2" id="step1Row">
+                            <i class="bi bi-circle-fill text-muted" id="step1Icon" style="font-size: 0.65rem;"></i>
+                            <span class="small text-muted" id="step1Text">1. Descargando paquete oficial de GitHub</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-2" id="step2Row">
+                            <i class="bi bi-circle-fill text-muted" id="step2Icon" style="font-size: 0.65rem;"></i>
+                            <span class="small text-muted" id="step2Text">2. Creando respaldo preventivo de seguridad</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-2" id="step3Row">
+                            <i class="bi bi-circle-fill text-muted" id="step3Icon" style="font-size: 0.65rem;"></i>
+                            <span class="small text-muted" id="step3Text">3. Instalando y actualizando archivos del sistema</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2" id="step4Row">
+                            <i class="bi bi-circle-fill text-muted" id="step4Icon" style="font-size: 0.65rem;"></i>
+                            <span class="small text-muted" id="step4Text">4. Finalizando y reiniciando sistema</span>
+                        </div>
+                    </div>
+
+                    <div id="updateErrorAlert" class="alert alert-danger py-2 small d-none mb-3" style="background-color: #ef4444; color: #fff; border: 0;"></div>
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted" style="font-size: 0.72rem; color: #94a3b8 !important;">
+                            <i class="bi bi-shield-check me-1 text-success"></i>Base de datos y PDFs 100% protegidos.
+                        </small>
+                        <button type="button" class="btn btn-outline-light btn-sm d-none" id="btnCerrarModalUpdate" data-bs-dismiss="modal">Cerrar</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -374,9 +438,13 @@
         };
 
         // ==========================================
-        // Comprobación Global de Actualizaciones Multi-PC
+        // Modal y Flujo Premium de Auto-Actualización
         // ==========================================
+        let autoUpdateModalInstance = null;
+        let updateInProgress = false;
+
         async function checkGlobalUpdates() {
+            if (updateInProgress) return;
             try {
                 const resp = await fetch('/api/updates/check');
                 if (resp.ok) {
@@ -386,14 +454,21 @@
                         const newVerBadge = document.getElementById('bannerNewVersion');
                         const changelogEl = document.getElementById('bannerChangelog');
                         const navBtn = document.getElementById('btnNavbarUpdateAvailable');
-                        if (banner && newVerBadge) {
-                            newVerBadge.textContent = data.latest_version;
-                            if (changelogEl) changelogEl.textContent = data.changelog ? `— ${data.changelog}` : '';
-                            banner.classList.remove('d-none');
-                        }
+                        
+                        if (newVerBadge) newVerBadge.textContent = data.latest_version;
+                        if (changelogEl) changelogEl.textContent = data.changelog ? `— ${data.changelog}` : '';
+                        if (banner) banner.classList.remove('d-none');
                         if (navBtn) {
                             navBtn.classList.remove('d-none');
                             navBtn.classList.add('d-flex');
+                        }
+
+                        // Lanzar modal de actualización automáticamente
+                        const yaActualizadoReciente = sessionStorage.getItem('aduanadoc_just_updated');
+                        if (!yaActualizadoReciente) {
+                            setTimeout(() => {
+                                lanzarModalActualizacionPremium(data);
+                            }, 1200);
                         }
                     }
                 }
@@ -402,50 +477,131 @@
             }
         }
 
-        window.ejecutarActualizacionDesdeBanner = async function() {
-            if (!confirm('🚀 ¿Deseas descargar e instalar la última actualización automáticamente?\n\nSe realizará un respaldo preventivo de tu base de datos y se aplicarán todas las mejoras.')) {
-                return;
+        window.lanzarModalActualizacionPremium = async function(data) {
+            if (updateInProgress) return;
+            updateInProgress = true;
+
+            const modalEl = document.getElementById('premiumAutoUpdateModal');
+            if (!autoUpdateModalInstance && modalEl) {
+                autoUpdateModalInstance = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+            }
+            if (autoUpdateModalInstance) {
+                autoUpdateModalInstance.show();
             }
 
-            const btn = document.getElementById('btnBannerUpdate');
-            const navBtn = document.getElementById('btnNavbarUpdateAvailable');
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando sistema...';
-            }
-            if (navBtn) {
-                navBtn.disabled = true;
-                navBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Actualizando...';
-            }
+            const targetVerEl = document.getElementById('updateTargetVersion');
+            const commitMsgEl = document.getElementById('updateCommitMsg');
+            const pBar = document.getElementById('updateProgressBar');
+            const pText = document.getElementById('updatePercentText');
+            const stepText = document.getElementById('updateCurrentStepText');
+            const errAlert = document.getElementById('updateErrorAlert');
+            const btnCerrar = document.getElementById('btnCerrarModalUpdate');
+            const iconWrapper = document.getElementById('updateIconWrapper');
+            const mainIcon = document.getElementById('updateMainIcon');
+
+            if (targetVerEl) targetVerEl.textContent = data?.latest_version || 'Última Versión';
+            if (commitMsgEl) commitMsgEl.textContent = data?.changelog ? `"${data.changelog}"` : 'Mejoras y correcciones automáticas de AduanaDoc';
+            if (errAlert) errAlert.classList.add('d-none');
+            if (btnCerrar) btnCerrar.classList.add('d-none');
+
+            const setStep = (stepNum, percent, statusMsg) => {
+                if (pBar) pBar.style.width = percent + '%';
+                if (pText) pText.textContent = percent + '%';
+                if (stepText) stepText.textContent = statusMsg;
+
+                for (let i = 1; i <= 4; i++) {
+                    const row = document.getElementById(`step${i}Row`);
+                    const icon = document.getElementById(`step${i}Icon`);
+                    const text = document.getElementById(`step${i}Text`);
+                    if (!row || !icon || !text) continue;
+
+                    if (i < stepNum) {
+                        icon.className = 'bi bi-check-circle-fill text-success fs-6';
+                        text.className = 'small text-success fw-semibold';
+                    } else if (i === stepNum) {
+                        icon.className = 'spinner-border spinner-border-sm text-primary';
+                        text.className = 'small text-white fw-bold';
+                    } else {
+                        icon.className = 'bi bi-circle-fill text-muted';
+                        text.className = 'small text-muted';
+                    }
+                }
+            };
+
+            // Fase 1: Descargando
+            setStep(1, 20, 'Conectando con GitHub y descargando archivos...');
+
+            // Iniciar llamada de actualización
+            const updatePromise = fetch('/api/updates/apply', { method: 'POST' });
+
+            // Simulación visual suave mientras se procesa la descarga
+            await new Promise(r => setTimeout(r, 800));
+            setStep(1, 40, 'Descargando paquete oficial de GitHub...');
+            await new Promise(r => setTimeout(r, 900));
+
+            // Fase 2: Respaldo preventivo
+            setStep(2, 65, 'Generando respaldo preventivo de tu base de datos...');
+            await new Promise(r => setTimeout(r, 900));
+
+            // Fase 3: Instalación de archivos
+            setStep(3, 85, 'Instalando y verificando archivos del sistema...');
 
             try {
-                const resp = await fetch('/api/updates/apply', { method: 'POST' });
+                const resp = await updatePromise;
                 const res = await resp.json();
+
                 if (resp.ok && res.success) {
-                    alert(`🚀 ¡Actualización exitosa!\n\n${res.message}\nSe creó un respaldo preventivo: ${res.backup_file || 'backup_aduanadoc'}.\nLa aplicación se reiniciará ahora.`);
-                    window.location.reload();
+                    // Fase 4: Éxito total
+                    setStep(5, 100, '¡Sistema actualizado con éxito! Reiniciando...');
+                    
+                    for (let i = 1; i <= 4; i++) {
+                        const icon = document.getElementById(`step${i}Icon`);
+                        const text = document.getElementById(`step${i}Text`);
+                        if (icon) icon.className = 'bi bi-check-circle-fill text-success fs-6';
+                        if (text) text.className = 'small text-success fw-semibold';
+                    }
+
+                    if (pBar) pBar.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
+                    if (pText) pText.style.color = '#34d399';
+                    if (iconWrapper) {
+                        iconWrapper.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                        iconWrapper.style.boxShadow = '0 0 30px rgba(16, 185, 129, 0.8) !important';
+                    }
+                    if (mainIcon) mainIcon.className = 'bi bi-check2-circle fs-1 text-white';
+
+                    document.getElementById('updateModalTitle').textContent = '¡Actualización Completada!';
+                    document.getElementById('updateModalSubtitle').innerHTML = '<span class="text-success fw-bold">Tu sistema está al día y protegido.</span>';
+
+                    sessionStorage.setItem('aduanadoc_just_updated', 'true');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1800);
+
                 } else {
-                    alert('⚠️ No se pudo aplicar la actualización: ' + (res.detail || res.error || 'Error desconocido'));
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Descargar y Actualizar Ahora';
-                    }
-                    if (navBtn) {
-                        navBtn.disabled = false;
-                        navBtn.innerHTML = '<i class="bi bi-stars text-danger fs-6"></i> Actualización Disponible';
-                    }
+                    throw new Error(res.detail || res.error || 'Error al aplicar actualización');
                 }
             } catch (err) {
-                alert('⚠️ Error de conexión durante la actualización: ' + err.message);
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Descargar y Actualizar Ahora';
+                updateInProgress = false;
+                if (errAlert) {
+                    errAlert.textContent = 'Error: ' + err.message;
+                    errAlert.classList.remove('d-none');
                 }
-                if (navBtn) {
-                    navBtn.disabled = false;
-                    navBtn.innerHTML = '<i class="bi bi-stars text-danger fs-6"></i> Actualización Disponible';
-                }
+                if (stepText) stepText.textContent = 'Hubo un inconveniente durante la actualización.';
+                if (btnCerrar) btnCerrar.classList.remove('d-none');
+                if (mainIcon) mainIcon.className = 'bi bi-exclamation-triangle-fill fs-1 text-white';
+                if (iconWrapper) iconWrapper.style.background = 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)';
             }
+        };
+
+        window.ejecutarActualizacionDesdeBanner = function() {
+            fetch('/api/updates/check')
+                .then(r => r.json())
+                .then(data => {
+                    lanzarModalActualizacionPremium(data);
+                })
+                .catch(() => {
+                    lanzarModalActualizacionPremium({ latest_version: 'Nueva', changelog: 'Actualización de AduanaDoc' });
+                });
         };
 
         // ==========================================
