@@ -257,7 +257,7 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                     "codigo_producto": codigo_producto or None,
                     "descripcion": descripcion or f"Ítem {nro_item} - Posición {pos_aranc}",
                     "marca": "Sin Marca",
-                    "cantidad": cant,
+                    "cantidad": cant or 1.0,
                     "unidad": unidad,
                     "peso_neto": None,
                     "peso_bruto": None,
@@ -267,6 +267,38 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                     "pais_procedencia": None,
                     "pagina_origen": page_num
                 })
+
+    # 4. Capa de rescate: Búsqueda genérica por Posición Arancelaria (NCM) en páginas
+    if not extracted_items:
+        item_counter = 1
+        for page_info in pages_data:
+            text = page_info["text"]
+            page_num = page_info["page_num"]
+            ncm_matches = re.finditer(r"\b([0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{3}[A-Za-z]?)\b", text)
+            for nm in ncm_matches:
+                pos_code = nm.group(1)
+                context = text[max(0, nm.start() - 100):min(len(text), nm.end() + 300)]
+                fob_match = re.search(r"(?:FOB|FACTURA|VALOR)\s*(?:U\$S|USD)?\s*[:\n\r\s]*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2}))", context, re.IGNORECASE)
+                fob_val = parse_currency(fob_match.group(1)) if fob_match else None
+
+                extracted_items.append({
+                    "numero_item": item_counter,
+                    "numero_subitem": None,
+                    "codigo_ncm": pos_code,
+                    "codigo_producto": None,
+                    "descripcion": f"Mercadería Posición {pos_code}",
+                    "marca": "Sin Marca",
+                    "cantidad": 1.0,
+                    "unidad": "UNIDAD",
+                    "peso_neto": None,
+                    "peso_bruto": None,
+                    "valor_unitario": fob_val,
+                    "valor_total": fob_val,
+                    "pais_origen": None,
+                    "pais_procedencia": None,
+                    "pagina_origen": page_num
+                })
+                item_counter += 1
 
     return extracted_items
 

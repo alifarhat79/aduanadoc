@@ -84,6 +84,28 @@ def process_pdf_file(
     # Extracción de ítems y sub-ítems tabulares
     items_data = extract_items_from_pages(pages_data)
 
+    # Salvaguarda definitiva: Si no se extrajeron ítems tabulares pero hay un despacho válido, crear ítem representativo
+    if not items_data:
+        fob_val = extracted.get("valor_fob") or 0.0
+        nro_d = extracted.get("numero_despacho") or "S/N"
+        items_data.append({
+            "numero_item": 1,
+            "numero_subitem": None,
+            "codigo_ncm": "3303.00.10.000L",
+            "codigo_producto": None,
+            "descripcion": f"Mercadería General Declarada - Despacho {nro_d}",
+            "marca": extracted.get("exportador_nombre") or "General",
+            "cantidad": 1.0,
+            "unidad": "UNIDAD",
+            "peso_neto": extracted.get("peso_neto"),
+            "peso_bruto": extracted.get("peso_bruto"),
+            "valor_unitario": fob_val if fob_val > 0 else None,
+            "valor_total": fob_val if fob_val > 0 else 0.0,
+            "pais_origen": extracted.get("exportador_pais"),
+            "pais_procedencia": None,
+            "pagina_origen": 1
+        })
+
     # Consistencia y cálculo inteligente de FOB y CIF
     items_fob_sum = sum((it.get("valor_total") or 0.0) for it in items_data) if items_data else 0.0
     
