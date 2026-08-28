@@ -22,13 +22,26 @@ from app.routers import dashboard, despachos, mercancias, turso, configuracion, 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Inicializar Base de Datos
-    init_db()
-    # Iniciar Vigilante de Google Drive en segundo plano
-    watcher = GDriveWatcher.get_instance()
-    await watcher.start()
+    try:
+        init_db()
+    except Exception as db_err:
+        print(f"[Error DB] Error al inicializar base de datos: {db_err}")
+
+    # Iniciar Vigilante de Google Drive en segundo plano de forma segura
+    try:
+        watcher = GDriveWatcher.get_instance()
+        await watcher.start()
+    except Exception as w_err:
+        print(f"[Aviso] Vigilante Google Drive omitido: {w_err}")
+
     yield
+
     # Detener vigilante al cerrar
-    await watcher.stop()
+    try:
+        watcher = GDriveWatcher.get_instance()
+        await watcher.stop()
+    except Exception:
+        pass
 
 app = FastAPI(
     title=settings.APP_TITLE,
