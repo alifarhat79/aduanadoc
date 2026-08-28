@@ -68,8 +68,8 @@ FIELD_ALIASES = {
         r"CHANNEL\s*[:.\s]+(GREEN|YELLOW|RED)"
     ],
     "valor_fob": [
+        r"VALOR\s+FACTURA(?:[^\n\r]+)?[\n\r\s]*(?:DIVISA\s+FACTURA[\n\r\s]*)?([0-9.,]+)",
         r"VALOR\s+FOB\s+(?:USD|DOL|USS)?\s*([0-9.,]+)",
-        r"VALOR\s+FACTURA(?:[^\n\r0-9]+)?[\n\r\s]*([0-9.,]+)",
         r"FOB\s+FACTURA[\s\n\r]*([0-9.,]+)",
         r"FOB\s*[:.\s]+(?:USD|DOL|USS)?\s*([0-9.,]+)",
         r"VALOR\s+F\.?O\.?B\.?\s*[:.\s]+([0-9.,]+)"
@@ -87,7 +87,7 @@ FIELD_ALIASES = {
     "valor_cif": [
         r"VALOR\s+CIF\s*[:.\s]+(?:USD|DOL|USS)?\s*([0-9.,]+)",
         r"CIF\s*[:.\s]+(?:USD|DOL|USS)?\s*([0-9.,]+)",
-        r"VALOR\s+IMPONIBLE(?:[^\n\r0-9]+)?[\s\n\r]*([0-9.,]+)",
+        r"VALOR\s+IMPONIBLE\s*\(\$\)\s*[\n\r\s]*([0-9.,]+)",
         r"VALOR\s+ADUANERO\s*[:.\s]+([0-9.,]+)"
     ],
     "valor_imponible": [

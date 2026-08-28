@@ -67,10 +67,17 @@ def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
 
     return codigo_producto, descripcion
 
+KNOWN_UNITS = {
+    'UNIDAD', 'UNIDADES', 'KILO', 'KILOS', 'KG', 'DOCENA', 'DOCENAS', 'LITRO',
+    'LITROS', 'PAR', 'PARES', 'METRO', 'METROS', 'SET', 'SETS', 'CAJA', 'CAJAS',
+    'PACK', 'PACKS', 'PIEZA', 'PIEZAS', 'GR', 'GRAMO', 'GRAMOS'
+}
+
 def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Extrae los ítems y subítems de mercancías a lo largo de todas las páginas del PDF.
-    Aísla la marca, el código de producto/EAN y la descripción limpia.
+    Aísla la marca, el código de producto/EAN, cantidad, peso, valores y la descripción limpia.
+    Soporta formato de sub-ítems, formato SOFIA Grid (N/TOTAL) y formato de ítems estándar.
     """
     extracted_items: List[Dict[str, Any]] = []
     
@@ -83,20 +90,10 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
         re.DOTALL | re.IGNORECASE
     )
 
-    # 2. Patrón para Ítems Principales de SOFIA
-    main_item_pattern = re.compile(
-        r"NRO\s+DE\s+PEDIDO\s*:\s*(\d+)(?:/\d+)?.*?POSICION\s+ARANCELARIA\s*:\s*([0-9A-Za-z.]+)"
-        r".*?FOB\s+FACTURA\s*[\n\r\s]*([0-9.,]+)"
-        r"(?:.*?DESCRIPCION\s+EN\s+TERMINOS\s+COMERCIALES\s*[\n\r\s]*([^\n\r]+))?"
-        r"(?:.*?CANTIDAD\s+UNIDAD\s+FOB\s+U\$S\s*[\n\r\s]*([0-9.,]+)\s*([A-Za-z]+))?",
-        re.DOTALL | re.IGNORECASE
-    )
-
     for page_info in pages_data:
         text = page_info["text"]
         page_num = page_info["page_num"]
 
-        # Buscar sub-ítems
         subitem_matches = list(subitem_pattern.finditer(text))
         if subitem_matches:
             for m in subitem_matches:
@@ -131,8 +128,114 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                     "pagina_origen": page_num
                 })
 
-    # Si no se encontraron subitems, buscar ítems principales estándar
+    # 2. Si no hubo subitems, probar formato SOFIA Grid (ej. 1/13, 2/13 con bloques)
     if not extracted_items:
+        for page_info in pages_data:
+            text = page_info["text"]
+            page_num = page_info["page_num"]
+            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            
+            i = 0
+            n = len(lines)
+            while i < n:
+                line = lines[i]
+                m_grid = re.match(r"^(\d{1,3})\s*/\s*(\d{1,3})$", line)
+                if m_grid:
+                    item_nro = int(m_grid.group(1))
+                    total_items = int(m_grid.group(2))
+
+                    pos_aranc = None
+                    fob_factura = None
+                    desc = None
+                    marca = None
+                    cantidad = None
+                    unidad = None
+                    fob_uss = None
+                    kilo_neto = None
+                    pais_origen = None
+                    pais_proc = None
+
+                    j = i + 1
+                    while j < n and j < i + 40:
+                        # Posición arancelaria
+                        if not pos_aranc and (re.match(r"^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{3}[A-Z]?$", lines[j]) or re.match(r"^[0-9.]{6,15}[A-Z]?$", lines[j])):
+                            pos_aranc = lines[j]
+
+                        # FOB Factura
+                        if lines[j].upper() == "FOB FACTURA" and j + 1 < n:
+                            fob_factura = parse_currency(lines[j+1])
+
+                        # Bloque Comercial
+                        if "DESCRIPCION EN TERMINOS COMERCIALES" in lines[j].upper():
+                            k = j + 1
+                            while k < n and k < j + 12:
+                                if "FOB U$S" in lines[k].upper() or "FOB USS" in lines[k].upper():
+                                    u_idx = None
+                                    for u_cand in range(k + 2, min(k + 8, n)):
+                                        if lines[u_cand].upper() in KNOWN_UNITS:
+                                            if re.match(r"^[0-9.,]+$", lines[u_cand - 1]):
+                                                u_idx = u_cand
+                                                break
+
+                                    if u_idx:
+                                        unidad = lines[u_idx].upper()
+                                        cantidad = parse_currency(lines[u_idx - 1])
+                                        marca = lines[u_idx - 2] if (u_idx - 2 > k) else "Sin Marca"
+                                        desc_lines = lines[k + 1 : u_idx - 2] if (u_idx - 2 > k + 1) else [lines[k + 1]]
+                                        desc = " ".join(desc_lines)
+                                        if u_idx + 1 < n and re.match(r"^[0-9.,]+$", lines[u_idx + 1]):
+                                            fob_uss = parse_currency(lines[u_idx + 1])
+                                    break
+                                k += 1
+
+                        # Bloque Kilo Neto / Países
+                        if "KILO NETO" in lines[j].upper() and j + 1 < n and "ESTADO" in lines[j+1].upper():
+                            k = j + 2
+                            if k < n and re.match(r"^[0-9.,]+$", lines[k]):
+                                k += 1
+                            if k + 2 < n:
+                                pais_origen = lines[k]
+                                pais_proc = lines[k+1]
+                                kilo_neto = parse_currency(lines[k+2])
+
+                        if j > i + 3 and re.match(r"^\d{1,3}\s*/\s*\d{1,3}$", lines[j]):
+                            break
+                        if "HOJA" in lines[j] and "de" in lines[j]:
+                            break
+
+                        j += 1
+
+                    if pos_aranc or fob_factura or desc:
+                        codigo_producto, descripcion = parse_observation_details(desc or "", marca or "")
+                        extracted_items.append({
+                            "numero_item": item_nro,
+                            "numero_subitem": None,
+                            "codigo_ncm": pos_aranc,
+                            "codigo_producto": codigo_producto or None,
+                            "descripcion": descripcion or desc or f"Ítem {item_nro} - Posición {pos_aranc or 'N/A'}",
+                            "marca": marca or "Sin Marca",
+                            "cantidad": cantidad or 1.0,
+                            "unidad": unidad or "UNIDAD",
+                            "peso_neto": kilo_neto,
+                            "peso_bruto": None,
+                            "valor_unitario": round((fob_uss or fob_factura or 0) / (cantidad or 1), 2) if (fob_uss or fob_factura) and (cantidad and cantidad > 0) else None,
+                            "valor_total": fob_uss or fob_factura or 0.0,
+                            "pais_origen": pais_origen,
+                            "pais_procedencia": pais_proc,
+                            "pagina_origen": page_num
+                        })
+                        i = j - 1
+                i += 1
+
+    # 3. Si aún no hay items, buscar formato estándar con expresiones regulares
+    if not extracted_items:
+        main_item_pattern = re.compile(
+            r"NRO\s+DE\s+PEDIDO\s*:\s*(\d+)(?:/\d+)?.*?POSICION\s+ARANCELARIA\s*:\s*([0-9A-Za-z.]+)"
+            r".*?FOB\s+FACTURA\s*[\n\r\s]*([0-9.,]+)"
+            r"(?:.*?DESCRIPCION\s+EN\s+TERMINOS\s+COMERCIALES\s*[\n\r\s]*([^\n\r]+))?"
+            r"(?:.*?CANTIDAD\s+UNIDAD\s+FOB\s+U\$S\s*[\n\r\s]*([0-9.,]+)\s*([A-Za-z]+))?",
+            re.DOTALL | re.IGNORECASE
+        )
         for page_info in pages_data:
             text = page_info["text"]
             page_num = page_info["page_num"]
@@ -166,3 +269,4 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                 })
 
     return extracted_items
+
