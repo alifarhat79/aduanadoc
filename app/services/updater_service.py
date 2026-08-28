@@ -200,22 +200,9 @@ class UpdaterService:
     def check_for_updates(self) -> Dict[str, Any]:
         """
         Para OTRAS PCs: Consulta si existe una versión más reciente disponible
-        ya sea en GitHub (primario y automático) o en Google Drive / ZIP (fallback).
+        ya sea en archivo ZIP local / Google Drive o en GitHub Cloud.
         """
-        # 1. Comprobación de GitHub en tiempo real
-        gh_check = self.check_github_updates()
-        if gh_check.get("has_update"):
-            return {
-                "has_update": True,
-                "source": "github",
-                "current_version": gh_check.get("current_commit") or settings.APP_VERSION,
-                "latest_version": gh_check.get("latest_commit"),
-                "changelog": gh_check.get("latest_message"),
-                "released_at": gh_check.get("latest_date"),
-                "message": gh_check.get("message")
-            }
-
-        # 2. Comprobación por archivo ZIP en updates/ (Google Drive)
+        # 1. Comprobación por archivo ZIP en updates/ (Google Drive o publicación manual)
         manifest = None
         if self.version_file.exists():
             try:
@@ -242,6 +229,19 @@ class UpdaterService:
                     "update_file_ready": True,
                     "message": f"¡Nueva actualización disponible en archivo ZIP: v{latest_v}!"
                 }
+
+        # 2. Comprobación de GitHub en tiempo real
+        gh_check = self.check_github_updates()
+        if gh_check.get("has_update"):
+            return {
+                "has_update": True,
+                "source": "github",
+                "current_version": gh_check.get("current_commit") or settings.APP_VERSION,
+                "latest_version": gh_check.get("latest_commit"),
+                "changelog": gh_check.get("latest_message"),
+                "released_at": gh_check.get("latest_date"),
+                "message": gh_check.get("message")
+            }
 
         local_info = self._get_installed_commit()
         return {
@@ -362,9 +362,16 @@ class UpdaterService:
         """
         git_dir = BASE_DIR / ".git"
         if not git_dir.exists():
+            inst_info = self._get_installed_commit()
             return {
                 "has_git": False,
-                "message": "No se detectó un repositorio Git local (.git no encontrado)."
+                "mode": "http_cloud",
+                "branch": "main",
+                "commit_hash": inst_info.get("commit_hash", settings.APP_VERSION),
+                "commit_msg": inst_info.get("commit_msg", ""),
+                "commit_date": inst_info.get("commit_date", ""),
+                "remote_url": "https://github.com/alifarhat79/aduanadoc.git",
+                "message": "Conectado a GitHub Cloud (Sincronización directa sin cliente Git local)."
             }
 
         import subprocess
