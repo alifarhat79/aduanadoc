@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Notificaciones Telegram & Webhooks
     TELEGRAM_BOT_TOKEN: str = "8815110549:AAGsv9YjEqrYAqRS-qsCJh1U5prxVvIi2bI"
-    TELEGRAM_CHAT_ID: str = "-1003592639127"
+    TELEGRAM_CHAT_ID: str = "67567393,817311653,-1003592639127"
     WEBHOOK_URL: str = ""
     NOTIFICATIONS_ENABLED: bool = True
 
