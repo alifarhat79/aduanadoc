@@ -338,10 +338,13 @@ async def update_despacho_propietario_api(
 
 @router.delete("/{despacho_id}")
 async def delete_despacho(despacho_id: int, db: Session = Depends(get_db)):
-    """Elimina un despacho y sus ítems asociados de la base de datos."""
+    """Elimina un despacho y sus ítems asociados de la base de datos y de Turso Cloud."""
     despacho = db.query(Despacho).filter(Despacho.id == despacho_id).first()
     if not despacho:
         raise HTTPException(status_code=404, detail="Despacho no encontrado")
+
+    numero_despacho = despacho.numero_despacho
+    hash_archivo = despacho.hash_archivo
 
     # Si se desea eliminar el archivo físico
     if os.path.exists(despacho.archivo_pdf):
@@ -352,4 +355,18 @@ async def delete_despacho(despacho_id: int, db: Session = Depends(get_db)):
 
     db.delete(despacho)
     db.commit()
+
+    # Eliminar también de Turso Cloud para evitar que vuelva al sincronizar
+    try:
+        from app.services.turso_service import TursoService
+        turso = TursoService()
+        if turso.is_configured():
+            await turso.delete_despacho_from_turso(
+                numero_despacho=numero_despacho,
+                hash_archivo=hash_archivo,
+                despacho_id=despacho_id
+            )
+    except Exception:
+        pass
+
     return {"status": "success", "message": "Despacho eliminado correctamente"}

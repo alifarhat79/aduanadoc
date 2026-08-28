@@ -83,6 +83,9 @@
                                 </button>
                             </div>
                         </form>
+                        <button type="button" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm fw-semibold" id="btnGlobalSyncTurso" onclick="sincronizarTursoGlobal(true)" title="Descargar y sincronizar cambios de otras computadoras desde Turso Cloud">
+                            <i class="bi bi-cloud-arrow-down-fill text-primary"></i> Sincronizar Nube
+                        </button>
                         <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 shadow-sm" id="btnGlobalBackup" onclick="crearBackupGlobal()" title="Crear Copia de Seguridad ZIP">
                             <i class="bi bi-file-earmark-zip-fill text-warning"></i> Backup ZIP
                         </button>
@@ -416,6 +419,42 @@
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = '<i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar en esta PC';
+                }
+            }
+        };
+
+        // ==========================================
+        // Sincronización Global Turso Cloud
+        // ==========================================
+        window.sincronizarTursoGlobal = async function(mostrarFeedback = true) {
+            const btn = document.getElementById('btnGlobalSyncTurso');
+            const originalHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm text-primary me-1"></span> Sincronizando...';
+            }
+
+            try {
+                const resp = await fetch('/turso/api/sync-despachos');
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    if (mostrarFeedback) {
+                        alert(`☁️ ¡Sincronización Nube Exitosa!\n\n${data.message || 'Despachos actualizados correctamente.'}`);
+                        window.location.reload();
+                    }
+                } else {
+                    if (mostrarFeedback) {
+                        alert('⚠️ Error al sincronizar con Turso: ' + (data.detail || data.message || 'Error desconocido'));
+                    }
+                }
+            } catch (err) {
+                if (mostrarFeedback) {
+                    alert('⚠️ Error de conexión con Turso Cloud: ' + err.message);
+                }
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
                 }
             }
         };

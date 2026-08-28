@@ -181,7 +181,7 @@ class GoogleDriveService:
         if nuevos_procesados > 0 and turso.is_configured():
             try:
                 for det in detalles:
-                    if det.get("estado") in ["PROCESADO", "CONFIRMADO"] and det.get("despacho_id"):
+                    if det.get("estado") in ["PROCESADO", "CONFIRMADO", "PROCESADO_EXITOSO"] and det.get("despacho_id"):
                         turso.sync_push_despacho(det["despacho_id"], db)
                 logger.info(f"[GoogleDriveService] {nuevos_procesados} despachos sincronizados automáticamente a Turso Cloud.")
             except Exception as e:
@@ -309,7 +309,7 @@ class GoogleDriveService:
         if nuevos_procesados > 0 and turso.is_configured():
             try:
                 for det in detalles:
-                    if det.get("estado") in ["PROCESADO", "CONFIRMADO"] and det.get("despacho_id"):
+                    if det.get("estado") in ["PROCESADO", "CONFIRMADO", "PROCESADO_EXITOSO"] and det.get("despacho_id"):
                         turso.sync_push_despacho(det["despacho_id"], db)
                 logger.info(f"[GoogleDriveService] {nuevos_procesados} despachos sincronizados automáticamente a Turso Cloud.")
             except Exception as e:

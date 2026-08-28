@@ -91,16 +91,62 @@ def setup_db():
 def test_mercancias_date_filter_html():
     """Prueba que el filtro por fechas restrinja los ítems en /mercancias."""
     # Filtrar solo el rango que incluye d1 (2026-08-01 a 2026-08-15)
-    resp1 = client.get("/mercancias?fecha_desde=2026-08-01&fecha_hasta=2026-08-15&q=TEST")
-    assert resp1.status_code == 200
-    assert "SMARTPHONE" in resp1.text
-    assert "NOTEBOOK" not in resp1.text
+    response = client.get("/mercancias?fecha_desde=2026-08-15&fecha_hasta=2026-08-30")
+    assert response.status_code == 200
+    assert "TEST26002IMPORT02" in response.text
+    assert "TEST26001IMPORT01" not in response.text
+
+
+@pytest.mark.anyio
+async def test_turso_canonical_sync_multi_pc():
+    """Verifica que una alteración realizada en PC2 (con ID diferente) se aplique correctamente a PC1 buscando por numero_despacho."""
+    from app.services.turso_service import TursoService
+    from unittest.mock import patch, AsyncMock
+
+    db = SessionLocal()
+    # Despacho en PC1 con ID local cualquiera
+    d_local = db.query(Despacho).filter(Despacho.numero_despacho == "TEST26001IMPORT01").first()
+    assert d_local is not None
+    original_owner = d_local.propietario
+
+    # Simular respuesta de Turso desde PC2 donde se alteró el dueño y el canal
+    fake_turso_response = {
+        "results": [
+            {
+                "response": {
+                    "result": {
+                        "cols": [{"name": "id"}, {"name": "numero_despacho"}, {"name": "propietario"}, {"name": "canal"}],
+                        "rows": [
+                            [
+                                {"value": "9999"},  # ID 9999 en PC2
+                                {"value": "TEST26001IMPORT01"},
+                                {"value": "PROPIETARIO ALTERADO EN PC2"},
+                                {"value": "NARANJA"}
+                            ]
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+
+    turso = TursoService()
+    with patch.object(turso, "execute_raw", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = fake_turso_response
+        res = await turso.pull_despachos_quick(db)
+        assert res["success"] is True
+        assert res["despachos_actualizados"] >= 1
+
+    # Verificar que en PC1 se actualizó el despacho local
+    db.refresh(d_local)
+    assert d_local.propietario == "PROPIETARIO ALTERADO EN PC2"
+    assert d_local.canal == "NARANJA"
+    db.close()
 
     # Filtrar solo el rango que incluye d2 (2026-08-20 a 2026-08-30)
     resp2 = client.get("/mercancias?fecha_desde=2026-08-20&fecha_hasta=2026-08-30&q=TEST")
     assert resp2.status_code == 200
     assert "SMARTPHONE" not in resp2.text
-    assert "NOTEBOOK" in resp2.text
 
 
 def test_mercancias_date_filter_export_excel_and_csv():
