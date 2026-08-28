@@ -864,11 +864,13 @@
                         <div class="alert alert-warning py-2 small mb-0 mt-2">
                             <div class="fw-bold"><i class="bi bi-stars text-warning me-1"></i> ¡Nueva versión disponible: v${data.latest_version}!</div>
                             <div class="text-muted mb-2">${data.changelog || 'Nuevas mejoras incluidas'} (${data.file_size_mb || 0} MB)</div>
-                            <button class="btn btn-dark btn-sm w-100 fw-bold" onclick="aplicarActualizacionConfig()">
+                            <button class="btn btn-dark btn-sm w-100 fw-bold" onclick="window.lanzarModalActualizacionPremium()">
                                 <i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar Sistema en esta PC
                             </button>
                         </div>
                     `;
+                    // Lanzar automáticamente el overlay
+                    window.lanzarModalActualizacionPremium(data);
                 } else {
                     resEl.innerHTML = `
                         <div class="alert alert-success py-2 small mb-0 mt-2">
@@ -888,7 +890,10 @@
     }
 
     async function aplicarActualizacionConfig() {
-        if (!confirm('¿Deseas actualizar el sistema ahora? Se creará un respaldo preventivo de la base de datos antes de aplicar los cambios.')) return;
+        if (typeof window.lanzarModalActualizacionPremium === 'function') {
+            window.lanzarModalActualizacionPremium();
+            return;
+        }
 
         const resEl = document.getElementById('updateCheckResult');
         resEl.innerHTML = '<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span> Aplicando actualización y respaldando datos... Por favor espera...</div>';
@@ -972,7 +977,6 @@
                 badgeEl.innerHTML = '<i class="bi bi-stars text-danger me-1"></i> Update Disponible';
                 btnPull.className = 'btn btn-warning btn-sm w-100 fw-bold mt-1 shadow-sm border-warning';
                 btnPull.innerHTML = '<i class="bi bi-cloud-arrow-down-fill text-danger me-1"></i> Descargar e Instalar Actualización Ahora';
-                btnPull.onclick = () => window.lanzarModalActualizacionPremium(data);
                 
                 detailsEl.innerHTML = `
                     <div class="alert alert-warning py-2 px-3 small mb-2 border-warning text-dark">
@@ -987,7 +991,6 @@
                 badgeEl.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Al día';
                 btnPull.className = 'btn btn-dark btn-sm w-100 fw-semibold mt-1 shadow-sm';
                 btnPull.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Sincronizar Cambios con GitHub';
-                btnPull.onclick = () => window.ejecutarActualizacionDesdeBanner();
                 detailsEl.innerHTML = `
                     <div class="text-success small"><i class="bi bi-check2-circle me-1"></i> <strong>Tu sistema está al día.</strong> (Commit: <code>${data.current_version || 'main'}</code>)</div>
                 `;
@@ -1041,6 +1044,11 @@
     }
 
     async function ejecutarGitPull() {
+        if (typeof window.lanzarModalActualizacionPremium === 'function') {
+            window.lanzarModalActualizacionPremium();
+            return;
+        }
+
         const btn = document.getElementById('btnGitPull');
         const resEl = document.getElementById('gitPullResult');
 
