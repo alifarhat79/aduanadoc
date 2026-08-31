@@ -23,6 +23,7 @@ backups/
 updates/
 tmp/
 *.log
+*.zip
 
 # Credenciales y Secretos (CRÍTICO: nunca subir a GitHub)
 .env

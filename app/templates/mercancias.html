@@ -4,38 +4,166 @@
 {% block page_title %}Catálogo Consolidado de Mercancías e Ítems{% endblock %}
 
 {% block content %}
-<!-- Mini KPIs de Marcas (Píldoras Interactivas - Al hacer clic filtra la tabla) -->
+<!-- Mini KPIs de Marcas y NCMs Destacados (Píldoras Interactivas - Al hacer clic filtra la tabla) -->
 <div class="card border-0 shadow-sm rounded-3 mb-4">
     <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-tags-fill text-primary fs-5"></i>
-            <span class="fw-bold text-dark small text-uppercase">Marcas Destacadas (Clic para filtrar en el acto)</span>
-        </div>
+        <ul class="nav nav-pills card-header-pills" id="pills-tab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if not selected_ncm or selected_marca %}active{% endif %} py-1 px-3 fw-semibold small" id="pills-marcas-tab" data-bs-toggle="pill" data-bs-target="#pills-marcas" type="button" role="tab">
+                    <i class="bi bi-tags-fill me-1 text-primary"></i> Marcas Destacadas
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if selected_ncm and not selected_marca %}active{% endif %} py-1 px-3 fw-semibold small" id="pills-ncms-tab" data-bs-toggle="pill" data-bs-target="#pills-ncms" type="button" role="tab">
+                    <i class="bi bi-file-earmark-code-fill me-1 text-info"></i> NCMs y Rubros Destacados
+                </button>
+            </li>
+        </ul>
         <div class="d-flex gap-2 align-items-center">
-            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="filterByMarca('')" style="font-size: 0.75rem;">
-                <i class="bi bi-x-circle me-1"></i>Todas las Marcas
-            </button>
+            {% if selected_marca or selected_ncm %}
+            <a href="/mercancias" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size: 0.75rem;">
+                <i class="bi bi-x-circle me-1"></i>Limpiar Filtros
+            </a>
+            {% endif %}
         </div>
     </div>
     <div class="card-body p-3">
-        <div class="d-flex gap-2 flex-wrap align-items-center" id="brandPillsContainer">
-            <button type="button" 
-                    class="btn btn-sm {% if not selected_marca %}btn-primary text-white shadow-sm{% else %}btn-light border text-dark{% endif %} marca-pill fw-semibold shadow-2xs" 
-                    onclick="filterByMarca('')" 
-                    data-marca="">
-                <i class="bi bi-grid-fill me-1"></i> Todas ({{ total_items if not selected_marca else 'Ver Todas' }})
-            </button>
-            {% for m in marca_kpis %}
-                {% if m.marca %}
-                <button type="button" 
-                        class="btn btn-sm {% if selected_marca == m.marca %}btn-primary text-white shadow-sm{% else %}btn-light border text-dark{% endif %} marca-pill fw-semibold shadow-2xs d-flex align-items-center gap-1"
-                        onclick="filterByMarca('{{ m.marca }}')" 
-                        data-marca="{{ m.marca }}">
-                    <span>{{ m.marca }}</span>
-                    <span class="badge {% if selected_marca == m.marca %}bg-white text-primary{% else %}bg-primary-subtle text-primary{% endif %} rounded-pill px-2 py-0" style="font-size: 0.7rem;">{{ m.total_items }}</span>
-                </button>
-                {% endif %}
-            {% endfor %}
+        <div class="tab-content" id="pills-tabContent">
+            <!-- Tab 1: Marcas -->
+            <div class="tab-pane fade {% if not selected_ncm or selected_marca %}show active{% endif %}" id="pills-marcas" role="tabpanel">
+                <div class="d-flex gap-2 flex-wrap align-items-center" id="brandPillsContainer">
+                    <button type="button" 
+                            class="btn btn-sm {% if not selected_marca %}btn-primary text-white shadow-sm{% else %}btn-light border text-dark{% endif %} marca-pill fw-semibold shadow-2xs" 
+                            onclick="filterByMarca('')" 
+                            data-marca="">
+                        <i class="bi bi-grid-fill me-1"></i> Todas ({{ "{:,}".format(total_items) if not selected_marca else 'Ver Todas' }})
+                    </button>
+                    {% for m in marca_kpis %}
+                        {% if m.marca %}
+                        <div class="btn-group btn-group-sm marca-pill-group">
+                            <button type="button" 
+                                    class="btn btn-sm {% if selected_marca == m.marca %}btn-primary text-white shadow-sm{% else %}btn-light border text-dark{% endif %} marca-pill fw-semibold shadow-2xs d-flex align-items-center gap-1"
+                                    onclick="filterByMarca('{{ m.marca }}')" 
+                                    data-marca="{{ m.marca }}"
+                                    title="Filtrar toda la marca {{ m.marca }}">
+                                <span>{{ m.marca }}</span>
+                                <span class="badge {% if selected_marca == m.marca %}bg-white text-primary{% else %}bg-primary-subtle text-primary{% endif %} rounded-pill px-2 py-0" style="font-size: 0.7rem;">{{ "{:,}".format(m.total_items) }}</span>
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-sm {% if selected_marca == m.marca %}btn-primary text-white border-start-0{% else %}btn-light border border-start-0 text-secondary{% endif %} dropdown-toggle dropdown-toggle-split px-2 shadow-2xs" 
+                                    data-bs-toggle="dropdown" 
+                                    data-bs-auto-close="true"
+                                    aria-expanded="false" 
+                                    title="Ver modelos / subítems de {{ m.marca }}">
+                                <span class="visually-hidden">Desplegar subítems</span>
+                            </button>
+                            <ul class="dropdown-menu shadow-lg border-0 py-2 brand-dropdown-menu" style="min-width: 320px; max-height: 480px; overflow-y: auto;">
+                                <li class="dropdown-header text-uppercase fw-bold text-primary small d-flex justify-content-between align-items-center pb-1">
+                                    <span><i class="bi bi-tags-fill me-1"></i>{{ m.marca }} ({{ m.familias|length }} líneas)</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-secondary text-decoration-none" onclick="event.stopPropagation(); openEditLabelsModal('{{ m.marca }}')" title="Administrar familias y etiquetas de {{ m.marca }}">
+                                        <i class="bi bi-pencil-square me-1"></i><small>Editar</small>
+                                    </button>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item py-2 fw-semibold small text-primary" href="javascript:void(0)" onclick="filterByMarca('{{ m.marca }}')">
+                                        <i class="bi bi-grid-fill me-2 opacity-75"></i>Ver todo {{ m.marca }} ({{ "{:,}".format(m.total_items) }})
+                                    </a>
+                                </li>
+                                {% if m.familias|length > 4 %}
+                                <li class="px-2 py-1" onclick="event.stopPropagation()">
+                                    <input type="text" class="form-control form-control-sm search-subitems-input" placeholder="🔍 Filtrar familia o variante..." oninput="filterDropdownHierarchical(this)">
+                                </li>
+                                {% endif %}
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <div class="hierarchical-scroll-container">
+                                {% if m.familias %}
+                                    {% for fam in m.familias %}
+                                    <li class="family-menu-li px-1 mb-1" data-family="{{ fam.familia|lower }}">
+                                        {% if fam.variantes|length > 1 %}
+                                        <!-- Encabezado de Familia con Acordeón -->
+                                        <div class="d-flex align-items-center justify-content-between px-2 py-1 rounded family-header-row" style="background-color: rgba(0,0,0,0.02);">
+                                            <!-- Clic en el nombre/carpeta: Filtra TODA la familia -->
+                                            <a href="javascript:void(0)" class="text-decoration-none d-flex align-items-center gap-2 flex-grow-1 text-truncate py-1 family-filter-link" onclick="filterBySubitem('{{ m.marca }}', '{{ fam.patron_familia }}')" title="Filtrar toda la familia {{ fam.familia }} ({{ "{:,}".format(fam.total_items) }})">
+                                                <i class="bi bi-folder2-open text-warning" style="font-size: 0.95rem;"></i>
+                                                <span class="fw-bold text-dark family-name-text small">{{ fam.familia }}</span>
+                                                <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-0" style="font-size: 0.65rem;">{{ "{:,}".format(fam.total_items) }}</span>
+                                            </a>
+                                            <!-- Botón chevron: Expande / Colapsa las variantes sin cerrar el menú -->
+                                            <button type="button" class="btn btn-sm btn-link text-muted p-0 px-2 toggle-variants-btn" onclick="event.stopPropagation(); toggleFamilyAccordion(this)" title="Ver variantes de {{ fam.familia }}">
+                                                <i class="bi bi-chevron-down toggle-chevron" style="font-size: 0.75rem; transition: transform 0.2s;"></i>
+                                            </button>
+                                        </div>
+                                        <!-- Sub-lista de variantes (Sub-subítems) -->
+                                        <ul class="list-unstyled ps-3 pe-1 py-1 mb-1 family-variants-list" style="display: none; background-color: rgba(248, 249, 250, 0.85); border-left: 2px solid #dee2e6; margin-left: 12px;">
+                                            <li>
+                                                <a class="dropdown-item py-1 small text-muted fst-italic d-flex justify-content-between align-items-center rounded" href="javascript:void(0)" onclick="filterBySubitem('{{ m.marca }}', '{{ fam.patron_familia }}')">
+                                                    <span><i class="bi bi-arrow-return-right me-1 text-primary"></i>Ver todo {{ fam.familia }}</span>
+                                                    <span class="badge bg-light text-muted border rounded-pill px-1" style="font-size: 0.62rem;">{{ "{:,}".format(fam.total_items) }}</span>
+                                                </a>
+                                            </li>
+                                            {% for v in fam.variantes %}
+                                            <li class="variant-menu-li">
+                                                <a class="dropdown-item py-1 px-2 small d-flex justify-content-between align-items-center rounded variant-filter-link" href="javascript:void(0)" onclick="filterBySubitem('{{ m.marca }}', '{{ v.patron }}')" title="Filtrar por {{ fam.familia }} {{ v.nombre }}">
+                                                    <span class="d-flex align-items-center gap-1 text-truncate" style="max-width: 170px;">
+                                                        <i class="bi bi-dot text-secondary fs-6"></i>
+                                                        <span class="fw-medium text-dark variant-name-text">{{ v.nombre }}</span>
+                                                    </span>
+                                                    <span class="badge bg-white text-muted border rounded-pill px-1" style="font-size: 0.62rem;">{{ "{:,}".format(v.total_items) }}</span>
+                                                </a>
+                                            </li>
+                                            {% endfor %}
+                                        </ul>
+                                        {% else %}
+                                        <!-- Familia con 1 sola variante directa -->
+                                        {% set single_var = fam.variantes[0] if fam.variantes else None %}
+                                        <a class="dropdown-item d-flex justify-content-between align-items-center py-2 family-simple-item rounded" href="javascript:void(0)" onclick="filterBySubitem('{{ m.marca }}', '{{ single_var.patron if single_var else fam.patron_familia }}')" title="Filtrar por {{ fam.familia }}">
+                                            <span class="d-flex align-items-center gap-2 text-truncate" style="max-width: 190px;">
+                                                <i class="bi bi-box-seam text-muted" style="font-size: 0.8rem;"></i>
+                                                <span class="fw-medium text-dark family-name-text">{{ fam.familia }}</span>
+                                            </span>
+                                            <span class="badge bg-light text-muted border rounded-pill px-2" style="font-size: 0.68rem;">{{ "{:,}".format(fam.total_items) }}</span>
+                                        </a>
+                                        {% endif %}
+                                    </li>
+                                    {% endfor %}
+                                {% else %}
+                                    <li class="px-3 py-2 text-muted small text-center">Sin modelos detectados</li>
+                                {% endif %}
+                                </div>
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <li>
+                                    <a class="dropdown-item text-secondary small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="openEditLabelsModal('{{ m.marca }}')">
+                                        <i class="bi bi-gear text-muted"></i>
+                                        <span>Administrar familias y etiquetas</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Tab 2: NCMs y Rubros -->
+            <div class="tab-pane fade {% if selected_ncm and not selected_marca %}show active{% endif %}" id="pills-ncms" role="tabpanel">
+                <div class="d-flex gap-2 flex-wrap align-items-center" id="ncmPillsContainer">
+                    <button type="button" 
+                            class="btn btn-sm {% if not selected_ncm %}btn-info text-white shadow-sm{% else %}btn-light border text-dark{% endif %} fw-semibold shadow-2xs" 
+                            onclick="filterByNcm('')">
+                        <i class="bi bi-grid-fill me-1"></i> Todos los NCMs
+                    </button>
+                    {% for n in ncm_kpis %}
+                        <button type="button" 
+                                class="btn btn-sm {% if selected_ncm == n.codigo %}btn-info text-white shadow-sm{% else %}btn-light border text-dark{% endif %} fw-semibold shadow-2xs d-flex align-items-center gap-1"
+                                onclick="filterByNcm('{{ n.codigo }}')" 
+                                title="{{ n.rubro }} ({{ n.capitulo_nombre }})">
+                            <span class="font-monospace fw-bold">{{ n.codigo_corto }}</span>
+                            <span class="small text-truncate" style="max-width: 180px;">{{ n.rubro }}</span>
+                            <span class="badge {% if selected_ncm == n.codigo %}bg-white text-dark{% else %}bg-info-subtle text-info-emphasis{% endif %} rounded-pill px-2 py-0" style="font-size: 0.7rem;">{{ "{:,}".format(n.total_items) }}</span>
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -44,22 +172,77 @@
 <div class="card border-0 shadow-sm rounded-3 mb-4">
     <div class="card-body p-3">
         <div class="mb-3">
-            <!-- Totales Clave -->
-            <div class="d-inline-flex gap-3 align-items-center bg-light p-2 px-3 rounded-3 border">
-                <div>
-                    <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">MERCANCÍAS</small>
-                    <span class="fw-bold text-dark fs-5" id="kpiCount">{{ total_items }}</span>
+            <!-- Totales Clave de Inteligencia Aduanera -->
+            <div class="d-flex flex-wrap gap-3 align-items-center bg-light p-2 px-3 rounded-3 border shadow-2xs">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-primary-subtle text-primary p-2 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                        <i class="bi bi-box-seam fs-5"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.68rem; letter-spacing: 0.5px;">MERCANCÍAS</small>
+                        <span class="fw-bold text-dark fs-5 font-monospace" id="kpiCount">{{ "{:,}".format(total_items) }}</span>
+                    </div>
                 </div>
-                <div class="vr"></div>
-                <div>
-                    <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">CANTIDAD TOTAL</small>
-                    <span class="fw-bold text-primary fs-5" id="kpiQty">{{ "{:,.2f}".format(total_cantidad_filtrada) }}</span>
+                
+                <div class="vr d-none d-sm-block"></div>
+                
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-warning-subtle text-warning-emphasis p-2 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                        <i class="bi bi-tags-fill fs-5"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.68rem; letter-spacing: 0.5px;">TOTAL MARCAS</small>
+                        <span class="fw-bold text-primary fs-5 font-monospace" id="kpiMarcas">{{ "{:,}".format(total_marcas_filtradas) }}</span>
+                    </div>
                 </div>
-                <div class="vr"></div>
-                <div>
-                    <small class="text-muted d-block fw-semibold" style="font-size: 0.7rem;">TOTAL FOB (USD)</small>
-                    <span class="fw-bold text-success fs-5" id="kpiFob">${{ "{:,.2f}".format(total_fob_filtrado) }}</span>
+                
+                <div class="vr d-none d-sm-block"></div>
+                
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-info-subtle text-info-emphasis p-2 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                        <i class="bi bi-file-earmark-code-fill fs-5"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.68rem; letter-spacing: 0.5px;">TOTAL NCMs</small>
+                        <span class="fw-bold text-info-emphasis fs-5 font-monospace" id="kpiNcms">{{ "{:,}".format(total_ncms_filtrados) }}</span>
+                    </div>
                 </div>
+                
+                {% if top_ncm_info %}
+                <div class="vr d-none d-md-block"></div>
+                
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-success-subtle text-success p-2 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                        <i class="bi bi-star-fill fs-5"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.68rem; letter-spacing: 0.5px;">NCM DESTACADO (QUÉ ES)</small>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <button type="button" onclick="filterByNcm('{{ top_ncm_info.codigo }}')" class="badge bg-success-subtle text-success-emphasis border border-success-subtle font-monospace text-decoration-none fw-bold" style="font-size: 0.82rem; cursor: pointer;" title="Clic para filtrar por este NCM">
+                                {{ top_ncm_info.codigo_corto }}
+                            </button>
+                            <span class="small fw-semibold text-dark text-truncate" style="max-width: 250px;" title="{{ top_ncm_info.rubro }} ({{ top_ncm_info.capitulo_nombre }})">
+                                {{ top_ncm_info.rubro }}
+                            </span>
+                            <span class="badge bg-white text-muted border px-2 py-0" style="font-size: 0.7rem;" title="Total de ítems con este NCM en el filtro">{{ "{:,}".format(top_ncm_count) }} ítems</span>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if top_pais %}
+                <div class="vr d-none d-lg-block"></div>
+                
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-secondary-subtle text-secondary-emphasis p-2 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                        <i class="bi bi-globe-americas fs-5"></i>
+                    </div>
+                    <div>
+                        <small class="text-muted d-block fw-semibold" style="font-size: 0.68rem; letter-spacing: 0.5px;">ORIGEN LÍDER</small>
+                        <span class="fw-bold text-dark small">{{ top_pais }}</span>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -132,7 +315,7 @@
                     <select name="ncm" id="filterNcmSelect" class="form-select form-select-sm" onchange="submitMercanciasFilter()">
                         <option value="">-- Todos los NCM --</option>
                         {% for n in todos_ncms %}
-                        <option value="{{ n }}" {% if selected_ncm == n %}selected{% endif %}>{{ n }}</option>
+                        <option value="{{ n.codigo }}" {% if selected_ncm == n.codigo %}selected{% endif %}>{{ n.display }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -219,12 +402,26 @@
                                 <span class="text-muted small">Sin Asignar</span>
                             {% endif %}
                         </td>
-                        <td class="fw-semibold small">{{ it.numero_item }}{% if it.numero_subitem %}.{{ it.numero_subitem }}{% endif %}</td>
-                        <td class="font-monospace small">{{ it.codigo_ncm or '-' }}</td>
+                        <td class="fw-semibold small text-center">
+                            {{ it.numero_item }}{% if it.numero_subitem %}.{{ it.numero_subitem }}{% endif %}
+                        </td>
+                        <td class="font-monospace small">
+                            {% if it.codigo_ncm %}
+                                <button type="button" class="btn btn-link p-0 font-monospace small text-decoration-none text-dark fw-bold" onclick="filterByNcm('{{ it.codigo_ncm }}')" title="Filtrar por esta posición NCM">
+                                    {{ it.codigo_ncm }}
+                                </button>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td>
-                            <a href="/mercancias?marca={{ it.marca or '' }}" class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1 text-decoration-none" title="Filtrar por esta marca">
-                                {{ it.marca or 'Sin Marca' }}
-                            </a>
+                            {% if it.marca %}
+                                <button type="button" onclick="filterByMarca('{{ it.marca }}')" class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1 text-decoration-none btn btn-sm py-0 border-0" title="Filtrar por esta marca">
+                                    {{ it.marca }}
+                                </button>
+                            {% else %}
+                                <span class="text-muted small">Sin Marca</span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if it.codigo_producto %}
@@ -309,11 +506,130 @@
         {% endif %}
     </div>
 </div>
+<!-- Modal para Administrar y Renombrar Etiquetas de Subítems / Modelos -->
+<div class="modal fade" id="editLabelsModal" tabindex="-1" aria-labelledby="editLabelsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-light py-3 border-bottom">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="rounded-circle bg-primary-subtle text-primary p-2 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                        <i class="bi bi-tags-fill"></i>
+                    </div>
+                    <div>
+                        <h6 class="modal-title fw-bold text-dark mb-0" id="editLabelsModalLabel">
+                            Administrar Etiquetas de Marca: <span id="modalMarcaName" class="text-primary font-monospace"></span>
+                        </h6>
+                        <small class="text-muted" style="font-size: 0.73rem;">
+                            <i class="bi bi-shield-check text-success me-1"></i>Los nombres modificados son alias visuales de navegación. <strong>No alteran las filas originales de los despachos.</strong>
+                        </small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="small text-muted fw-semibold">Familias y variantes configuradas para esta marca:</span>
+                    <button type="button" class="btn btn-outline-primary btn-sm fw-semibold shadow-2xs" onclick="addLabelRow()">
+                        <i class="bi bi-plus-circle me-1"></i>Agregar Familia / Variante
+                    </button>
+                </div>
+
+                <div class="table-responsive border rounded-3 bg-white" style="max-height: 380px; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0" id="labelsTable">
+                        <thead class="table-light small text-uppercase text-muted sticky-top">
+                            <tr>
+                                <th style="width: 28%;">Familia / Línea</th>
+                                <th style="width: 32%;">Variante Visible</th>
+                                <th style="width: 30%;">Término de Búsqueda</th>
+                                <th style="width: 10%;" class="text-center">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="labelsTableBody">
+                            <!-- Filas generadas dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="alert alert-info border-info-subtle bg-info-subtle text-info-emphasis small mt-3 mb-0 py-2 d-flex align-items-center gap-2">
+                    <i class="bi bi-info-circle-fill fs-5"></i>
+                    <div>
+                        <strong>¿Cómo funciona?</strong> La <strong>Familia</strong> agrupa tus modelos (ej. <em>Asad</em>). Al hacer clic en una <strong>Variante</strong> (ej. <em>Bourbon</em>), se filtrarán los despachos que contengan el <em>término de búsqueda</em>.
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer bg-light py-2 border-top">
+                <button type="button" class="btn btn-light border btn-sm fw-semibold px-3" data-bs-dismiss="modal">
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-primary btn-sm fw-semibold px-4 shadow-sm" id="btnSaveLabels" onclick="saveBrandLabelsModal()">
+                    <i class="bi bi-check2-circle me-1"></i> Guardar Etiquetas
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
     let mercanciasDebounceTimer = null;
+    let currentEditingMarca = '';
+
+    // Función para expandir / colapsar acordeón de variantes sin cerrar el menú dropdown
+    window.toggleFamilyAccordion = function(btn) {
+        const row = btn.closest('.family-menu-li');
+        if (!row) return;
+        const list = row.querySelector('.family-variants-list');
+        const chevron = btn.querySelector('.toggle-chevron');
+        if (list) {
+            if (list.style.display === 'none' || !list.style.display) {
+                list.style.display = 'block';
+                if (chevron) chevron.style.transform = 'rotate(180deg)';
+            } else {
+                list.style.display = 'none';
+                if (chevron) chevron.style.transform = 'rotate(0deg)';
+            }
+        }
+    };
+
+    // Buscador rápido dentro del menú desplegable jerárquico
+    window.filterDropdownHierarchical = function(input) {
+        const filter = (input.value || '').trim().toLowerCase();
+        const dropdown = input.closest('.brand-dropdown-menu');
+        if (!dropdown) return;
+        const families = dropdown.querySelectorAll('.family-menu-li');
+        
+        families.forEach(famLi => {
+            const famText = (famLi.querySelector('.family-name-text')?.textContent || '').toLowerCase();
+            const variants = famLi.querySelectorAll('.variant-menu-li');
+            let hasMatchingVariant = false;
+
+            variants.forEach(varLi => {
+                const varText = (varLi.querySelector('.variant-name-text')?.textContent || '').toLowerCase();
+                if (!filter || varText.includes(filter) || famText.includes(filter)) {
+                    varLi.style.display = '';
+                    hasMatchingVariant = true;
+                } else {
+                    varLi.style.display = 'none';
+                }
+            });
+
+            if (!filter || famText.includes(filter) || hasMatchingVariant) {
+                famLi.style.display = '';
+                // Si el filtro coincide con una variante, auto-expandir el acordeón
+                if (filter && hasMatchingVariant) {
+                    const list = famLi.querySelector('.family-variants-list');
+                    const chevron = famLi.querySelector('.toggle-chevron');
+                    if (list) list.style.display = 'block';
+                    if (chevron) chevron.style.transform = 'rotate(180deg)';
+                }
+            } else {
+                famLi.style.display = 'none';
+            }
+        });
+    };
 
     function submitMercanciasFilter(fieldId) {
         if (fieldId) {
@@ -334,10 +650,8 @@
             clearTimeout(mercanciasDebounceTimer);
             const val = this.value.trim();
             if (val.length === 0) {
-                // Al eliminar la palabra, cancelar filtro y mostrar todo de inmediato
                 submitMercanciasFilter('liveSearchInput');
             } else {
-                // Filtrar en vivo mientras escribe con debounce de 350ms
                 mercanciasDebounceTimer = setTimeout(() => {
                     submitMercanciasFilter('liveSearchInput');
                 }, 350);
@@ -380,6 +694,178 @@
             }
         }
         submitMercanciasFilter();
+    };
+
+    window.filterBySubitem = function(marca, patron) {
+        const sel = document.getElementById('filterMarcaSelect');
+        if (sel) {
+            let optExists = false;
+            for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value.trim().toUpperCase() === (marca || '').trim().toUpperCase()) {
+                    sel.selectedIndex = i;
+                    optExists = true;
+                    break;
+                }
+            }
+            if (!optExists && marca) {
+                const opt = document.createElement('option');
+                opt.value = marca;
+                opt.textContent = marca;
+                opt.selected = true;
+                sel.appendChild(opt);
+                sel.value = marca;
+            }
+        }
+        const searchInput = document.getElementById('liveSearchInput');
+        if (searchInput) {
+            searchInput.value = patron || '';
+        }
+        submitMercanciasFilter();
+    };
+
+    window.filterByNcm = function(ncm) {
+        const sel = document.getElementById('filterNcmSelect');
+        if (sel) {
+            let optExists = false;
+            for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value.trim().toUpperCase() === (ncm || '').trim().toUpperCase()) {
+                    sel.selectedIndex = i;
+                    optExists = true;
+                    break;
+                }
+            }
+            if (!optExists && ncm) {
+                const opt = document.createElement('option');
+                opt.value = ncm;
+                opt.textContent = ncm;
+                opt.selected = true;
+                sel.appendChild(opt);
+                sel.value = ncm;
+            } else if (!ncm) {
+                sel.value = '';
+            }
+        }
+        submitMercanciasFilter();
+    };
+
+    window.openEditLabelsModal = async function(marca) {
+        currentEditingMarca = marca;
+        document.getElementById('modalMarcaName').textContent = marca;
+        const tbody = document.getElementById('labelsTableBody');
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando familias y variantes de ' + marca + '...</td></tr>';
+        
+        const modal = new bootstrap.Modal(document.getElementById('editLabelsModal'));
+        modal.show();
+
+        try {
+            const resp = await fetch(`/mercancias/api/marcas/${encodeURIComponent(marca)}/subitems`);
+            const data = await resp.json();
+            tbody.innerHTML = '';
+            let rowsAdded = 0;
+            if (data.familias && data.familias.length > 0) {
+                data.familias.forEach(f => {
+                    if (f.variantes && f.variantes.length > 0) {
+                        f.variantes.forEach(v => {
+                            addLabelRow(f.familia, v.nombre, v.patron, v.id, v.total_items);
+                            rowsAdded++;
+                        });
+                    } else {
+                        addLabelRow(f.familia, 'Original / Clásico', f.patron_familia, null, f.total_items);
+                        rowsAdded++;
+                    }
+                });
+            }
+            if (rowsAdded === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">No hay etiquetas para esta marca. Haz clic en "Agregar Familia" para crear una.</td></tr>';
+            }
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-danger">Error al cargar etiquetas. Intenta de nuevo.</td></tr>';
+        }
+    };
+
+    window.addLabelRow = function(familia = '', nombre = '', patron = '', id = null, total = null) {
+        const tbody = document.getElementById('labelsTableBody');
+        const emptyRow = tbody.querySelector('td[colspan="4"]');
+        if (emptyRow) tbody.innerHTML = '';
+
+        const tr = document.createElement('tr');
+        tr.className = 'label-edit-row';
+        tr.dataset.id = id || '';
+
+        tr.innerHTML = `
+            <td>
+                <input type="text" class="form-control form-control-sm label-familia-input fw-semibold text-primary" value="${familia || ''}" placeholder="Ej: Asad, Yara" required>
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm label-nombre-input fw-medium text-dark" value="${nombre || ''}" placeholder="Ej: Bourbon, Candy" required>
+            </td>
+            <td>
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control form-control-sm label-patron-input font-monospace" value="${patron || ''}" placeholder="Ej: ASAD BOURBON" required>
+                    ${total !== null && total !== undefined ? `<span class="input-group-text bg-light text-muted small py-0 px-1" style="font-size:0.65rem;">${total}</span>` : ''}
+                </div>
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 border-0" onclick="deleteLabelRow(this)" title="Quitar esta variante">
+                    <i class="bi bi-trash3"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    };
+
+    window.deleteLabelRow = function(btn) {
+        const row = btn.closest('tr');
+        if (row) row.remove();
+        const tbody = document.getElementById('labelsTableBody');
+        if (tbody.children.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-3 text-muted">No hay etiquetas. Haz clic en "Agregar Familia" para crear una.</td></tr>';
+        }
+    };
+
+    window.saveBrandLabelsModal = async function() {
+        if (!currentEditingMarca) return;
+        const btnSave = document.getElementById('btnSaveLabels');
+        const originalText = btnSave.innerHTML;
+        btnSave.disabled = true;
+        btnSave.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Guardando...';
+
+        const rows = document.querySelectorAll('.label-edit-row');
+        const subitems = [];
+        rows.forEach(r => {
+            const fam = (r.querySelector('.label-familia-input')?.value || '').trim();
+            const nombre = (r.querySelector('.label-nombre-input')?.value || '').trim();
+            const patron = (r.querySelector('.label-patron-input')?.value || '').trim();
+            if (nombre && patron) {
+                subitems.push({
+                    familia: fam,
+                    nombre_limpio: nombre,
+                    patron_busqueda: patron
+                });
+            }
+        });
+
+        try {
+            const resp = await fetch(`/mercancias/api/marcas/${encodeURIComponent(currentEditingMarca)}/subitems`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subitems: subitems })
+            });
+            const res = await resp.json();
+            if (res.status === 'success') {
+                const modalEl = document.getElementById('editLabelsModal');
+                const modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) modal.hide();
+                window.location.reload();
+            } else {
+                alert('Error al guardar: ' + (res.message || 'Error desconocido'));
+            }
+        } catch (e) {
+            alert('Error de conexión al guardar etiquetas.');
+        } finally {
+            btnSave.disabled = false;
+            btnSave.innerHTML = originalText;
+        }
     };
 
     function triggerExport(format) {

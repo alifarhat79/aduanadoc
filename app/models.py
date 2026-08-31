@@ -216,3 +216,18 @@ class PlanillaItem(Base):
 
     planilla = relationship("PlanillaValoracion", back_populates="items")
 
+
+class MarcaSubitemEtiqueta(Base):
+    """Etiquetas y alias visuales de subítems / modelos por marca para navegación rápida."""
+    __tablename__ = "marca_subitem_etiquetas"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    marca = Column(String(150), nullable=False, index=True)
+    familia = Column(String(150), nullable=True, index=True) # Ej: "Asad", "Yara", "Xros"
+    nombre_limpio = Column(String(150), nullable=False)       # Ej: "Bourbon", "Zanzibar", "Original"
+    patron_busqueda = Column(String(255), nullable=False)     # Ej: "ASAD BOURBON"
+    orden = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+

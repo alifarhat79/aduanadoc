@@ -13,11 +13,55 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from app.database import get_db
-from app.models import Despacho, DespachoItem
+from app.models import Despacho, DespachoItem, MarcaSubitemEtiqueta
 from app.templates_config import templates
 from app.services.normalizer import parse_date
+from app.services.ncm_helper import get_ncm_info
+import time
+from app.services.subitem_cleaner import (
+    get_brand_subitems,
+    get_brand_hierarchical_subitems,
+    invalidate_brand_cache
+)
 
 router = APIRouter(prefix="/mercancias", tags=["Mercancías"])
+
+_DROPDOWN_CACHE = {
+    "todas_marcas": [],
+    "todos_ncms_info": [],
+    "todos_propietarios": [],
+    "last_updated": 0
+}
+
+def get_cached_dropdown_data(db: Session):
+    now = time.time()
+    if now - _DROPDOWN_CACHE["last_updated"] < 120 and _DROPDOWN_CACHE["todas_marcas"]:
+        return (
+            _DROPDOWN_CACHE["todas_marcas"],
+            _DROPDOWN_CACHE["todos_ncms_info"],
+            _DROPDOWN_CACHE["todos_propietarios"]
+        )
+
+    todas_marcas = [r[0] for r in db.query(DespachoItem.marca).distinct().filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "").order_by(DespachoItem.marca).all()]
+    
+    raw_ncms = [r[0] for r in db.query(DespachoItem.codigo_ncm).distinct().filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "").order_by(DespachoItem.codigo_ncm).all()]
+    todos_ncms_info = []
+    for raw_n in raw_ncms:
+        info = get_ncm_info(raw_n)
+        display_label = f"{info['codigo_corto']} - {info['rubro']}" if info['rubro'] != "Mercancías diversas" else raw_n
+        todos_ncms_info.append({
+            "codigo": raw_n,
+            "display": display_label
+        })
+
+    todos_propietarios = [r[0] for r in db.query(Despacho.propietario).distinct().filter(Despacho.propietario.isnot(None), Despacho.propietario != "").order_by(Despacho.propietario).all()]
+
+    _DROPDOWN_CACHE["todas_marcas"] = todas_marcas
+    _DROPDOWN_CACHE["todos_ncms_info"] = todos_ncms_info
+    _DROPDOWN_CACHE["todos_propietarios"] = todos_propietarios
+    _DROPDOWN_CACHE["last_updated"] = now
+
+    return todas_marcas, todos_ncms_info, todos_propietarios
 
 def get_filtered_items_query(
     db: Session,
@@ -96,48 +140,39 @@ async def mercancias_view(
         item.despacho = desp
         items_list.append(item)
 
-    # Agregados calculados eficientemente en base de datos
-    aggregates = (
-        db.query(
-            func.coalesce(func.sum(DespachoItem.valor_total), 0.0),
-            func.coalesce(func.sum(DespachoItem.cantidad), 0.0)
-        )
-        .join(Despacho, DespachoItem.despacho_id == Despacho.id)
+    # Agregados y métricas calculados sobre la consulta base (sin order by para máximo rendimiento)
+    base_agg_query = get_filtered_items_query(db, q, marca, ncm, propietario, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta).order_by(None)
+
+    # 1. Total marcas únicas en el filtro actual
+    total_marcas_filtradas = (
+        base_agg_query.with_entities(func.count(func.distinct(DespachoItem.marca)))
+        .filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "")
+        .scalar() or 0
     )
-    if q:
-        search_pattern = f"%{q}%"
-        aggregates = aggregates.filter(
-            or_(
-                DespachoItem.descripcion.ilike(search_pattern),
-                DespachoItem.marca.ilike(search_pattern),
-                DespachoItem.codigo_producto.ilike(search_pattern),
-                DespachoItem.codigo_ncm.ilike(search_pattern),
-                Despacho.numero_despacho.ilike(search_pattern),
-                Despacho.importador_nombre.ilike(search_pattern),
-                Despacho.propietario.ilike(search_pattern)
-            )
-        )
-    if marca:
-        aggregates = aggregates.filter(DespachoItem.marca.ilike(marca.strip()))
-    if ncm:
-        aggregates = aggregates.filter(DespachoItem.codigo_ncm == ncm)
-    if propietario:
-        aggregates = aggregates.filter(Despacho.propietario == propietario)
-    if fecha_desde:
-        d_desde = parse_date(fecha_desde)
-        if d_desde:
-            aggregates = aggregates.filter(Despacho.fecha_despacho >= d_desde)
-    if fecha_hasta:
-        d_hasta = parse_date(fecha_hasta)
-        if d_hasta:
-            aggregates = aggregates.filter(Despacho.fecha_despacho <= d_hasta)
 
-    agg_result = aggregates.first()
-    total_fob_filtrado = agg_result[0] if agg_result else 0.0
-    total_cantidad_filtrada = agg_result[1] if agg_result else 0.0
+    # 2. Total NCMs únicos en el filtro actual
+    total_ncms_filtrados = (
+        base_agg_query.with_entities(func.count(func.distinct(DespachoItem.codigo_ncm)))
+        .filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "")
+        .scalar() or 0
+    )
 
-    # Estadísticas para mini KPIs de Marcas (Top 15)
-    marca_counts = (
+    # 3. NCM Destacado (el más frecuente en el conjunto actual)
+    top_ncm_row = (
+        base_agg_query.with_entities(DespachoItem.codigo_ncm, func.count(DespachoItem.id).label("cnt"))
+        .filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "")
+        .group_by(DespachoItem.codigo_ncm)
+        .order_by(desc("cnt"))
+        .first()
+    )
+    top_ncm_info = None
+    top_ncm_count = 0
+    if top_ncm_row:
+        top_ncm_info = get_ncm_info(top_ncm_row[0])
+        top_ncm_count = top_ncm_row[1]
+
+    # 4. Estadísticas para mini KPIs de Marcas (Top 15) con sus modelos/subítems
+    marca_counts_raw = (
         db.query(DespachoItem.marca, func.count(DespachoItem.id).label("total_items"), func.sum(DespachoItem.valor_total).label("total_fob"))
         .filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "")
         .group_by(DespachoItem.marca)
@@ -145,11 +180,49 @@ async def mercancias_view(
         .limit(15)
         .all()
     )
+    marca_counts = []
+    for r in marca_counts_raw:
+        familias = get_brand_hierarchical_subitems(db, r.marca)
+        marca_counts.append({
+            "marca": r.marca,
+            "total_items": r.total_items,
+            "total_fob": r.total_fob,
+            "familias": familias
+        })
 
-    # Listas para filtros dropdown
-    todas_marcas = [r[0] for r in db.query(DespachoItem.marca).distinct().filter(DespachoItem.marca.isnot(None), DespachoItem.marca != "").order_by(DespachoItem.marca).all()]
-    todos_ncms = [r[0] for r in db.query(DespachoItem.codigo_ncm).distinct().filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "").order_by(DespachoItem.codigo_ncm).all()]
-    todos_propietarios = [r[0] for r in db.query(Despacho.propietario).distinct().filter(Despacho.propietario.isnot(None), Despacho.propietario != "").order_by(Despacho.propietario).all()]
+    # 5. Estadísticas para mini KPIs de NCMs Destacados (Top 12 con traducción de rubro)
+    top_ncms_rows = (
+        db.query(DespachoItem.codigo_ncm, func.count(DespachoItem.id).label("cnt"))
+        .filter(DespachoItem.codigo_ncm.isnot(None), DespachoItem.codigo_ncm != "")
+        .group_by(DespachoItem.codigo_ncm)
+        .order_by(desc("cnt"))
+        .limit(12)
+        .all()
+    )
+    ncm_kpis = []
+    for n_row in top_ncms_rows:
+        info = get_ncm_info(n_row[0])
+        ncm_kpis.append({
+            "codigo": n_row[0],
+            "codigo_corto": info["codigo_corto"],
+            "rubro": info["rubro"],
+            "capitulo_nombre": info["capitulo_nombre"],
+            "total_items": n_row[1],
+            "display": f"{info['codigo_corto']} {info['rubro']}"
+        })
+
+    # 6. País de Origen Líder
+    top_pais_row = (
+        base_agg_query.with_entities(DespachoItem.pais_origen, func.count(DespachoItem.id).label("cnt"))
+        .filter(DespachoItem.pais_origen.isnot(None), DespachoItem.pais_origen != "")
+        .group_by(DespachoItem.pais_origen)
+        .order_by(desc("cnt"))
+        .first()
+    )
+    top_pais = top_pais_row[0] if top_pais_row else None
+
+    # Listas para filtros dropdown en memoria caché
+    todas_marcas, todos_ncms_info, todos_propietarios = get_cached_dropdown_data(db)
 
     return templates.TemplateResponse(
         request=request,
@@ -157,11 +230,15 @@ async def mercancias_view(
         context={
             "items": items_list,
             "total_items": total_items,
-            "total_fob_filtrado": total_fob_filtrado,
-            "total_cantidad_filtrada": total_cantidad_filtrada,
+            "total_marcas_filtradas": total_marcas_filtradas,
+            "total_ncms_filtrados": total_ncms_filtrados,
+            "top_ncm_info": top_ncm_info,
+            "top_ncm_count": top_ncm_count,
+            "top_pais": top_pais,
             "marca_kpis": marca_counts,
+            "ncm_kpis": ncm_kpis,
             "todas_marcas": todas_marcas,
-            "todos_ncms": todos_ncms,
+            "todos_ncms": todos_ncms_info,
             "todos_propietarios": todos_propietarios,
             "q": q or "",
             "selected_marca": marca or "",
@@ -178,6 +255,60 @@ async def mercancias_view(
             "next_page": current_page + 1
         }
     )
+
+@router.get("/api/marcas/{marca}/subitems")
+async def get_marca_subitems_api(marca: str, db: Session = Depends(get_db)):
+    """Retorna las familias y variantes jerárquicas de una marca con nombres limpios y conteo."""
+    familias = get_brand_hierarchical_subitems(db, marca)
+    return {
+        "status": "success",
+        "marca": marca,
+        "familias": familias
+    }
+
+@router.post("/api/marcas/{marca}/subitems")
+async def save_marca_subitems_api(marca: str, request: Request, db: Session = Depends(get_db)):
+    """Guarda o actualiza las etiquetas y familias personalizadas de una marca."""
+    data = await request.json()
+    subitems = data.get("subitems", [])
+
+    # Eliminar etiquetas existentes para esta marca y guardar la lista actualizada
+    db.query(MarcaSubitemEtiqueta).filter(MarcaSubitemEtiqueta.marca.ilike(marca.strip())).delete(synchronize_session=False)
+
+    for idx, item in enumerate(subitems):
+        nombre = item.get("nombre_limpio", "").strip()
+        patron = item.get("patron_busqueda", "").strip()
+        familia = item.get("familia", "").strip() or None
+        if nombre and patron:
+            db.add(MarcaSubitemEtiqueta(
+                marca=marca.strip(),
+                familia=familia,
+                nombre_limpio=nombre,
+                patron_busqueda=patron,
+                orden=idx
+            ))
+
+    db.commit()
+    invalidate_brand_cache(marca)
+    updated = get_brand_hierarchical_subitems(db, marca)
+    return {
+        "status": "success",
+        "message": f"Etiquetas de {marca} actualizadas correctamente.",
+        "marca": marca,
+        "familias": updated
+    }
+
+@router.delete("/api/subitems/{subitem_id}")
+async def delete_subitem_api(subitem_id: int, db: Session = Depends(get_db)):
+    """Elimina una etiqueta personalizada."""
+    record = db.query(MarcaSubitemEtiqueta).filter(MarcaSubitemEtiqueta.id == subitem_id).first()
+    if record:
+        marca = record.marca
+        db.delete(record)
+        db.commit()
+        invalidate_brand_cache(marca)
+        return {"status": "success", "message": "Etiqueta eliminada.", "marca": marca}
+    return {"status": "error", "message": "Etiqueta no encontrada."}
 
 @router.get("/exportar/excel")
 async def export_mercancias_excel(

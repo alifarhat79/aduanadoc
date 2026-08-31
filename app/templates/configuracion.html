@@ -864,13 +864,11 @@
                         <div class="alert alert-warning py-2 small mb-0 mt-2">
                             <div class="fw-bold"><i class="bi bi-stars text-warning me-1"></i> ¡Nueva versión disponible: v${data.latest_version}!</div>
                             <div class="text-muted mb-2">${data.changelog || 'Nuevas mejoras incluidas'} (${data.file_size_mb || 0} MB)</div>
-                            <button class="btn btn-dark btn-sm w-100 fw-bold" onclick="window.lanzarModalActualizacionPremium()">
+                            <button class="btn btn-dark btn-sm w-100 fw-bold" onclick="aplicarActualizacionConfig()">
                                 <i class="bi bi-cloud-arrow-down-fill me-1"></i> Actualizar Sistema en esta PC
                             </button>
                         </div>
                     `;
-                    // Lanzar automáticamente el overlay
-                    window.lanzarModalActualizacionPremium(data);
                 } else {
                     resEl.innerHTML = `
                         <div class="alert alert-success py-2 small mb-0 mt-2">
@@ -890,10 +888,7 @@
     }
 
     async function aplicarActualizacionConfig() {
-        if (typeof window.lanzarModalActualizacionPremium === 'function') {
-            window.lanzarModalActualizacionPremium();
-            return;
-        }
+        if (!confirm('¿Deseas actualizar el sistema ahora? Se creará un respaldo preventivo de la base de datos antes de aplicar los cambios.')) return;
 
         const resEl = document.getElementById('updateCheckResult');
         resEl.innerHTML = '<div class="alert alert-info py-2 small mb-0"><span class="spinner-border spinner-border-sm me-1"></span> Aplicando actualización y respaldando datos... Por favor espera...</div>';
@@ -1044,11 +1039,6 @@
     }
 
     async function ejecutarGitPull() {
-        if (typeof window.lanzarModalActualizacionPremium === 'function') {
-            window.lanzarModalActualizacionPremium();
-            return;
-        }
-
         const btn = document.getElementById('btnGitPull');
         const resEl = document.getElementById('gitPullResult');
 
