@@ -141,6 +141,9 @@
             </span>
         </div>
         <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-success btn-sm fw-semibold shadow-2xs" data-bs-toggle="modal" data-bs-target="#modalImportarPlanilla" onclick="resetClientFileUpload()" title="Importar Excel, CSV, Word o PDF de clientes">
+                <i class="bi bi-file-earmark-arrow-up me-1"></i> Importar Archivo de Cliente
+            </button>
             <button type="button" class="btn btn-outline-primary btn-sm" onclick="agregarFila()">
                 <i class="bi bi-plus-circle me-1"></i> Agregar Fila
             </button>
@@ -319,6 +322,95 @@
             <div class="modal-footer py-2 bg-light">
                 <small class="text-muted me-auto">Haz clic en <strong>"Insertar"</strong> para cargar automáticamente el producto y su precio.</small>
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Importar Planilla de Cliente -->
+<div class="modal fade" id="modalImportarPlanilla" tabindex="-1" aria-labelledby="modalImportarPlanillaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+            <div class="modal-header bg-success text-white py-3">
+                <h5 class="modal-title fs-6 fw-bold" id="modalImportarPlanillaLabel">
+                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Importar Archivo / Planilla de Cliente
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <!-- Zona Drag & Drop -->
+                <div id="dropZoneContainer" class="border-2 rounded-3 p-4 text-center mb-3 bg-light" style="border: 2px dashed #198754; cursor: pointer; transition: all 0.2s ease;" onclick="document.getElementById('fileClientInput').click()">
+                    <input type="file" id="fileClientInput" class="d-none" accept=".xlsx, .xls, .csv, .docx, .pdf, .txt" onchange="handleClientFileSelect(this)">
+                    <div id="dropZonePrompt">
+                        <i class="bi bi-cloud-arrow-up text-success" style="font-size: 2.8rem;"></i>
+                        <h6 class="fw-bold mt-2 mb-1">Arrastra aquí la planilla del cliente o haz clic para seleccionarla</h6>
+                        <p class="text-muted small mb-0">Formatos compatibles: <strong>Excel (.xlsx, .xls)</strong>, <strong>CSV</strong>, <strong>Word (.docx)</strong> y <strong>PDF</strong></p>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle mt-2 px-3 py-1">Auto-detección inteligente de columnas y marcas</span>
+                    </div>
+                    <div id="dropZoneLoading" class="d-none py-3">
+                        <div class="spinner-border text-success mb-2" role="status"></div>
+                        <p class="fw-semibold text-dark mb-0">Analizando estructura y extrayendo ítems...</p>
+                    </div>
+                </div>
+
+                <!-- Contenedor de Resultados y Vista Previa -->
+                <div id="importPreviewContainer" class="d-none">
+                    <div class="alert alert-success py-2 px-3 small d-flex justify-content-between align-items-center mb-3 border border-success-subtle bg-success-subtle text-success-emphasis">
+                        <div>
+                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                            <strong>Archivo analizado:</strong> <span id="lblImportFilename" class="fw-bold"></span> 
+                            (<span id="lblImportCount" class="badge bg-success text-white"></span> ítems detectados)
+                        </div>
+                        <button type="button" class="btn btn-outline-success btn-sm py-0 px-2 bg-white" onclick="resetClientFileUpload()">
+                            <i class="bi bi-arrow-repeat me-1"></i>Cambiar archivo
+                        </button>
+                    </div>
+
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="small fw-bold text-muted text-uppercase">Vista Previa de los datos detectados:</span>
+                        <div class="d-flex gap-3 small">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="importMode" id="modeReplace" value="replace" checked>
+                                <label class="form-check-label fw-semibold" for="modeReplace">
+                                    Reemplazar tabla actual
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="importMode" id="modeAppend" value="append">
+                                <label class="form-check-label fw-semibold" for="modeAppend">
+                                    Agregar al final
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive border rounded-3 bg-white mb-2" style="max-height: 240px; overflow-y: auto;">
+                        <table class="table table-sm table-hover align-middle mb-0 small">
+                            <thead class="table-light text-muted text-uppercase sticky-top">
+                                <tr>
+                                    <th class="text-center" style="width: 40px;">#</th>
+                                    <th>Marca</th>
+                                    <th>Mercadería / Descripción</th>
+                                    <th class="text-center">Cant.</th>
+                                    <th class="text-end">P. Factura</th>
+                                    <th class="text-end">P. Total</th>
+                                    <th>Código</th>
+                                </tr>
+                            </thead>
+                            <tbody id="importPreviewTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted fst-italic d-block">
+                        <i class="bi bi-shield-check text-success me-1"></i><strong>Filtrado inteligente activo:</strong> Solo se importan mercaderías visibles reales con cantidad &gt; 0 y valor &gt; $0 (subtotales, fletes y notas son omitidos automáticamente).
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer bg-light py-2">
+                <button type="button" class="btn btn-light border btn-sm px-3" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success btn-sm fw-bold px-4 shadow-sm" id="btnConfirmImport" disabled onclick="confirmClientFileImport()">
+                    <i class="bi bi-check2-circle me-1"></i> Insertar en Planilla
+                </button>
             </div>
         </div>
     </div>
@@ -776,9 +868,178 @@ function mostrarToast(tipo, mensaje) {
     toast.show();
 }
 
-// Inicialización
+// ==========================================
+// IMPORTADOR UNIVERSAL DE ARCHIVOS DE CLIENTE
+// ==========================================
+let importedItemsTemp = [];
+
+function abrirModalImportarPlanilla() {
+    resetClientFileUpload();
+    const modalEl = document.getElementById('modalImportarPlanilla');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function resetClientFileUpload() {
+    importedItemsTemp = [];
+    const fileInput = document.getElementById('fileClientInput');
+    if (fileInput) fileInput.value = '';
+
+    document.getElementById('dropZoneContainer').classList.remove('d-none');
+    document.getElementById('dropZonePrompt').classList.remove('d-none');
+    document.getElementById('dropZoneLoading').classList.add('d-none');
+    document.getElementById('importPreviewContainer').classList.add('d-none');
+    document.getElementById('btnConfirmImport').disabled = true;
+}
+
+function handleClientFileSelect(input) {
+    if (input.files && input.files[0]) {
+        uploadClientFile(input.files[0]);
+    }
+}
+
+async function uploadClientFile(file) {
+    document.getElementById('dropZonePrompt').classList.add('d-none');
+    document.getElementById('dropZoneLoading').classList.remove('d-none');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const res = await fetch('/api/planillas/importar-archivo', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+
+        if (data.status === 'success' && data.items && data.items.length > 0) {
+            importedItemsTemp = data.items;
+            document.getElementById('lblImportFilename').innerText = data.filename || file.name;
+            document.getElementById('lblImportCount').innerText = data.total_items;
+
+            // Renderizar preview
+            const tbody = document.getElementById('importPreviewTableBody');
+            tbody.innerHTML = '';
+            
+            data.items.slice(0, 30).forEach((it, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="text-center text-muted">${idx + 1}</td>
+                    <td><span class="badge bg-primary-subtle text-primary border">${escapeHtml(it.marca || 'N/D')}</span></td>
+                    <td class="fw-semibold text-dark text-truncate" style="max-width: 260px;" title="${escapeHtml(it.mercaderia)}">${escapeHtml(it.mercaderia)}</td>
+                    <td class="text-center fw-bold">${it.cantidad}</td>
+                    <td class="text-end">$${formatMoney(it.precio_factura)}</td>
+                    <td class="text-end fw-bold text-success">$${formatMoney(it.precio_total)}</td>
+                    <td class="text-muted font-monospace small">${escapeHtml(it.codigo_producto || '-')}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (data.items.length > 30) {
+                const trMore = document.createElement('tr');
+                trMore.innerHTML = `
+                    <td colspan="7" class="text-center text-muted fst-italic py-2 bg-light">
+                        ... y ${data.items.length - 30} ítems más detectados en el archivo.
+                    </td>
+                `;
+                tbody.appendChild(trMore);
+            }
+
+            document.getElementById('dropZoneContainer').classList.add('d-none');
+            document.getElementById('importPreviewContainer').classList.remove('d-none');
+            document.getElementById('btnConfirmImport').disabled = false;
+        } else {
+            alert('Aviso: ' + (data.message || 'No se pudieron extraer ítems del archivo.'));
+            resetClientFileUpload();
+        }
+    } catch (e) {
+        alert('Error de conexión al procesar el archivo.');
+        resetClientFileUpload();
+    }
+}
+
+function confirmClientFileImport() {
+    if (!importedItemsTemp || importedItemsTemp.length === 0) return;
+
+    const mode = document.querySelector('input[name="importMode"]:checked')?.value || 'replace';
+
+    if (mode === 'replace') {
+        planillaItems = importedItemsTemp.map((it, idx) => ({
+            id: null,
+            orden: idx + 1,
+            item_catalogo_id: null,
+            cantidad: it.cantidad || 1,
+            mercaderia: it.mercaderia || '',
+            marca: it.marca || '',
+            codigo_producto: it.codigo_producto || '',
+            precio_factura: it.precio_factura || 0,
+            precio_normal: it.precio_normal || it.precio_factura || 0,
+            precio_total: it.precio_total || 0,
+            observacion: it.observacion || ''
+        }));
+    } else {
+        // Modo append: limpiar filas vacías iniciales si las hay
+        const validExisting = planillaItems.filter(it => it.mercaderia && it.mercaderia.trim() !== '');
+        const baseOrder = validExisting.length;
+
+        const newItems = importedItemsTemp.map((it, idx) => ({
+            id: null,
+            orden: baseOrder + idx + 1,
+            item_catalogo_id: null,
+            cantidad: it.cantidad || 1,
+            mercaderia: it.mercaderia || '',
+            marca: it.marca || '',
+            codigo_producto: it.codigo_producto || '',
+            precio_factura: it.precio_factura || 0,
+            precio_normal: it.precio_normal || it.precio_factura || 0,
+            precio_total: it.precio_total || 0,
+            observacion: it.observacion || ''
+        }));
+
+        planillaItems = [...validExisting, ...newItems];
+    }
+
+    renderTable();
+
+    const modalEl = document.getElementById('modalImportarPlanilla');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+
+    mostrarToast('success', `¡${importedItemsTemp.length} ítems importados con éxito a la planilla!`);
+}
+
+// Configurar Drag & Drop en la zona de subida
 document.addEventListener('DOMContentLoaded', () => {
     renderTable();
+
+    const dropZone = document.getElementById('dropZoneContainer');
+    if (dropZone) {
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.style.borderColor = '#0d6efd';
+                dropZone.style.backgroundColor = '#eff6ff';
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.style.borderColor = '#198754';
+                dropZone.style.backgroundColor = '#f8f9fa';
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files && files.length > 0) {
+                uploadClientFile(files[0]);
+            }
+        }, false);
+    }
 });
 </script>
 {% endblock %}

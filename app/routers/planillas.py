@@ -2,7 +2,7 @@ import io
 import math
 from datetime import datetime, date
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Request, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Request, HTTPException, Query, Response, status, UploadFile, File
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -17,6 +17,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from app.database import get_db
 from app.models import PlanillaValoracion, PlanillaItem, DespachoItem, Despacho
 from app.templates_config import templates
+from app.services.client_sheet_importer import ClientSheetImporter
 
 router = APIRouter(tags=["Planillas de Valoración"])
 
@@ -228,6 +229,43 @@ async def buscar_catalogo_api(q: str = Query("", min_length=1), db: Session = De
         })
 
     return JSONResponse(content={"results": items_data})
+
+
+# 5.1. API IMPORTAR ARCHIVO O PLANILLA DE CLIENTE (Excel, CSV, Word, PDF)
+@router.post("/api/planillas/importar-archivo")
+async def importar_archivo_cliente_api(file: UploadFile = File(...)):
+    """
+    Procesa un archivo subido por el cliente (Excel, CSV, Word, PDF) y retorna
+    los ítems estructurados con marcas, cantidades y precios para insertar en la planilla.
+    """
+    try:
+        content = await file.read()
+        if not content:
+            return JSONResponse(
+                status_code=400,
+                content={"status": "error", "message": "El archivo subido está vacío."}
+            )
+
+        res = ClientSheetImporter.import_file(content, file.filename or "archivo.xlsx")
+        if not res.get("success"):
+            return JSONResponse(
+                status_code=400,
+                content={"status": "error", "message": res.get("message", "No se pudieron extraer datos legibles del archivo.")}
+            )
+
+        return JSONResponse(content={
+            "status": "success",
+            "filename": file.filename,
+            "total_items": res.get("total_items", 0),
+            "headers": res.get("headers", []),
+            "col_mapping": res.get("col_mapping", {}),
+            "items": res.get("items", [])
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": f"Error al procesar el archivo: {str(e)}"}
+        )
 
 
 # 6. API GUARDAR O ACTUALIZAR PLANILLA (PERSISTENCIA MULTI-PC)

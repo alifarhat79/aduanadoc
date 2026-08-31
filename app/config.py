@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 50
     CONFIDENCE_REVIEW: float = 0.80
     APP_TITLE: str = "Sistema de Gestión de Despachos Aduaneros"
-    APP_VERSION: str = "1.3.0"
+    APP_VERSION: str = "1.3.1"
     DEBUG: bool = True
 
     # Turso Cloud Database
