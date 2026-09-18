@@ -457,3 +457,58 @@ async def export_mercancias_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename=mercancias_filtradas_{len(results)}_items.csv"}
     )
+
+# ==============================================================================
+# ENDPOINTS DEL ASISTENTE INTELIGENTE DE CALIDAD Y AUDITORÍA DE MERCANCÍAS
+# ==============================================================================
+
+from pydantic import BaseModel
+
+class AplicarCorreccionRequest(BaseModel):
+    item_id: int
+    new_desc: str
+    new_codigo: Optional[str] = None
+    new_marca: Optional[str] = None
+
+@router.get("/api/auditoria/resumen")
+async def get_auditoria_resumen(db: Session = Depends(get_db)):
+    """Retorna métricas generales de calidad y conteo de anomalías del catálogo."""
+    from app.services.item_auditor import audit_catalog_summary
+    return {"status": "success", "data": audit_catalog_summary(db)}
+
+@router.get("/api/auditoria/items")
+async def get_auditoria_items(
+    filter_type: Optional[str] = Query(None, description="Filtro: all, cutoffs, skus, headers"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(25, ge=5, le=100),
+    db: Session = Depends(get_db)
+):
+    """Retorna la lista de ítems con problemas diagnosticados y sus sugerencias limpias."""
+    from app.services.item_auditor import get_items_with_suggestions
+    offset = (page - 1) * per_page
+    res = get_items_with_suggestions(db, filter_type=filter_type, limit=per_page, offset=offset)
+    return {"status": "success", "data": res}
+
+@router.post("/api/auditoria/aplicar")
+async def post_aplicar_correccion(req: AplicarCorreccionRequest, db: Session = Depends(get_db)):
+    """Aplica la sugerencia limpia a un ítem individual."""
+    from app.services.item_auditor import apply_single_correction
+    res = apply_single_correction(db, req.item_id, req.new_desc, req.new_codigo, req.new_marca)
+    if not res.get("success"):
+        return {"status": "error", "message": res.get("error", "Error al aplicar corrección")}
+    return {"status": "success", "data": res}
+
+@router.post("/api/auditoria/aplicar-todas")
+async def post_aplicar_todas(db: Session = Depends(get_db)):
+    """Aplica en lote todas las correcciones seguras de alta certeza."""
+    from app.services.item_auditor import batch_apply_high_confidence_fixes
+    res = batch_apply_high_confidence_fixes(db)
+    return {"status": "success", "data": res}
+
+@router.post("/api/auditoria/reprocesar-cortes")
+async def post_reprocesar_cortes(db: Session = Depends(get_db)):
+    """Reprocesa los subítems cortados por saltos de página desde sus PDFs originales."""
+    from app.services.item_auditor import reprocess_page_break_cutoffs
+    res = reprocess_page_break_cutoffs(db)
+    return {"status": "success", "data": res}
+

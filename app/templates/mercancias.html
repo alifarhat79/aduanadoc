@@ -269,8 +269,13 @@
                     </div>
                 </div>
 
-                <!-- Botones de Exportación (Exportan TODO el filtrado en una sola tabla) -->
+                <!-- Botones de Exportación y Asistente de Calidad -->
                 <div class="col-xl-6 col-lg-6 text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary fw-semibold shadow-2xs me-2 d-inline-flex align-items-center gap-1" onclick="openAuditoriaModal()" title="Auditar y limpiar descripciones del catálogo">
+                        <i class="bi bi-stars text-warning"></i>
+                        <span>Asistente de Calidad</span>
+                        <span class="badge bg-danger rounded-pill ms-1" id="badgeAuditoriaCount" style="display: none;">0</span>
+                    </button>
                     <div class="btn-group btn-group-sm">
                         <button type="button" class="btn btn-outline-success dropdown-toggle fw-semibold shadow-2xs" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-download me-1"></i> Exportar Filtrado ({{ total_items }} ítems)
@@ -506,6 +511,142 @@
         {% endif %}
     </div>
 </div>
+<!-- Modal Asistente de Calidad de Descripciones y Mercancías -->
+<div class="modal fade" id="auditoriaModal" tabindex="-1" aria-labelledby="auditoriaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light py-3 border-bottom">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="rounded-circle bg-primary-subtle text-primary p-2 d-flex align-items-center justify-content-center shadow-xs" style="width: 42px; height: 42px;">
+                        <i class="bi bi-stars fs-5 text-warning"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-dark mb-0" id="auditoriaModalLabel">
+                            Asistente de Calidad de Mercancías
+                        </h5>
+                        <p class="text-muted small mb-0">
+                            Diagnóstico y saneamiento inteligente de descripciones, extracción de SKUs y resolución de saltos de página.
+                        </p>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            
+            <div class="modal-body p-4 bg-light-subtle">
+                <!-- KPIs de Calidad -->
+                <div class="row g-3 mb-4" id="auditKpiCards">
+                    <div class="col-md-3 col-6">
+                        <div class="card border-0 shadow-2xs h-100 bg-white p-3 rounded-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="small text-muted fw-semibold">Salud del Catálogo</span>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle" id="kpiAuditPercent">--%</span>
+                            </div>
+                            <h3 class="fw-bold text-dark mb-0" id="kpiAuditClean">--</h3>
+                            <small class="text-muted" style="font-size: 0.75rem;" id="kpiAuditTotal">de -- ítems analizados</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="card border-0 shadow-2xs h-100 bg-white p-3 rounded-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="small text-muted fw-semibold">SKUs Incrustados</span>
+                                <span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-upc-scan"></i></span>
+                            </div>
+                            <h3 class="fw-bold text-info mb-0" id="kpiAuditSku">--</h3>
+                            <small class="text-muted" style="font-size: 0.75rem;">REF / COD / EAN incrustados</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="card border-0 shadow-2xs h-100 bg-white p-3 rounded-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="small text-muted fw-semibold">Saltos de Página</span>
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><i class="bi bi-file-earmark-break"></i></span>
+                            </div>
+                            <h3 class="fw-bold text-danger mb-0" id="kpiAuditCutoffs">--</h3>
+                            <small class="text-muted" style="font-size: 0.75rem;">Subítem X cortado en PDF</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="card border-0 shadow-2xs h-100 bg-white p-3 rounded-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="small text-muted fw-semibold">Ruido / Encabezados</span>
+                                <span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-shield-slash"></i></span>
+                            </div>
+                            <h3 class="fw-bold text-warning-emphasis mb-0" id="kpiAuditHeaders">--</h3>
+                            <small class="text-muted" style="font-size: 0.75rem;">Encabezados SOFIA / símbolos</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Barra de Acciones Globales -->
+                <div class="card border-0 shadow-2xs bg-white rounded-3 p-3 mb-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="small fw-semibold text-muted">Filtrar por problema:</span>
+                            <div class="btn-group btn-group-sm" role="group" id="auditFilterButtons">
+                                <button type="button" class="btn btn-outline-secondary active" id="filterBtn_all" onclick="setAuditFilter('all')">Todos</button>
+                                <button type="button" class="btn btn-outline-info" id="filterBtn_skus" onclick="setAuditFilter('skus')">SKUs Incrustados</button>
+                                <button type="button" class="btn btn-outline-danger" id="filterBtn_cutoffs" onclick="setAuditFilter('cutoffs')">Saltos de Página</button>
+                                <button type="button" class="btn btn-outline-warning" id="filterBtn_headers" onclick="setAuditFilter('headers')">Encabezados</button>
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" id="btnReprocessPdf" onclick="triggerReprocesarCortes()">
+                                <i class="bi bi-file-earmark-arrow-up"></i>
+                                <span>Reprocesar PDFs con Cortes</span>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-success fw-semibold shadow-2xs d-inline-flex align-items-center gap-1" id="btnApplyAllSafe" onclick="triggerAplicarTodas()">
+                                <i class="bi bi-magic"></i>
+                                <span>Aplicar Todas las Correcciones Seguras</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabla de Diagnóstico y Corrección -->
+                <div class="card border-0 shadow-2xs bg-white rounded-3 overflow-hidden">
+                    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold text-dark small" id="auditTableTitle">Ítems que requieren atención:</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-muted small" id="auditPaginationInfo">Mostrando 0 de 0</span>
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="btnAuditPrev" onclick="changeAuditPage(-1)" disabled><i class="bi bi-chevron-left"></i></button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="btnAuditNext" onclick="changeAuditPage(1)" disabled><i class="bi bi-chevron-right"></i></button>
+                        </div>
+                    </div>
+                    <div class="table-responsive" style="min-height: 250px; max-height: 480px;">
+                        <table class="table table-hover align-middle mb-0" id="auditTable">
+                            <thead class="table-light small text-uppercase text-muted sticky-top">
+                                <tr>
+                                    <th style="width: 14%;">Despacho / Ítem</th>
+                                    <th style="width: 16%;">Marca & Código</th>
+                                    <th style="width: 32%;">Descripción Original</th>
+                                    <th style="width: 28%;">Sugerencia Inteligente</th>
+                                    <th style="width: 10%;" class="text-center">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="auditTableBody" class="small">
+                                <tr>
+                                    <td colspan="5" class="text-center py-5 text-muted">
+                                        <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+                                        Cargando diagnóstico del catálogo...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer bg-light py-2 border-top justify-content-between">
+                <small class="text-muted">
+                    <i class="bi bi-cloud-check text-success me-1"></i>Las correcciones aprobadas se sincronizan automáticamente con Turso Cloud.
+                </small>
+                <button type="button" class="btn btn-secondary btn-sm fw-semibold" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal para Administrar y Renombrar Etiquetas de Subítems / Modelos -->
 <div class="modal fade" id="editLabelsModal" tabindex="-1" aria-labelledby="editLabelsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -867,6 +1008,313 @@
             btnSave.innerHTML = originalText;
         }
     };
+
+    // --- ASISTENTE DE CALIDAD Y AUDITORÍA DE MERCANCÍAS ---
+    let auditCurrentFilter = 'all';
+    let auditOffset = 0;
+    const auditLimit = 15;
+
+    window.openAuditoriaModal = function() {
+        const modalEl = document.getElementById('auditoriaModal');
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+        loadAuditoriaResumen();
+        auditOffset = 0;
+        loadAuditoriaItems();
+    };
+
+    window.loadAuditoriaResumen = async function() {
+        try {
+            const resp = await fetch('/mercancias/api/auditoria/resumen');
+            const data = await resp.json();
+            if (data.status === 'success') {
+                const s = data.data;
+                const total = s.total_items || 0;
+                const correctos = s.clean_items || 0;
+                const pct = s.pct_clean !== undefined ? s.pct_clean : (total > 0 ? ((correctos / total) * 100).toFixed(1) : 100);
+                
+                document.getElementById('kpiAuditPercent').textContent = `${pct}%`;
+                document.getElementById('kpiAuditClean').textContent = correctos.toLocaleString();
+                document.getElementById('kpiAuditTotal').textContent = `de ${total.toLocaleString()} ítems analizados`;
+                document.getElementById('kpiAuditSku').textContent = (s.skus_count || 0).toLocaleString();
+                document.getElementById('kpiAuditCutoffs').textContent = (s.cutoffs_count || 0).toLocaleString();
+                document.getElementById('kpiAuditHeaders').textContent = (s.headers_count || 0).toLocaleString();
+
+                const badge = document.getElementById('badgeAuditoriaCount');
+                if (badge) {
+                    const issuesTotal = s.total_issues || 0;
+                    if (issuesTotal > 0) {
+                        badge.textContent = issuesTotal;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error cargando resumen de auditoría:', e);
+        }
+    };
+
+    window.setAuditFilter = function(filterType) {
+        auditCurrentFilter = filterType;
+        auditOffset = 0;
+        
+        document.querySelectorAll('#auditFilterButtons button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        const activeBtn = document.getElementById(`filterBtn_${filterType}`);
+        if (activeBtn) activeBtn.classList.add('active');
+
+        loadAuditoriaItems();
+    };
+
+    window.changeAuditPage = function(direction) {
+        auditOffset += (direction * auditLimit);
+        if (auditOffset < 0) auditOffset = 0;
+        loadAuditoriaItems();
+    };
+
+    window.loadAuditoriaItems = async function() {
+        const tbody = document.getElementById('auditTableBody');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center py-5 text-muted">
+                    <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+                    Cargando ítems...
+                </td>
+            </tr>
+        `;
+
+        try {
+            const pageNum = Math.floor(auditOffset / auditLimit) + 1;
+            const resp = await fetch(`/mercancias/api/auditoria/items?filter_type=${encodeURIComponent(auditCurrentFilter)}&page=${pageNum}&per_page=${auditLimit}`);
+            const data = await resp.json();
+            
+            if (data.status !== 'success') {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-danger">Error: ${data.message || 'No se pudieron cargar los ítems'}</td></tr>`;
+                return;
+            }
+
+            const items = data.data.items || [];
+            const total = data.data.total || 0;
+
+            const startIdx = total > 0 ? auditOffset + 1 : 0;
+            const endIdx = Math.min(auditOffset + items.length, total);
+            document.getElementById('auditPaginationInfo').textContent = `Mostrando ${startIdx}-${endIdx} de ${total}`;
+            document.getElementById('btnAuditPrev').disabled = auditOffset === 0;
+            document.getElementById('btnAuditNext').disabled = (auditOffset + items.length) >= total;
+
+            if (items.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-success">
+                            <i class="bi bi-check-circle-fill fs-3 text-success d-block mb-2"></i>
+                            <div class="fw-semibold">¡No hay ítems pendientes en este filtro!</div>
+                            <small class="text-muted">Todas las descripciones revisadas están limpias y en regla.</small>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            let html = '';
+            items.forEach(it => {
+                const issuesBadges = (it.issues || []).map(iss => {
+                    const issStr = String(iss || '');
+                    if (issStr.includes('salto') || issStr.includes('Corte') || issStr.includes('PDF')) {
+                        return `<span class="badge bg-danger-subtle text-danger border border-danger-subtle me-1" title="${escapeHtml(issStr)}"><i class="bi bi-file-earmark-break me-1"></i>Salto de Página</span>`;
+                    }
+                    if (issStr.includes('SKU') || issStr.includes('Código') || issStr.includes('sku')) {
+                        return `<span class="badge bg-info-subtle text-info border border-info-subtle me-1" title="${escapeHtml(issStr)}"><i class="bi bi-upc-scan me-1"></i>SKU Incrustado</span>`;
+                    }
+                    if (issStr.includes('encabezado') || issStr.includes('SOFIA') || issStr.includes('administrativo')) {
+                        return `<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle me-1" title="${escapeHtml(issStr)}"><i class="bi bi-shield-slash me-1"></i>Encabezado SOFIA</span>`;
+                    }
+                    return `<span class="badge bg-secondary-subtle text-secondary border me-1">${escapeHtml(issStr)}</span>`;
+                }).join('');
+
+                const hasCodeSuggestion = it.suggested_codigo && it.suggested_codigo !== it.codigo_actual;
+
+                html += `
+                    <tr id="auditRow_${it.id}">
+                        <td>
+                            <div class="fw-semibold text-dark">
+                                <a href="/despacho/${it.despacho_id}" target="_blank" class="text-decoration-none" title="Ver despacho">
+                                    ${it.numero_despacho} <i class="bi bi-box-arrow-up-right font-monospace" style="font-size: 0.68rem;"></i>
+                                </a>
+                            </div>
+                            <div class="text-muted font-monospace" style="font-size: 0.72rem;">
+                                Ít: ${it.numero_item} | Sub: ${it.numero_subitem}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border font-monospace mb-1">${it.marca_actual || 'Sin Marca'}</span>
+                            <div class="text-muted font-monospace" style="font-size: 0.72rem;">
+                                Cód: ${it.codigo_actual || '<span class="text-muted opacity-50">Ninguno</span>'}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="text-dark fw-medium mb-1">${escapeHtml(it.descripcion_actual)}</div>
+                            <div>${issuesBadges}</div>
+                        </td>
+                        <td>
+                            <div class="mb-1">
+                                <input type="text" class="form-control form-control-sm audit-input-desc" id="auditInputDesc_${it.id}" value="${escapeHtml(it.suggested_desc || it.descripcion_actual)}" placeholder="Descripción limpia sugerida">
+                            </div>
+                            ${hasCodeSuggestion ? `
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-light text-muted" style="font-size: 0.7rem;">Cód:</span>
+                                    <input type="text" class="form-control form-control-sm font-monospace audit-input-cod" id="auditInputCod_${it.id}" value="${escapeHtml(it.suggested_codigo)}" placeholder="Código extraído">
+                                </div>
+                            ` : ''}
+                        </td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm btn-outline-primary fw-semibold px-2 py-1 shadow-2xs" id="btnApply_${it.id}" onclick="applyAuditSuggestion(${it.id})">
+                                <i class="bi bi-check2"></i> Aplicar
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+
+        } catch (e) {
+            console.error('Error cargando ítems de auditoría:', e);
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-danger">Error de comunicación con el servidor.</td></tr>`;
+        }
+    };
+
+    window.applyAuditSuggestion = async function(itemId) {
+        const btn = document.getElementById(`btnApply_${itemId}`);
+        const inputDesc = document.getElementById(`auditInputDesc_${itemId}`);
+        const inputCod = document.getElementById(`auditInputCod_${itemId}`);
+
+        const newDesc = inputDesc ? inputDesc.value.trim() : '';
+        const newCod = inputCod ? inputCod.value.trim() : null;
+
+        if (!newDesc) {
+            alert('La descripción no puede estar vacía.');
+            return;
+        }
+
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        try {
+            const resp = await fetch('/mercancias/api/auditoria/aplicar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    item_id: itemId,
+                    new_desc: newDesc,
+                    new_codigo: newCod
+                })
+            });
+            const res = await resp.json();
+            if (res.status === 'success') {
+                btn.className = 'btn btn-sm btn-success fw-semibold px-2 py-1';
+                btn.innerHTML = '<i class="bi bi-check-lg"></i> Listo';
+                const row = document.getElementById(`auditRow_${itemId}`);
+                if (row) {
+                    row.classList.add('table-success');
+                    setTimeout(() => {
+                        row.style.transition = 'opacity 0.4s';
+                        row.style.opacity = '0.3';
+                    }, 800);
+                }
+                loadAuditoriaResumen();
+            } else {
+                alert('Error al aplicar: ' + (res.message || 'Error desconocido'));
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
+        } catch (e) {
+            alert('Error de conexión al aplicar la sugerencia.');
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    };
+
+    window.triggerAplicarTodas = async function() {
+        if (!confirm('¿Deseas aplicar todas las correcciones de alta certeza (extracción automática de SKUs incrustados y saneamiento de encabezados)?\n\nLos cambios se guardarán en la base de datos y se sincronizarán con la nube.')) {
+            return;
+        }
+
+        const btn = document.getElementById('btnApplyAllSafe');
+        const origText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Aplicando correcciones...';
+
+        try {
+            const resp = await fetch('/mercancias/api/auditoria/aplicar-todas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const res = await resp.json();
+            if (res.status === 'success') {
+                const data = res.data;
+                alert(`¡Proceso completado exitosamente!\n\n• Ítems actualizados y saneados: ${data.items_actualizados}\n• Despachos afectados: ${data.despachos_afectados}\n• Despachos sincronizados a Turso: ${data.despachos_sincronizados_turso}`);
+                loadAuditoriaResumen();
+                loadAuditoriaItems();
+            } else {
+                alert('Error al procesar: ' + (res.message || 'Error desconocido'));
+            }
+        } catch (e) {
+            alert('Error de conexión al aplicar correcciones masivas.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
+    };
+
+    window.triggerReprocesarCortes = async function() {
+        if (!confirm('¿Deseas reprocesar los despachos que tienen ítems cortados por salto de página?\n\nEl sistema re-extraerá el texto continuo directamente desde los PDFs originales.')) {
+            return;
+        }
+
+        const btn = document.getElementById('btnReprocessPdf');
+        const origText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Reprocesando PDFs...';
+
+        try {
+            const resp = await fetch('/mercancias/api/auditoria/reprocesar-cortes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const res = await resp.json();
+            if (res.status === 'success') {
+                const data = res.data;
+                alert(`¡Reprocesamiento concluido!\n\n• Despachos reparados: ${data.despachos_reparados}\n• Subítems recuperados: ${data.items_recuperados}`);
+                loadAuditoriaResumen();
+                loadAuditoriaItems();
+            } else {
+                alert('Error al reprocesar: ' + (res.message || 'Error desconocido'));
+            }
+        } catch (e) {
+            alert('Error de conexión al reprocesar PDFs.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
+    };
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAuditoriaResumen();
+    });
 
     function triggerExport(format) {
         const query = (document.getElementById('liveSearchInput')?.value || '').trim();

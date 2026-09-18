@@ -15,6 +15,9 @@ def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
     codigo_producto = ""
     descripcion = text
 
+    # 0. Eliminar filtraciones de encabezados de página de SOFIA (ej: "HOJA 8 de 11 FECHA OFIC: ... Estado: CANC ...")
+    descripcion = re.sub(r"^HOJA\s+\d+\s+de\s+\d+(?:.*?(?:Estado\s*:\s*[A-Z]+|\d{2}/\d{2}/\d{4}(?:\s+\d{2}:\d{2}:\d{2})?))?\s*", "", descripcion, flags=re.DOTALL | re.IGNORECASE).strip()
+
     # 1. Buscar código EAN / Código de barras de 8 a 14 dígitos al final de la descripción
     # Ej: "ODYSSEY TYRANT (M)EDP SP 3.4OZ 6294015160734" -> EAN: 6294015160734
     end_ean_match = re.search(r"\b([0-9]{8,14})\s*$", descripcion)
@@ -30,7 +33,25 @@ def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
             codigo_producto = start_ean_match.group(1).strip()
             descripcion = start_ean_match.group(2).strip()
 
-    # 3. Si aún no hay código o había un SKU interno al inicio (ej. I0095135)
+    # 3. Códigos de referencia o SKU explícitos al inicio (ej: "COD. PMEKR60006R03 - ...", "ITEM: XYZ - ...")
+    start_ref_match = re.match(r"^(?:COD|ITEM|REF|ART|ARTICULO|SKU)\s*[:.]\s*([A-Za-z0-9_-]{3,25})\s*[-–:]\s*(.*)$", descripcion, re.IGNORECASE)
+    if start_ref_match:
+        pot = start_ref_match.group(1).strip()
+        if any(c.isdigit() for c in pot) or len(pot) >= 4:
+            if not codigo_producto:
+                codigo_producto = pot
+            descripcion = start_ref_match.group(2).strip()
+
+    # 4. Códigos de referencia o SKU explícitos al final (ej: "... REF.LLS176-330", "... ITEM: PMEKR55005R04")
+    end_ref_match = re.search(r"[-–]?\s*(?:REF|ITEM|COD|ART|ARTICULO|SKU)\s*[:.]\s*([A-Za-z0-9_-]{3,25})\s*$", descripcion, re.IGNORECASE)
+    if end_ref_match:
+        pot = end_ref_match.group(1).strip()
+        if any(c.isdigit() for c in pot) or len(pot) >= 4:
+            if not codigo_producto:
+                codigo_producto = pot
+            descripcion = descripcion[:end_ref_match.start()].strip()
+
+    # 5. Si aún no hay código o había un SKU interno al inicio sin etiqueta (ej. I0095135)
     start_sku_match = re.match(r"^([A-Za-z0-9_-]{4,20})\s+(.*)$", descripcion)
     if start_sku_match:
         potential_sku = start_sku_match.group(1).strip()
@@ -39,21 +60,21 @@ def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
                 codigo_producto = potential_sku
             descripcion = start_sku_match.group(2).strip()
 
-    # 4. Remover cualquier código numérico residual de 8 a 14 dígitos que haya quedado
+    # 6. Remover cualquier código numérico residual de 8 a 14 dígitos que haya quedado
     residual_ean = re.search(r"\b([0-9]{8,14})\b", descripcion)
     if residual_ean:
         if not codigo_producto:
             codigo_producto = residual_ean.group(1).strip()
         descripcion = (descripcion[:residual_ean.start()] + " " + descripcion[residual_ean.end():]).strip()
 
-    # 5. Eliminar patrones secuenciales de ítems que no forman parte de la descripción comercial:
+    # 7. Eliminar patrones secuenciales de ítems que no forman parte de la descripción comercial:
     # Ej: "COD: ITEM NRO.1", "COD: ITEM NRO.12", "ITEM NRO.5", "COD: ITEM N° 3", etc.
     descripcion = re.sub(r"\bCOD\s*:\s*ITEM\s*(?:NRO\.?|N°|NUM\.?|NO\.?)\s*\d+\b", "", descripcion, flags=re.IGNORECASE).strip()
     descripcion = re.sub(r"\bITEM\s*(?:NRO\.?|N°|NUM\.?|NO\.?)\s*\d+\b", "", descripcion, flags=re.IGNORECASE).strip()
     descripcion = re.sub(r"\bCOD\s*:\s*ITEM\s*\d+\b", "", descripcion, flags=re.IGNORECASE).strip()
     descripcion = re.sub(r"\bCOD\s*:\s*$", "", descripcion, flags=re.IGNORECASE).strip()
 
-    # 6. Eliminar prefijos arancelarios y de unidades burocráticas al inicio de la descripción:
+    # 8. Eliminar prefijos arancelarios y de unidades burocráticas al inicio de la descripción:
     # Ej: "LOS DEMAS EN 2.680 UNIDADES ASDAAF...", "LOS DEMAS EN: 7.000 UNIDADES...", "EN 100 UNIDADES...", "2.680 UNIDADES ASDAAF..."
     prefix_pattern = re.compile(
         r'^(?:'
@@ -71,13 +92,15 @@ def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
     if len(cleaned_desc) >= 3:
         descripcion = cleaned_desc
 
-    # 7. Limpiar prefijos de marca con letras de lote (ej. "L-ARMAF", "M-ARMAF") o separador previo (ej. "ARMAF -", "ARMAF :")
+    # 9. Limpiar prefijos de marca con letras de lote (ej. "L-ARMAF", "M-ARMAF") o separador previo (ej. "ARMAF -", "ARMAF :")
     # Nota: No eliminar si la marca es el inicio del nombre comercial directo (ej. "MAISON ALHAMBRA SALVO INTENSE", "ASDAAF AMEERAT")
     if marca and marca.upper() not in ("SIN MARCA", "*", "***", "**********"):
         clean_marca = re.escape(marca.strip())
         descripcion = re.sub(rf"^(?:[A-Za-z]-[ ]*{clean_marca}|{clean_marca}\s*[-:])\s*", "", descripcion, flags=re.IGNORECASE).strip()
 
-    # Quitar guiones, dos puntos o espacios redundantes sobrantes
+    # 10. Limpieza de artefactos residuales y puntuación al final
+    descripcion = re.sub(r"\s*[-–]\s*(?:\.{1,3}|ITEM)\s*$", "", descripcion, flags=re.IGNORECASE).strip()
+    descripcion = re.sub(r"[-–]\s*$", "", descripcion).strip()
     descripcion = re.sub(r"^[-:\s]+|[-:\s]+$", "", descripcion).strip()
     descripcion = re.sub(r"\s{2,}", " ", descripcion).strip()
 
@@ -109,13 +132,33 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
         re.DOTALL | re.IGNORECASE
     )
 
-    for page_info in pages_data:
-        text = page_info["text"]
-        page_num = page_info["page_num"]
+    # Pre-procesar texto continuo uniendo páginas para evitar que saltos de página corten la OBSERVACION del subítem
+    all_subitem_lines = []
+    for p in pages_data:
+        p_num = p["page_num"]
+        for l in p["text"].splitlines():
+            l_str = l.strip()
+            if l_str and not l_str.startswith("DESPACHO NUMERO:") and not l_str.startswith("REGIMEN :") and not l_str.startswith("ADUANA :") and not l_str.startswith("USUARIO:"):
+                all_subitem_lines.append((l_str, p_num))
 
-        subitem_matches = list(subitem_pattern.finditer(text))
+    if all_subitem_lines:
+        unified_subitem_text = "\n".join([item[0] for item in all_subitem_lines])
+        offset_to_page = []
+        current_offset = 0
+        for l_str, p_num in all_subitem_lines:
+            offset_to_page.append((current_offset, p_num))
+            current_offset += len(l_str) + 1
+
+        import bisect
+        offsets_only = [op[0] for op in offset_to_page]
+
+        subitem_matches = list(subitem_pattern.finditer(unified_subitem_text))
         if subitem_matches:
             for m in subitem_matches:
+                match_start = m.start()
+                idx = bisect.bisect_right(offsets_only, match_start) - 1
+                page_num = offset_to_page[max(0, idx)][1]
+
                 nro_item = int(m.group(1))
                 pos_aranc = clean_text(m.group(2))
                 sub_item_nro = int(m.group(3))
