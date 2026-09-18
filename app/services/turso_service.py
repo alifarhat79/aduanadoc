@@ -235,19 +235,80 @@ class TursoService:
             "items_subidos": total_items
         }
 
-    async def pull_despachos_quick(self, db: Session) -> Dict[str, Any]:
+    async def push_delta_to_turso(self, db: Session, specific_ids: List[int] = None) -> Dict[str, Any]:
         """
-        Sincronización rápida y canónica de despachos y mercancías desde Turso Cloud hacia esta PC.
-        Mapea por 'numero_despacho' o 'hash_archivo' para que las alteraciones de Dueño (propietario),
-        canales, datos y mercancías se apliquen inmediatamente al despacho correcto en cualquier PC.
+        Sincronización incremental: sube a Turso Cloud únicamente los despachos que no existen
+        en la nube o que se agregaron localmente, evitando iterar 755 despachos secuencialmente.
         """
         if not self.is_configured():
             return {"success": False, "error": "Turso no configurado"}
 
-        # Consultar todos los despachos y mercancías de Turso
+        await self.init_turso_schema()
+
+        # 1. Obtener identificadores existentes en Turso en 1 sola consulta ligera
+        turso_numeros = set()
+        turso_hashes = set()
+        try:
+            res = await self.execute_raw([{"sql": "SELECT numero_despacho, hash_archivo FROM despachos;"}])
+            results = res.get("results", [])
+            if results:
+                rows = results[0].get("response", {}).get("result", {}).get("rows", [])
+                for r in rows:
+                    if len(r) > 0 and r[0]:
+                        v0 = r[0].get("value") if isinstance(r[0], dict) else r[0]
+                        if v0:
+                            turso_numeros.add(str(v0).strip())
+                    if len(r) > 1 and r[1]:
+                        v1 = r[1].get("value") if isinstance(r[1], dict) else r[1]
+                        if v1:
+                            turso_hashes.add(str(v1).strip())
+        except Exception as e:
+            logger.warning(f"[TursoService] Error obteniendo identificadores de Turso para push delta: {e}")
+
+        # 2. Filtrar despachos locales que faltan en la nube
+        query = db.query(Despacho)
+        if specific_ids:
+            query = query.filter(Despacho.id.in_(specific_ids))
+        local_despachos = query.all()
+
+        to_push = []
+        for d in local_despachos:
+            num = (d.numero_despacho or "").strip()
+            h = (d.hash_archivo or "").strip()
+            if num and num not in ("", "S/N", "None") and num in turso_numeros:
+                continue
+            if h and h in turso_hashes:
+                continue
+            to_push.append(d)
+
+        pushed_count = 0
+        total_items = 0
+        for d in to_push:
+            res_p = await self.push_despacho_to_turso(d.id, db)
+            if res_p.get("success"):
+                pushed_count += 1
+                total_items += res_p.get("items", 0)
+
+        logger.info(f"[TursoService] Push delta completado: {pushed_count} despachos subidos ({total_items} mercancías). {len(local_despachos) - pushed_count} ya estaban en la nube.")
+        return {
+            "success": True,
+            "despachos_subidos": pushed_count,
+            "items_subidos": total_items,
+            "despachos_totales": len(local_despachos)
+        }
+
+    async def pull_despachos_quick(self, db: Session) -> Dict[str, Any]:
+        """
+        Sincronización rápida y canónica de despachos y mercancías desde Turso Cloud hacia esta PC.
+        Descarga la lista de despachos y solo consulta los ítems de mercancías para despachos nuevos,
+        reduciendo el tiempo de sincronización de varios minutos a ~2 segundos.
+        """
+        if not self.is_configured():
+            return {"success": False, "error": "Turso no configurado"}
+
+        # 1. Consultar únicamente despachos de Turso (rápido y liviano)
         query_stmts = [
-            {"sql": "SELECT * FROM despachos ORDER BY id DESC;"},
-            {"sql": "SELECT * FROM despacho_items;"}
+            {"sql": "SELECT * FROM despachos ORDER BY id DESC;"}
         ]
         res = await self.execute_raw(query_stmts)
 
@@ -256,13 +317,8 @@ class TursoService:
             return {"success": False, "error": "No se recibieron datos de Turso"}
 
         despachos_result = results[0].get("response", {}).get("result", {})
-        items_result = results[1].get("response", {}).get("result", {}) if len(results) > 1 else {}
-
         desp_cols = [c["name"] for c in despachos_result.get("cols", [])]
         desp_rows = despachos_result.get("rows", [])
-
-        item_cols = [c["name"] for c in items_result.get("cols", [])]
-        item_rows = items_result.get("rows", [])
 
         turso_id_to_local_id: Dict[int, int] = {}
         updated_count = 0
@@ -280,7 +336,7 @@ class TursoService:
             nombre_arch = (row_dict.get("nombre_archivo_original") or "").strip()
             turso_id = int(row_dict.get("id")) if row_dict.get("id") is not None else None
 
-            # 1. Búsqueda canónica en la base local:
+            # Búsqueda canónica en la base local:
             existing = None
             if num_desp and num_desp not in ("", "S/N", "None"):
                 existing = db.query(Despacho).filter(Despacho.numero_despacho == num_desp).first()
@@ -337,53 +393,62 @@ class TursoService:
 
         db.commit()
 
-        # 2. Agrupar Items por turso_despacho_id e insertarlos
-        items_by_turso_desp: Dict[int, List[Dict[str, Any]]] = {}
-        for row in item_rows:
-            row_dict = {}
-            for col, val_obj in zip(item_cols, row):
-                val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
-                row_dict[col] = val
-
-            t_desp_id = int(row_dict.get("despacho_id")) if row_dict.get("despacho_id") is not None else None
-            if t_desp_id is not None:
-                if t_desp_id not in items_by_turso_desp:
-                    items_by_turso_desp[t_desp_id] = []
-                items_by_turso_desp[t_desp_id].append(row_dict)
-
+        # 2. Descargar ítems de mercancías ÚNICAMENTE para los despachos nuevos importados
         imported_items_count = 0
-        for t_desp_id, t_items in items_by_turso_desp.items():
-            loc_id = turso_id_to_local_id.get(t_desp_id)
-            if not loc_id:
-                continue
+        turso_ids_needing_items = [
+            t_id for t_id, loc_id in turso_id_to_local_id.items()
+            if any(d.id == loc_id for d in inserted_despachos)
+        ]
 
-            # Reemplazar ítems locales con los de la nube
-            db.query(DespachoItem).filter(DespachoItem.despacho_id == loc_id).delete()
-            for i_data in t_items:
-                item_obj = DespachoItem(despacho_id=loc_id)
-                for col in DespachoItem.__table__.columns:
-                    col_name = col.name
-                    if col_name in ("id", "despacho_id"):
-                        continue
-                    if col_name in i_data:
-                        val = i_data[col_name]
-                        try:
-                            if val is None or val == "":
-                                setattr(item_obj, col_name, None)
-                            elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
-                                setattr(item_obj, col_name, float(val))
-                            elif "int" in str(col.type).lower():
-                                setattr(item_obj, col_name, int(val))
-                            else:
-                                setattr(item_obj, col_name, str(val))
-                        except Exception:
-                            setattr(item_obj, col_name, str(val) if val is not None else None)
-                db.add(item_obj)
-                imported_items_count += 1
+        if turso_ids_needing_items:
+            chunk_size = 25
+            for i in range(0, len(turso_ids_needing_items), chunk_size):
+                chunk_t_ids = turso_ids_needing_items[i:i + chunk_size]
+                placeholders = ", ".join(["?"] * len(chunk_t_ids))
+                args = [self._convert_value_to_arg(x) for x in chunk_t_ids]
+                items_res = await self.execute_raw([{
+                    "sql": f"SELECT * FROM despacho_items WHERE despacho_id IN ({placeholders});",
+                    "args": args
+                }])
+                res_list = items_res.get("results", [])
+                if res_list:
+                    item_res_obj = res_list[0].get("response", {}).get("result", {})
+                    item_cols = [c["name"] for c in item_res_obj.get("cols", [])]
+                    item_rows = item_res_obj.get("rows", [])
+                    for row in item_rows:
+                        row_dict = {}
+                        for col, val_obj in zip(item_cols, row):
+                            val = val_obj.get("value") if isinstance(val_obj, dict) else val_obj
+                            row_dict[col] = val
 
-        db.commit()
+                        t_desp_id = int(row_dict.get("despacho_id")) if row_dict.get("despacho_id") is not None else None
+                        loc_id = turso_id_to_local_id.get(t_desp_id)
+                        if not loc_id:
+                            continue
 
-        # Enviar notificación a Telegram por cada despacho nuevo traído de la nube
+                        item_obj = DespachoItem(despacho_id=loc_id)
+                        for col in DespachoItem.__table__.columns:
+                            col_name = col.name
+                            if col_name in ("id", "despacho_id"):
+                                continue
+                            if col_name in row_dict:
+                                val = row_dict[col_name]
+                                try:
+                                    if val is None or val == "":
+                                        setattr(item_obj, col_name, None)
+                                    elif "float" in str(col.type).lower() or "real" in str(col.type).lower():
+                                        setattr(item_obj, col_name, float(val))
+                                    elif "int" in str(col.type).lower():
+                                        setattr(item_obj, col_name, int(val))
+                                    else:
+                                        setattr(item_obj, col_name, str(val))
+                                except Exception:
+                                    setattr(item_obj, col_name, str(val) if val is not None else None)
+                        db.add(item_obj)
+                        imported_items_count += 1
+            db.commit()
+
+        # Enviar notificación a Telegram si hay despachos nuevos traídos de la nube
         if inserted_despachos:
             try:
                 from app.services.notification_service import NotificationService
@@ -412,6 +477,7 @@ class TursoService:
             "success": True,
             "despachos_actualizados": updated_count,
             "despachos_nuevos": inserted_count,
+            "despachos_nuevos_lista": [d.numero_despacho for d in inserted_despachos if d.numero_despacho],
             "items_sincronizados": imported_items_count,
             "message": f"Sincronizados {updated_count + inserted_count} despachos y {imported_items_count} mercancías desde Turso Cloud."
         }

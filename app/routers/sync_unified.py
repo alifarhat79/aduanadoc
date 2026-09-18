@@ -96,19 +96,25 @@ async def unified_sync_stream():
         await asyncio.sleep(0.5)
 
         # --- Paso 3: Turso Cloud ---
-        yield send_evt(55, 3, "turso_sync", "Sincronizando bidireccionalmente con Turso Cloud Database...", [])
+        yield send_evt(50, 3, "turso_sync", "Conectando con Turso Cloud Database...", [])
         turso_items = []
         try:
             turso = TursoService()
             if turso.is_configured():
-                db = SessionLocal()
-                try:
-                    # 1. Push locales a Turso
-                    await turso.push_all_to_turso(db)
-                    # 2. Pull remotos de Turso
-                    pulled_data = await turso.pull_despachos_quick(db)
-                finally:
-                    db.close()
+                yield send_evt(60, 3, "turso_sync", "Sincronizando cambios incrementales con la nube...", [])
+
+                async def execute_turso_sync():
+                    db = SessionLocal()
+                    try:
+                        # 1. Push incremental (sube solo despachos que falten en Turso)
+                        await turso.push_delta_to_turso(db)
+                        # 2. Pull rápido (descarga despachos e ítems nuevos)
+                        return await turso.pull_despachos_quick(db)
+                    finally:
+                        db.close()
+
+                # Timeout preventivo de 20s para asegurar que jamás se congele la sincronización
+                pulled_data = await asyncio.wait_for(execute_turso_sync(), timeout=20.0)
 
                 desp_list = pulled_data.get("despachos_nuevos_lista", []) if isinstance(pulled_data, dict) else []
                 for num in desp_list:
@@ -120,21 +126,29 @@ async def unified_sync_stream():
                     }
                     turso_items.append(item)
                     adicionados.append(item)
+            else:
+                logger.info("[SyncStream] Turso Cloud no configurado, omitiendo paso")
+        except asyncio.TimeoutError:
+            logger.warning("[SyncStream] Tiempo de espera de Turso Cloud agotado (>20s). Continuando...")
+            yield send_evt(70, 3, "turso_sync", "Turso: Red lenta, continuando con los siguientes pasos...", [])
         except Exception as te:
             logger.error(f"[SyncStream] Error en Turso Cloud: {te}")
+            yield send_evt(70, 3, "turso_sync", f"Aviso en Nube: {str(te)[:50]}", [])
 
         if turso_items:
             yield send_evt(75, 3, "turso_done", f"¡Se sincronizaron {len(turso_items)} despachos desde Turso Cloud!", turso_items)
         else:
             yield send_evt(75, 3, "turso_done", "Base de datos en la nube 100% sincronizada.", [])
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.4)
 
         # --- Paso 4: Git Sync ---
         yield send_evt(85, 4, "git_sync", "Verificando repositorio Git para replicación en otras PCs...", [])
         try:
             updater = UpdaterService()
-            await asyncio.to_thread(updater.git_pull)
+            await asyncio.wait_for(asyncio.to_thread(updater.git_pull), timeout=15.0)
+        except asyncio.TimeoutError:
+            logger.warning("[SyncStream] Tiempo de espera agotado en Git pull")
         except Exception as gite:
             logger.warning(f"[SyncStream] Aviso en Git sync: {gite}")
 
