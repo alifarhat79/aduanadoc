@@ -500,7 +500,59 @@ class UpdaterService:
                 return self.connect_git_repo(repo_url=repo_url)
         except Exception as e:
             logger.warning(f"[UpdaterService] Error en git pull, usando fallback: {e}")
-            return self.connect_git_repo(repo_url=repo_url)
+    def git_push(self, commit_msg: str = "chore: auto-sync updates") -> Dict[str, Any]:
+        """
+        Agrega cambios pendientes, realiza commit y hace push a GitHub para que otras PCs se actualicen.
+        """
+        git_dir = BASE_DIR / ".git"
+        if not git_dir.exists():
+            return {"success": False, "error": "Repositorio Git no inicializado"}
+
+        import subprocess
+        try:
+            # 1. git add .
+            subprocess.run(["git", "add", "."], cwd=str(BASE_DIR), capture_output=True, timeout=15)
+            
+            # 2. Verificar si hay cambios pendientes
+            status_proc = subprocess.run(["git", "status", "--porcelain"], cwd=str(BASE_DIR), capture_output=True, text=True, timeout=10)
+            if not status_proc.stdout.strip():
+                return {"success": True, "message": "No hay cambios locales pendientes por subir a GitHub."}
+
+            # 3. git commit
+            commit_proc = subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                cwd=str(BASE_DIR),
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+            
+            # 4. git push origin main
+            push_proc = subprocess.run(
+                ["git", "push", "origin", "main"],
+                cwd=str(BASE_DIR),
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if push_proc.returncode == 0:
+                logger.info("[UpdaterService] git push completado exitosamente.")
+                return {
+                    "success": True,
+                    "message": "Cambios subidos exitosamente a GitHub para sincronizar con otras PCs.",
+                    "output": push_proc.stdout.strip()
+                }
+            else:
+                err_msg = push_proc.stderr.strip() or push_proc.stdout.strip()
+                logger.warning(f"[UpdaterService] Error al hacer git push: {err_msg}")
+                return {
+                    "success": False,
+                    "error": f"Error al hacer git push: {err_msg}"
+                }
+        except Exception as e:
+            logger.error(f"[UpdaterService] Error en git push: {e}")
+            return {"success": False, "error": str(e)}
 
     def connect_git_repo(self, repo_url: str = "https://github.com/alifarhat79/aduanadoc.git") -> Dict[str, Any]:
         """Inicializa y vincula el repositorio Git si está instalado, o descarga y aplica el código directamente desde GitHub."""

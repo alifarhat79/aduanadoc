@@ -79,17 +79,24 @@ class GoogleDriveService:
         owner = propietario or propietario_default or "Google Drive"
         drive_service = self.get_drive_service()
         
-        # Consultar archivos PDF en la carpeta (soporta Unidades Compartidas y Mi Unidad)
+        # Consultar archivos PDF en la carpeta con paginación completa (soporta Unidades Compartidas y Mi Unidad)
         query = f"'{self.folder_id}' in parents and (mimeType = 'application/pdf' or name contains '.pdf' or name contains '.PDF') and trashed = false"
-        results = drive_service.files().list(
-            q=query,
-            fields="files(id, name, md5Checksum, size, modifiedTime)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            pageSize=100
-        ).execute()
-
-        files = results.get('files', [])
+        
+        files = []
+        page_token = None
+        while True:
+            results = drive_service.files().list(
+                q=query,
+                fields="nextPageToken, files(id, name, md5Checksum, size, modifiedTime)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=500,
+                pageToken=page_token
+            ).execute()
+            files.extend(results.get('files', []))
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
         
         total_encontrados = len(files)
         nuevos_procesados = 0
@@ -189,6 +196,16 @@ class GoogleDriveService:
                     noti.notify_new_despacho(despacho_dict=desp_dict, items_count=len(despacho.items), source="Google Drive Cloud")
                 except Exception as n_err:
                     logger.warning(f"No se pudo enviar notificación de nuevo despacho: {n_err}")
+
+                # Disparar notificación nativa de Windows (Toast / Balloon)
+                try:
+                    from app.services.windows_notification_service import WindowsNotificationService
+                    WindowsNotificationService.notify_new_despacho(
+                        numero_despacho=despacho.numero_despacho or file_name,
+                        importador=despacho.importador_nombre
+                    )
+                except Exception as w_err:
+                    logger.warning(f"No se pudo enviar notificación de Windows: {w_err}")
 
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)

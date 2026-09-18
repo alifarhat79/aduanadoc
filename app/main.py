@@ -17,7 +17,7 @@ from pathlib import Path
 from app.config import settings
 from app.database import init_db
 from app.services.gdrive_watcher import GDriveWatcher
-from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater, planillas
+from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater, planillas, sync_unified
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,8 +29,11 @@ async def lifespan(app: FastAPI):
 
     # Iniciar Vigilante de Google Drive en segundo plano de forma segura
     try:
+        import asyncio
         watcher = GDriveWatcher.get_instance()
         await watcher.start()
+        # Disparar escaneo inmediato al arrancar el sistema
+        asyncio.create_task(watcher.scan_immediate())
     except Exception as w_err:
         print(f"[Aviso] Vigilante Google Drive omitido: {w_err}")
 
@@ -66,6 +69,7 @@ app.include_router(upload.router)
 app.include_router(revisar.router)
 app.include_router(exportacion.router)
 app.include_router(backup_updater.router)
+app.include_router(sync_unified.router)
 
 
 if __name__ == "__main__":

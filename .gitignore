@@ -37,3 +37,7 @@ credentials.json
 .idea/
 .DS_Store
 Thumbs.db
+.claude/
+.agents/
+skills-lock.json
+aduanadoc_v2/

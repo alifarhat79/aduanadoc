@@ -90,6 +90,16 @@ async def git_pull_api():
         raise HTTPException(status_code=500, detail=result.get("error", "Error al ejecutar git pull"))
     return result
 
+@router.post("/api/updates/git/push")
+async def git_push_api(payload: dict = Body(default={})):
+    """Ejecuta git push para enviar cambios locales a GitHub para actualizar otras PCs."""
+    commit_msg = payload.get("commit_msg", "chore: auto-sync updates")
+    updater = UpdaterService()
+    result = updater.git_push(commit_msg=commit_msg)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Error al ejecutar git push"))
+    return result
+
 @router.post("/api/updates/git/connect")
 async def git_connect_api(payload: dict = Body(default={})):
     """Vincula y conecta esta computadora con el repositorio GitHub oficial (o URL personalizada)."""

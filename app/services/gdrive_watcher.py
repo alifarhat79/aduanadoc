@@ -41,10 +41,15 @@ class GDriveWatcher:
             self.task.cancel()
         logger.info("[GDriveWatcher] Vigilante automático detenido.")
 
+    async def scan_immediate(self) -> Dict[str, Any]:
+        """Ejecuta un escaneo inmediato de Google Drive sin esperar el temporizador."""
+        logger.info("[GDriveWatcher] Disparando escaneo inmediato de Google Drive...")
+        return await self._perform_scan()
+
     async def _watch_loop(self):
         """Bucle que examina Google Drive periódicamente."""
-        # Esperar 5 segundos al inicio para que el servidor esté listo
-        await asyncio.sleep(5)
+        # Breve pausa inicial de 1 segundo para arranque limpio
+        await asyncio.sleep(1)
 
         while self.is_running:
             if self.is_enabled:
@@ -56,11 +61,11 @@ class GDriveWatcher:
             # Esperar el intervalo configurado
             await asyncio.sleep(self.interval_seconds)
 
-    async def _perform_scan(self):
+    async def _perform_scan(self) -> Dict[str, Any]:
         """Ejecuta un escaneo seguro en un hilo para no bloquear el bucle de eventos."""
         # 1. Verificar si las librerías de Google API están instaladas
         if not GoogleDriveService.is_api_available():
-            return
+            return {"error": "Google API client no disponible"}
 
         gdrive = GoogleDriveService()
         
@@ -72,7 +77,7 @@ class GDriveWatcher:
             cred_path = Path(__file__).resolve().parent.parent.parent / gdrive.credentials_file
 
         if not cred_path.exists():
-            return
+            return {"error": "Credenciales service_account.json no encontradas"}
 
         def run_sync_scan():
             db = SessionLocal()
@@ -86,8 +91,25 @@ class GDriveWatcher:
         self.last_checked_at = datetime.now()
         self.last_result = result
 
-        if result.get("nuevos_procesados", 0) > 0:
-            logger.info(f"[GDriveWatcher] ¡Nuevos despachos detectados y procesados automáticamente!: {result['nuevos_procesados']}")
+        nuevos = result.get("nuevos_procesados", 0)
+        if nuevos > 0:
+            logger.info(f"[GDriveWatcher] ¡Nuevos despachos detectados y procesados automáticamente!: {nuevos}")
+            # Notificación Windows
+            try:
+                from app.services.windows_notification_service import WindowsNotificationService
+                detalles = result.get("detalles", [])
+                despachos_ok = [
+                    d.get("numero_despacho") for d in detalles
+                    if d.get("estado") in ["PROCESADO_EXITOSO", "PROCESADO"] and d.get("numero_despacho")
+                ]
+                if nuevos == 1 and despachos_ok:
+                    WindowsNotificationService.notify_new_despacho(despachos_ok[0])
+                else:
+                    WindowsNotificationService.notify_batch_despachos(nuevos, despachos_ok)
+            except Exception as w_err:
+                logger.warning(f"[GDriveWatcher] Error al emitir notificación de Windows: {w_err}")
+
+        return result
 
     def set_enabled(self, enabled: bool):
         """Activa o desactiva el vigilante en segundo plano."""

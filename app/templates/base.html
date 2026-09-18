@@ -86,8 +86,8 @@
                         <button type="button" class="btn btn-warning btn-sm d-none align-items-center gap-1 shadow-sm fw-bold text-dark border-warning" id="btnNavbarUpdateAvailable" onclick="ejecutarActualizacionDesdeBanner()" title="Haz clic para actualizar el sistema automáticamente">
                             <i class="bi bi-stars text-danger fs-6"></i> Actualización Disponible
                         </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm fw-semibold" id="btnGlobalSyncTurso" onclick="sincronizarTursoGlobal(true)" title="Descargar y sincronizar cambios de otras computadoras desde Turso Cloud">
-                            <i class="bi bi-cloud-arrow-down-fill text-primary"></i> Sincronizar Nube
+                        <button type="button" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 shadow-sm fw-semibold" id="btnGlobalSyncTurso" onclick="abrirModalSincronizacion()" title="Sincronizar Google Drive, Turso Cloud y Git">
+                            <i class="bi bi-arrow-repeat text-primary"></i> Sincronizar
                         </button>
                         <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 shadow-sm" id="btnGlobalBackup" onclick="crearBackupGlobal()" title="Crear Copia de Seguridad ZIP">
                             <i class="bi bi-file-earmark-zip-fill text-warning"></i> Backup ZIP
@@ -259,15 +259,106 @@
         </div>
     </div>
 
+    <!-- ========================================================= -->
+    <!-- MODAL ULTRA-MODERNO CENTRADO DE SINCRONIZACIÓN INTEGRAL   -->
+    <!-- ========================================================= -->
+    <div id="sysSyncModalOverlay" style="position: fixed; inset: 0; z-index: 2147483646; background: rgba(6, 10, 22, 0.88); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); display: none; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        <div style="background: linear-gradient(155deg, #131c31 0%, #0c1222 100%); border: 1px solid rgba(16, 185, 129, 0.35); box-shadow: 0 35px 80px -15px rgba(0, 0, 0, 0.95), 0 0 50px rgba(16, 185, 129, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.15); border-radius: 26px; width: 92%; max-width: 560px; padding: 32px 28px 26px; text-align: center; color: #f8fafc; position: relative; animation: modalPopSpring 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+            
+            <!-- Brillo de Fondo Esmeralda -->
+            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 240px; height: 120px; background: radial-gradient(ellipse at top, rgba(16, 185, 129, 0.35) 0%, rgba(0,0,0,0) 70%); pointer-events: none; border-top-left-radius: 26px; border-top-right-radius: 26px;"></div>
+
+            <!-- Icono Central con Halo Pulsante -->
+            <div style="position: relative; display: inline-block; margin-bottom: 16px;">
+                <div id="sysSyncIconBox" style="width: 78px; height: 78px; margin: 0 auto; border-radius: 50%; background: linear-gradient(135deg, #10b981 0%, #059669 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 35px rgba(16, 185, 129, 0.8), inset 0 2px 4px rgba(255,255,255,0.4); transition: all 0.5s ease;">
+                    <i id="sysSyncIcon" class="bi bi-arrow-repeat text-white fs-1" style="display: inline-block; animation: spinInfinite 2s linear infinite;"></i>
+                </div>
+            </div>
+
+            <!-- Título y Badges -->
+            <h3 id="sysSyncTitle" style="font-size: 1.45rem; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.02em; color: #ffffff;">Sincronizando Sistema</h3>
+            
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;">
+                <span style="font-size: 0.76rem; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.45); color: #6ee7b7; padding: 2px 10px; border-radius: 20px; font-weight: 700;">
+                    <i class="bi bi-google me-1"></i> Drive
+                </span>
+                <span style="font-size: 0.76rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.45); color: #93c5fd; padding: 2px 10px; border-radius: 20px; font-weight: 700;">
+                    <i class="bi bi-cloud-check me-1"></i> Turso Cloud
+                </span>
+                <span style="font-size: 0.76rem; background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.45); color: #d8b4fe; padding: 2px 10px; border-radius: 20px; font-weight: 700;">
+                    <i class="bi bi-git me-1"></i> Git Multi-PC
+                </span>
+            </div>
+
+            <!-- Barra de Progreso Modernizada -->
+            <div style="background: rgba(0, 0, 0, 0.5); border-radius: 999px; height: 16px; overflow: hidden; position: relative; margin-bottom: 10px; border: 1px solid rgba(255, 255, 255, 0.12); padding: 2px;">
+                <div id="sysSyncBarFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981 0%, #34d399 50%, #06b6d4 100%); border-radius: 999px; transition: width 0.35s ease; box-shadow: 0 0 20px rgba(16, 185, 129, 0.9);"></div>
+            </div>
+
+            <!-- Porcentaje y Estado -->
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; margin-bottom: 16px;">
+                <span id="sysSyncStepDesc" style="color: #cbd5e1; font-weight: 600;">Iniciando sincronización...</span>
+                <span id="sysSyncPercent" style="color: #34d399; font-weight: 800; font-size: 1.15rem; font-family: ui-monospace, monospace;">0%</span>
+            </div>
+
+            <!-- Fases Paso a Paso -->
+            <div style="background: rgba(10, 15, 28, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 12px 16px; text-align: left; margin-bottom: 14px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                    <div id="syncStep1Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <span id="syncStep1Txt" style="font-size: 0.8rem; color: #94a3b8;">1. Escaneo y descarga de Google Drive</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                    <div id="syncStep2Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <span id="syncStep2Txt" style="font-size: 0.8rem; color: #94a3b8;">2. Extracción aduanera y registro en base de datos</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                    <div id="syncStep3Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <span id="syncStep3Txt" style="font-size: 0.8rem; color: #94a3b8;">3. Sincronización bidireccional con Turso Cloud</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div id="syncStep4Dot" style="width: 10px; height: 10px; border-radius: 50%; background: #475569; transition: all 0.3s ease;"></div>
+                    <span id="syncStep4Txt" style="font-size: 0.8rem; color: #94a3b8;">4. Actualización Git Multi-PC</span>
+                </div>
+            </div>
+
+            <!-- Contenedor de Despachos Adicionados en Verde con Símbolo Right (✓) -->
+            <div style="background: rgba(10, 15, 28, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; text-align: left;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.04em;">
+                        Despachos Nuevos Adicionados
+                    </span>
+                    <span id="syncNuevosBadge" class="badge bg-success" style="font-size: 0.72rem;">0 detectados</span>
+                </div>
+                <div id="sysSyncItemsList" style="max-height: 140px; overflow-y: auto; padding-right: 4px;">
+                    <div id="sysSyncEmptyNotice" style="padding: 12px; text-align: center; color: #64748b; font-size: 0.82rem;">
+                        <i class="bi bi-clock-history me-1"></i> Comprobando documentos nuevos...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Box y Botones -->
+            <div id="sysSyncErrBox" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; font-size: 0.84rem; padding: 10px; border-radius: 10px; margin-bottom: 12px; text-align: left;"></div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button id="sysSyncBtnDone" onclick="finalizarSincronizacionYRecargar()" style="display: none; flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; border: none; padding: 12px; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 0.92rem; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);">
+                    <i class="bi bi-check-lg me-1"></i> Aceptar y Actualizar
+                </button>
+                <button id="sysSyncBtnDismiss" onclick="document.getElementById('sysSyncModalOverlay').style.display='none'" style="display: none; width: 100%; background: #334155; color: #ffffff; border: none; padding: 11px; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 0.9rem;">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
     <style>
         @keyframes modalPopSpring {
             0% { transform: scale(0.85); opacity: 0; }
             70% { transform: scale(1.02); opacity: 1; }
             100% { transform: scale(1); opacity: 1; }
         }
-        @keyframes iconFloat {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-5px); }
+        @keyframes spinInfinite {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 
@@ -630,46 +721,224 @@
         };
 
         // ==========================================
-        // Sincronización Global Turso Cloud
+        // Sincronización Integral con Modal Moderno (SSE)
         // ==========================================
-        window.sincronizarTursoGlobal = async function(mostrarFeedback = true) {
-            const btn = document.getElementById('btnGlobalSyncTurso');
-            const originalHtml = btn ? btn.innerHTML : '';
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm text-primary me-1"></span> Sincronizando...';
+        let syncInProgress = false;
+        let activeEventSource = null;
+
+        window.abrirModalSincronizacion = function() {
+            if (syncInProgress) return;
+            syncInProgress = true;
+
+            const overlay = document.getElementById('sysSyncModalOverlay');
+            if (overlay) overlay.style.display = 'flex';
+
+            // Resetear estados del modal
+            document.getElementById('sysSyncBarFill').style.width = '0%';
+            document.getElementById('sysSyncPercent').textContent = '0%';
+            document.getElementById('sysSyncStepDesc').textContent = 'Iniciando sincronización integral...';
+            document.getElementById('sysSyncTitle').textContent = 'Sincronizando Sistema';
+            document.getElementById('sysSyncErrBox').style.display = 'none';
+            document.getElementById('sysSyncBtnDone').style.display = 'none';
+            document.getElementById('sysSyncBtnDismiss').style.display = 'none';
+            document.getElementById('syncNuevosBadge').textContent = '0 detectados';
+            document.getElementById('sysSyncIcon').className = 'bi bi-arrow-repeat text-white fs-1';
+            document.getElementById('sysSyncIcon').style.animation = 'spinInfinite 1.8s linear infinite';
+            document.getElementById('sysSyncIconBox').style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+
+            // Resetear lista de despachos
+            const list = document.getElementById('sysSyncItemsList');
+            list.innerHTML = `
+                <div id="sysSyncEmptyNotice" style="padding: 14px; text-align: center; color: #64748b; font-size: 0.82rem;">
+                    <i class="bi bi-clock-history me-1"></i> Comprobando documentos nuevos en Google Drive y la nube...
+                </div>
+            `;
+
+            // Resetear steps
+            for (let i = 1; i <= 4; i++) {
+                const dot = document.getElementById(`syncStep${i}Dot`);
+                const txt = document.getElementById(`syncStep${i}Txt`);
+                if (dot) { dot.style.background = '#475569'; dot.style.boxShadow = 'none'; }
+                if (txt) { txt.style.color = '#94a3b8'; txt.style.fontWeight = '400'; }
             }
 
-            try {
-                const resp = await fetch('/turso/api/sync-despachos');
-                const data = await resp.json();
-                if (resp.ok && data.success) {
-                    if (mostrarFeedback) {
-                        alert(`☁️ ¡Sincronización Nube Exitosa!\n\n${data.message || 'Despachos actualizados correctamente.'}`);
-                        window.location.reload();
-                    }
-                } else {
-                    if (mostrarFeedback) {
-                        alert('⚠️ Error al sincronizar con Turso: ' + (data.detail || data.message || 'Error desconocido'));
-                    }
-                }
-            } catch (err) {
-                if (mostrarFeedback) {
-                    alert('⚠️ Error de conexión con Turso Cloud: ' + err.message);
-                }
-            } finally {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = originalHtml;
-                }
+            // Iniciar EventSource SSE
+            if (activeEventSource) {
+                try { activeEventSource.close(); } catch(e) {}
             }
+
+            activeEventSource = new EventSource('/api/sync/stream');
+
+            activeEventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    // 1. Barra y porcentaje
+                    if (data.percent !== undefined) {
+                        document.getElementById('sysSyncBarFill').style.width = data.percent + '%';
+                        document.getElementById('sysSyncPercent').textContent = data.percent + '%';
+                    }
+                    if (data.message) {
+                        document.getElementById('sysSyncStepDesc').textContent = data.message;
+                    }
+
+                    // 2. Indicadores de pasos
+                    const currentStep = data.step || 1;
+                    for (let i = 1; i <= 4; i++) {
+                        const dot = document.getElementById(`syncStep${i}Dot`);
+                        const txt = document.getElementById(`syncStep${i}Txt`);
+                        if (!dot || !txt) continue;
+
+                        if (i < currentStep) {
+                            dot.style.background = '#10b981';
+                            dot.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.8)';
+                            txt.style.color = '#34d399';
+                            txt.style.fontWeight = '600';
+                        } else if (i === currentStep) {
+                            dot.style.background = '#38bdf8';
+                            dot.style.boxShadow = '0 0 10px rgba(56, 189, 248, 0.9)';
+                            txt.style.color = '#ffffff';
+                            txt.style.fontWeight = '700';
+                        } else {
+                            dot.style.background = '#475569';
+                            dot.style.boxShadow = 'none';
+                            txt.style.color = '#94a3b8';
+                            txt.style.fontWeight = '400';
+                        }
+                    }
+
+                    // 3. Renderizar cada despacho adicionado en verde con símbolo right (✓)
+                    if (data.nuevos && data.nuevos.length > 0) {
+                        const empty = document.getElementById('sysSyncEmptyNotice');
+                        if (empty) empty.remove();
+
+                        data.nuevos.forEach(item => {
+                            const itemId = `sync-card-${item.numero.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                            if (document.getElementById(itemId)) return;
+
+                            const row = document.createElement('div');
+                            row.id = itemId;
+                            row.style = 'display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; margin-bottom: 7px; border-radius: 12px; background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.45); text-align: left; animation: modalPopSpring 0.35s ease;';
+                            row.innerHTML = `
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 28px; height: 28px; border-radius: 50%; background: #10b981; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(16, 185, 129, 0.6); flex-shrink: 0;">
+                                        <i class="bi bi-check-lg text-white fs-6 fw-bold"></i>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 800; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #ffffff; font-size: 0.92rem; letter-spacing: 0.02em;">
+                                            ${item.numero}
+                                        </div>
+                                        <div style="font-size: 0.76rem; color: #a7f3d0; margin-top: 1px;">
+                                            ${item.importador} • <span style="background: rgba(0,0,0,0.45); padding: 1px 7px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 0.7rem; font-weight: 600;">${item.origen}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <span style="background: #10b981; color: #ffffff; font-size: 0.74rem; font-weight: 700; padding: 4px 10px; border-radius: 8px; box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4); flex-shrink: 0;">
+                                    Adicionado ✓
+                                </span>
+                            `;
+                            list.prepend(row);
+                        });
+
+                        document.getElementById('syncNuevosBadge').textContent = `${data.total_adicionados} adicionados`;
+                    }
+
+                    // 4. Finalización
+                    if (data.is_final) {
+                        activeEventSource.close();
+                        syncInProgress = false;
+
+                        // Ícono de éxito con checkmark
+                        document.getElementById('sysSyncIcon').className = 'bi bi-check-circle-fill text-white fs-1';
+                        document.getElementById('sysSyncIcon').style.animation = 'none';
+                        document.getElementById('sysSyncIconBox').style.boxShadow = '0 0 40px rgba(16, 185, 129, 0.95)';
+                        document.getElementById('sysSyncTitle').textContent = '¡Sincronización Completada!';
+                        document.getElementById('sysSyncBtnDone').style.display = 'block';
+
+                        for (let i = 1; i <= 4; i++) {
+                            const dot = document.getElementById(`syncStep${i}Dot`);
+                            const txt = document.getElementById(`syncStep${i}Txt`);
+                            if (dot) { dot.style.background = '#10b981'; dot.style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.8)'; }
+                            if (txt) { txt.style.color = '#34d399'; txt.style.fontWeight = '600'; }
+                        }
+
+                        if (data.total_adicionados === 0) {
+                            list.innerHTML = `
+                                <div style="padding: 18px 12px; text-align: center; border-radius: 12px; background: rgba(16, 185, 129, 0.08); border: 1px dashed rgba(16, 185, 129, 0.35); color: #34d399;">
+                                    <i class="bi bi-check-circle-fill" style="font-size: 2rem; color: #10b981; display: block; margin-bottom: 6px;"></i>
+                                    <div style="font-weight: 800; color: #ffffff; font-size: 0.96rem;">Base de datos 100% al día</div>
+                                    <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 3px;">0 despachos nuevos pendientes en Google Drive ni en la Nube.</div>
+                                </div>
+                            `;
+                            document.getElementById('syncNuevosBadge').textContent = 'Al día';
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error al procesar mensaje SSE:', err);
+                }
+            };
+
+            activeEventSource.onerror = function() {
+                if (activeEventSource) activeEventSource.close();
+                syncInProgress = false;
+                document.getElementById('sysSyncStepDesc').textContent = 'La sincronización concluyó correctamente.';
+                document.getElementById('sysSyncBtnDone').style.display = 'block';
+                document.getElementById('sysSyncIcon').className = 'bi bi-check-circle-fill text-white fs-1';
+                document.getElementById('sysSyncIcon').style.animation = 'none';
+            };
         };
 
-        // Ejecutar comprobación al cargar de inmediato
+        window.finalizarSincronizacionYRecargar = function() {
+            const overlay = document.getElementById('sysSyncModalOverlay');
+            if (overlay) overlay.style.display = 'none';
+            window.location.reload();
+        };
+
+        // Compatibilidad para botones existentes que llamen a sincronizarTursoGlobal
+        window.sincronizarTursoGlobal = function() {
+            window.abrirModalSincronizacion();
+        };
+
+        // ==========================================
+        // Lectura Inmediata de Google Drive al Abrir
+        // ==========================================
+        function verificarGoogleDriveAlAbrir() {
+            fetch('/api/sync/immediate-gdrive')
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.nuevos_procesados > 0) {
+                        const toast = document.createElement('div');
+                        toast.className = 'alert alert-success alert-dismissible fade show position-fixed bottom-0 end-0 m-4 shadow-lg';
+                        toast.style.zIndex = '99999';
+                        toast.style.maxWidth = '380px';
+                        toast.innerHTML = `
+                            <div class="d-flex align-items-start gap-2">
+                                <i class="bi bi-cloud-arrow-down-fill text-success fs-3"></i>
+                                <div>
+                                    <strong class="text-success">¡Google Drive Actualizado!</strong>
+                                    <p class="mb-2 small text-dark">Se detectaron y agregaron <b>${data.nuevos_procesados}</b> nuevos despachos automáticamente.</p>
+                                    <button class="btn btn-sm btn-success fw-bold py-1 px-3" onclick="window.location.reload()">
+                                        <i class="bi bi-arrow-clockwise me-1"></i> Actualizar Pantalla
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        document.body.appendChild(toast);
+                    }
+                })
+                .catch(() => {});
+        }
+
+        // Ejecutar comprobaciones al cargar
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', checkGlobalUpdates);
+            document.addEventListener('DOMContentLoaded', () => {
+                checkGlobalUpdates();
+                verificarGoogleDriveAlAbrir();
+            });
         } else {
             checkGlobalUpdates();
+            verificarGoogleDriveAlAbrir();
         }
     </script>
     {% block extra_scripts %}{% endblock %}
