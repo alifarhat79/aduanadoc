@@ -128,7 +128,7 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                     "pagina_origen": page_num
                 })
 
-    # 2. Si no hubo subitems, probar formato SOFIA Grid / Zona Franca (ej. 1/26, 2/26 con bloques)
+    # 2. Si no hubo subitems, probar formato SOFIA Grid / Bloques (ej. 1/6, 2/6, 1/26)
     if not extracted_items:
         # Pre-procesar y unir líneas continuas limpiando cabeceras de página
         all_lines_data: List[Dict[str, Any]] = []
@@ -164,40 +164,105 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                 pais_proc = None
 
                 j = i + 1
-                while j < n and j < i + 35:
+                block_lines: List[str] = []
+                while j < n and j < i + 45:
                     sub_line = all_lines_data[j]["line"]
                     
                     if j > i + 2 and re.match(r"^\d{1,3}\s*/\s*\d{1,3}", sub_line):
                         break
+                    block_lines.append(sub_line)
+                    j += 1
 
-                    # Posición arancelaria si no vino en la primera línea
-                    if not pos_aranc and (re.match(r"^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{3}[A-Z]?$", sub_line) or re.match(r"^[0-9.]{6,15}[A-Z]?$", sub_line)):
-                        pos_aranc = sub_line
+                # 1. Posición arancelaria si no vino en la primera línea
+                if not pos_aranc:
+                    for bl in block_lines:
+                        if re.match(r"^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{3}[A-Za-z]?$", bl) or re.match(r"^[0-9.]{6,15}[A-Za-z]?$", bl):
+                            pos_aranc = bl
+                            break
 
-                    # FOB Factura
-                    if sub_line.upper() == "FOB FACTURA" and j + 1 < n:
-                        fob_factura = parse_currency(all_lines_data[j+1]["line"])
+                # 2. FOB Factura
+                for b_idx, bl in enumerate(block_lines):
+                    if bl.upper() == "FOB FACTURA" and b_idx + 1 < len(block_lines):
+                        fob_factura = parse_currency(block_lines[b_idx + 1])
+                        break
 
-                    # Línea Comercial Directa: [DESCRIPCION] [MARCA] [CANT] [UNIDAD] [FOB]
-                    m_com = re.search(r"^(.*?)\s+([A-Za-z0-9.\-\s]+?)\s+([0-9.,]+)\s+(UNIDAD|KILOGRAMO|PAR|METRO|LITRO|DOCENA|CAJA|SET|BTO)\s+([0-9.,]+)$", sub_line, re.IGNORECASE)
+                # 3. Intentar Línea Comercial Directa en una sola línea (ej: "[DESCRIPCION] [MARCA] [CANT] [UNIDAD] [FOB]")
+                for bl in block_lines:
+                    m_com = re.search(r"^(.*?)\s+([A-Za-z0-9.\-\s]+?)\s+([0-9.,]+)\s+(UNIDAD|KILOGRAMO|PAR|METRO|LITRO|DOCENA|CAJA|SET|BTO)\s+([0-9.,]+)$", bl, re.IGNORECASE)
                     if m_com and not desc:
                         desc = clean_text(m_com.group(1))
                         marca = clean_text(m_com.group(2)) or "Sin Marca"
                         cantidad = parse_currency(m_com.group(3)) or 1.0
                         unidad = m_com.group(4).upper()
                         fob_uss = parse_currency(m_com.group(5))
+                        break
 
-                    # Bloque Kilo Neto / Países
-                    if "KILO NETO" in sub_line.upper() and j + 1 < n and "ESTADO" in all_lines_data[j+1]["line"].upper():
-                        k = j + 2
-                        if k < n and re.match(r"^[0-9.,]+$", all_lines_data[k]["line"]):
-                            k += 1
-                        if k + 2 < n:
-                            pais_origen = all_lines_data[k]["line"]
-                            pais_proc = all_lines_data[k+1]["line"]
-                            kilo_neto = parse_currency(all_lines_data[k+2]["line"])
+                # 4. Si no vino en una sola línea, procesar estructura multilínea estándar de SOFIA
+                if not desc or not cantidad:
+                    unit_idx = -1
+                    for b_idx, bl in enumerate(block_lines):
+                        if bl.upper() in KNOWN_UNITS and b_idx > 0:
+                            prec = block_lines[b_idx - 1]
+                            if re.match(r"^[0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]+)?$", prec):
+                                unit_idx = b_idx
+                                unidad = bl.upper()
+                                cantidad = parse_currency(prec) or 1.0
+                                break
 
-                    j += 1
+                    if unit_idx != -1:
+                        # FOB U$S suele ser la línea inmediatamente posterior a UNIDAD
+                        if unit_idx + 1 < len(block_lines):
+                            fob_candidate = block_lines[unit_idx + 1]
+                            if re.match(r"^[0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]+)?$", fob_candidate):
+                                fob_uss = parse_currency(fob_candidate)
+
+                        # Las líneas antes de la cantidad corresponden a DESCRIPCION y MARCA
+                        header_end = 0
+                        for h_idx in range(unit_idx - 1):
+                            if any(k in block_lines[h_idx].upper() for k in ["FOB U$S", "FOB USS", "VERSION", "COMERCIALES", "CANTIDAD"]):
+                                header_end = h_idx + 1
+
+                        desc_lines = [bl for bl in block_lines[header_end : unit_idx - 1] if bl and not bl.startswith("******")]
+                        if desc_lines:
+                            if len(desc_lines) == 1:
+                                raw_single = desc_lines[0]
+                                words = raw_single.split()
+                                if len(words) >= 2 and words[-1].upper() == words[0].upper():
+                                    marca = words[-1]
+                                    desc = " ".join(words[:-1])
+                                elif len(words) >= 4 and " ".join(words[-2:]).upper() == " ".join(words[:2]).upper():
+                                    marca = " ".join(words[-2:])
+                                    desc = " ".join(words[:-2])
+                                else:
+                                    desc = raw_single
+                            else:
+                                raw_marca = desc_lines[-1]
+                                marca = raw_marca
+                                desc = " ".join(desc_lines[:-1])
+
+                # Limpieza de marca
+                if marca:
+                    if re.match(r"^[\*\s\-_.]+$", marca) or marca.strip() in ("*", "***", "**********", "SIN MARCA"):
+                        marca = "Sin Marca"
+                else:
+                    marca = "Sin Marca"
+
+                # 5. Bloque Kilo Neto / Países / Estado
+                for b_idx, bl in enumerate(block_lines):
+                    if bl.upper() == "ESTADO" and b_idx + 4 < len(block_lines):
+                        # Líneas: [ajuste], [pais_origen], [pais_proc], [kilo_neto], [estado_val]
+                        pais_origen = clean_text(block_lines[b_idx + 2])
+                        pais_proc = clean_text(block_lines[b_idx + 3])
+                        k_str = block_lines[b_idx + 4]
+                        if re.match(r"^[0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]+)?$", k_str):
+                            kilo_neto = parse_currency(k_str)
+                        break
+                    elif "KILO NETO" in bl.upper() and b_idx + 2 < len(block_lines):
+                        for k_offset in range(1, 4):
+                            cand_k = block_lines[b_idx + k_offset]
+                            if re.match(r"^[0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]+)?$", cand_k):
+                                kilo_neto = parse_currency(cand_k)
+                                break
 
                 if pos_aranc or fob_factura or desc:
                     codigo_producto, descripcion = parse_observation_details(desc or "", marca or "")
