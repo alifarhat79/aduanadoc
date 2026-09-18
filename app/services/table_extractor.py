@@ -53,10 +53,29 @@ def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
     descripcion = re.sub(r"\bCOD\s*:\s*ITEM\s*\d+\b", "", descripcion, flags=re.IGNORECASE).strip()
     descripcion = re.sub(r"\bCOD\s*:\s*$", "", descripcion, flags=re.IGNORECASE).strip()
 
-    # 6. Limpiar prefijos de marca o letras de lote al inicio (ej. "L-ARMAF", "M-ARMAF", "ARMAF -")
-    if marca:
+    # 6. Eliminar prefijos arancelarios y de unidades burocráticas al inicio de la descripción:
+    # Ej: "LOS DEMAS EN 2.680 UNIDADES ASDAAF...", "LOS DEMAS EN: 7.000 UNIDADES...", "EN 100 UNIDADES...", "2.680 UNIDADES ASDAAF..."
+    prefix_pattern = re.compile(
+        r'^(?:'
+        r'(?:LOS\s+DEM[AÁ]S|LAS\s+DEM[AÁ]S)\s*[-:]?\s*(?:EN\s*:?|POR\s*:?|DE\s*:?)?\s*[-:]?\s*(?:[0-9.,]+\s*[-:]?\s*)?(?:UNIDADES|UNIDAD|UNIDS?\.?|U\.|KILOGRAMOS?|KILOS?|KG\.?|LITROS?|PARES?|METROS?|DOCENAS?|CAJAS?|SETS?|PIEZAS?|PACKS?|BTOS?)\s*(?:CONTENIENDO\s*[0-9.,]+\s*(?:UNIDADES|UNIDAD|UNIDS?\.?|U\.)\s*)?(?:\s*[-:–]?\s*DE\b)?\s*[-:–]?'
+        r'|'
+        r'[0-9.,]+\s*[-:]?\s*(?:UNIDADES|UNIDAD|UNIDS?\.?|U\.|KILOGRAMOS?|KILOS?|KG\.?|LITROS?|PARES?|METROS?|DOCENAS?|CAJAS?|SETS?|PIEZAS?|PACKS?|BTOS?)\s*(?:CONTENIENDO\s*[0-9.,]+\s*(?:UNIDADES|UNIDAD|UNIDS?\.?|U\.)\s*)?(?:\s*[-:–]?\s*DE\b)?\s*[-:–]?'
+        r'|'
+        r'(?:UNIDADES|UNIDAD|UNIDS?\.?)\s*(?:[-:–]?\s*DE\b)\s*[-:–]?'
+        r')\s*',
+        re.IGNORECASE
+    )
+    cleaned_desc = prefix_pattern.sub("", descripcion).strip()
+    # Eliminar también "LOS DEMAS:" o "LOS DEMAS -" si vino sin unidades numéricas
+    cleaned_desc = re.sub(r'^(?:LOS\s+DEM[AÁ]S|LAS\s+DEM[AÁ]S)(?:\s+(?:EN|POR|DE))?\s*[-:]\s*', "", cleaned_desc, flags=re.IGNORECASE).strip()
+    if len(cleaned_desc) >= 3:
+        descripcion = cleaned_desc
+
+    # 7. Limpiar prefijos de marca con letras de lote (ej. "L-ARMAF", "M-ARMAF") o separador previo (ej. "ARMAF -", "ARMAF :")
+    # Nota: No eliminar si la marca es el inicio del nombre comercial directo (ej. "MAISON ALHAMBRA SALVO INTENSE", "ASDAAF AMEERAT")
+    if marca and marca.upper() not in ("SIN MARCA", "*", "***", "**********"):
         clean_marca = re.escape(marca.strip())
-        descripcion = re.sub(rf"^(?:[A-Z]-)?{clean_marca}\s*[-:]?\s*", "", descripcion, flags=re.IGNORECASE).strip()
+        descripcion = re.sub(rf"^(?:[A-Za-z]-[ ]*{clean_marca}|{clean_marca}\s*[-:])\s*", "", descripcion, flags=re.IGNORECASE).strip()
 
     # Quitar guiones, dos puntos o espacios redundantes sobrantes
     descripcion = re.sub(r"^[-:\s]+|[-:\s]+$", "", descripcion).strip()
