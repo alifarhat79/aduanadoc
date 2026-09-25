@@ -16,27 +16,23 @@ REM 1. Buscar ejecutable de Python
 set PY_CMD=python
 
 where python >nul 2>&1
-if errorlevel 1 (
-    if exist "C:\Python314\python.exe" set PY_CMD=C:\Python314\python.exe
-    if exist "C:\Python312\python.exe" set PY_CMD=C:\Python312\python.exe
-    if exist "C:\Python311\python.exe" set PY_CMD=C:\Python311\python.exe
-    if exist "%LOCALAPPDATA%\Programs\Python\Python314\python.exe" set PY_CMD=%LOCALAPPDATA%\Programs\Python\Python314\python.exe
-    if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe
-)
+if errorlevel 1 if exist "C:\Python314\python.exe" set PY_CMD=C:\Python314\python.exe
+if errorlevel 1 if exist "C:\Python312\python.exe" set PY_CMD=C:\Python312\python.exe
+if errorlevel 1 if exist "C:\Python311\python.exe" set PY_CMD=C:\Python311\python.exe
+if errorlevel 1 if exist "%LOCALAPPDATA%\Programs\Python\Python314\python.exe" set PY_CMD=%LOCALAPPDATA%\Programs\Python\Python314\python.exe
+if errorlevel 1 if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe
 
 echo [*] Utilizando Python: %PY_CMD%
 
 REM 2. Sincronizacion y actualizacion automatica
 where git >nul 2>&1
-if errorlevel 1 (
-    if exist "C:\Program Files\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files\Git\cmd"
-    if exist "C:\Program Files (x86)\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files (x86)\Git\cmd"
-    if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Git\cmd"
-)
+if errorlevel 1 if exist "C:\Program Files\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files\Git\cmd"
+if errorlevel 1 if exist "C:\Program Files (x86)\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files (x86)\Git\cmd"
+if errorlevel 1 if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Git\cmd"
 
 where git >nul 2>&1
 if not errorlevel 1 (
-    echo [*] Sincronizando con GitHub (Git)...
+    echo [*] Sincronizando con GitHub...
     if not exist ".git" (
         git init -q >nul 2>&1
         git remote add origin https://github.com/alifarhat79/aduanadoc.git >nul 2>&1
@@ -46,12 +42,10 @@ if not errorlevel 1 (
     ) else (
         git fetch origin main -q >nul 2>&1
         git pull origin main --ff-only >nul 2>&1
-        if errorlevel 1 (
-            git reset --hard origin/main >nul 2>&1
-        )
+        if errorlevel 1 git reset --hard origin/main >nul 2>&1
     )
 ) else (
-    echo [*] Git no detectado. Sincronizando directamente desde GitHub via HTTP...
+    echo [*] Git no detectado. Sincronizando directamente desde GitHub...
     "%PY_CMD%" "%~dp0actualizar_desde_github.py"
 )
 
@@ -73,6 +67,3 @@ echo ================================================================
 "%PY_CMD%" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 pause
-
-
-
