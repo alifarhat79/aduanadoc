@@ -3,6 +3,64 @@
 {% block title %}Tabla Consolidada de Mercancías | AduanaDoc{% endblock %}
 {% block page_title %}Catálogo Consolidado de Mercancías e Ítems{% endblock %}
 
+{% block extra_head %}
+<style>
+.searchable-combo-container {
+    position: relative;
+}
+.combo-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1060;
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1.25rem rgba(0,0,0,0.18);
+    display: none;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 0.25rem;
+    margin-top: 2px;
+}
+.combo-dropdown-menu.show {
+    display: block;
+}
+.combo-dropdown-item {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8rem;
+    color: #212529;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background-color 0.1s ease;
+    border-radius: 0.25rem;
+    margin: 1px 0;
+    user-select: none;
+}
+.combo-dropdown-item:hover, .combo-dropdown-item.active {
+    background-color: #f1f5f9;
+    color: #0d6efd;
+}
+.combo-dropdown-item.selected {
+    background-color: #e0f2fe;
+    color: #0284c7;
+    font-weight: 600;
+}
+.combo-dropdown-item.no-results {
+    cursor: default;
+    color: #6c757d;
+    justify-content: center;
+    padding: 0.6rem 0.5rem;
+}
+.combo-dropdown-item.no-results:hover {
+    background-color: transparent;
+    color: #6c757d;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Mini KPIs de Marcas y NCMs Destacados (Píldoras Interactivas - Al hacer clic filtra la tabla) -->
 <div class="card border-0 shadow-sm rounded-3 mb-4">
@@ -308,21 +366,73 @@
             <div class="row g-2 pt-3 mt-1 border-top align-items-end">
                 <div class="col-xl-2 col-md-4 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Marca:</label>
-                    <select name="marca" id="filterMarcaSelect" class="form-select form-select-sm" onchange="submitMercanciasFilter()">
-                        <option value="">-- Todas las Marcas --</option>
-                        {% for m in todas_marcas %}
-                        <option value="{{ m }}" {% if selected_marca == m %}selected{% endif %}>{{ m }}</option>
-                        {% endfor %}
-                    </select>
+                    <div class="searchable-combo-container" id="comboMarcaContainer">
+                        <div class="input-group input-group-sm">
+                            <input type="text" 
+                                   class="form-control form-control-sm bg-white" 
+                                   id="comboMarcaInput" 
+                                   placeholder="-- Todas las Marcas --" 
+                                   value="{{ selected_marca or '' }}" 
+                                   autocomplete="off">
+                            <button type="button" 
+                                    class="btn btn-outline-secondary border-start-0 combo-clear-btn {% if not selected_marca %}d-none{% endif %}" 
+                                    id="comboMarcaClearBtn" 
+                                    title="Limpiar marca" 
+                                    tabindex="-1">
+                                <i class="bi bi-x-circle-fill text-muted" style="font-size: 0.75rem;"></i>
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-outline-secondary border-start-0 combo-toggle-btn" 
+                                    id="comboMarcaToggleBtn" 
+                                    title="Desplegar marcas" 
+                                    tabindex="-1">
+                                <i class="bi bi-chevron-down" style="font-size: 0.65rem;"></i>
+                            </button>
+                        </div>
+                        <ul class="combo-dropdown-menu w-100" id="comboMarcaMenu"></ul>
+                        <!-- Select original oculto para envío y compatibilidad total -->
+                        <select name="marca" id="filterMarcaSelect" class="d-none">
+                            <option value="">-- Todas las Marcas --</option>
+                            {% for m in todas_marcas %}
+                            <option value="{{ m }}" {% if selected_marca == m %}selected{% endif %}>{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
                 <div class="col-xl-2 col-md-4 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">NCM / Posición:</label>
-                    <select name="ncm" id="filterNcmSelect" class="form-select form-select-sm" onchange="submitMercanciasFilter()">
-                        <option value="">-- Todos los NCM --</option>
-                        {% for n in todos_ncms %}
-                        <option value="{{ n.codigo }}" {% if selected_ncm == n.codigo %}selected{% endif %}>{{ n.display }}</option>
-                        {% endfor %}
-                    </select>
+                    <div class="searchable-combo-container" id="comboNcmContainer">
+                        <div class="input-group input-group-sm">
+                            <input type="text" 
+                                   class="form-control form-control-sm bg-white" 
+                                   id="comboNcmInput" 
+                                   placeholder="-- Todos los NCM --" 
+                                   value="{% for n in todos_ncms %}{% if selected_ncm == n.codigo %}{{ n.display }}{% endif %}{% endfor %}" 
+                                   autocomplete="off">
+                            <button type="button" 
+                                    class="btn btn-outline-secondary border-start-0 combo-clear-btn {% if not selected_ncm %}d-none{% endif %}" 
+                                    id="comboNcmClearBtn" 
+                                    title="Limpiar NCM" 
+                                    tabindex="-1">
+                                <i class="bi bi-x-circle-fill text-muted" style="font-size: 0.75rem;"></i>
+                            </button>
+                            <button type="button" 
+                                    class="btn btn-outline-secondary border-start-0 combo-toggle-btn" 
+                                    id="comboNcmToggleBtn" 
+                                    title="Desplegar NCMs" 
+                                    tabindex="-1">
+                                <i class="bi bi-chevron-down" style="font-size: 0.65rem;"></i>
+                            </button>
+                        </div>
+                        <ul class="combo-dropdown-menu" id="comboNcmMenu" style="min-width: 340px; max-width: 480px;"></ul>
+                        <!-- Select original oculto para envío y compatibilidad total -->
+                        <select name="ncm" id="filterNcmSelect" class="d-none">
+                            <option value="">-- Todos los NCM --</option>
+                            {% for n in todos_ncms %}
+                            <option value="{{ n.codigo }}" {% if selected_ncm == n.codigo %}selected{% endif %}>{{ n.display }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
                 <div class="col-xl-2 col-md-4 col-sm-6">
                     <label class="form-label text-muted small mb-1" style="font-size: 0.72rem;">Dueño / Cliente:</label>
@@ -787,15 +897,30 @@
 
     const liveSearchEl = document.getElementById('liveSearchInput');
     if (liveSearchEl) {
+        const initialSearchQuery = liveSearchEl.value.trim();
+
         liveSearchEl.addEventListener('input', function() {
             clearTimeout(mercanciasDebounceTimer);
             const val = this.value.trim();
             if (val.length === 0) {
-                submitMercanciasFilter('liveSearchInput');
-            } else {
+                // Si el usuario borró todo el texto y había una búsqueda previa activa, refrescar para mostrar todo
+                if (initialSearchQuery.length > 0) {
+                    submitMercanciasFilter('liveSearchInput');
+                }
+            } else if (val.length >= 3) {
+                // Solo empieza a filtrar automáticamente a partir de 3 letras
                 mercanciasDebounceTimer = setTimeout(() => {
                     submitMercanciasFilter('liveSearchInput');
-                }, 350);
+                }, 400);
+            }
+            // Con 1 o 2 letras no se dispara el filtrado automático, evitando recargas molestas mientras escribe
+        });
+
+        // Al presionar Enter, forzar filtrado inmediato incluso con 1 o 2 letras
+        liveSearchEl.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                clearTimeout(mercanciasDebounceTimer);
+                sessionStorage.setItem('mercanciasFocusedField', 'liveSearchInput');
             }
         });
     }
@@ -811,6 +936,267 @@
             target.setSelectionRange(len, len);
         }
     }
+
+    // ==========================================
+    // COMPONENTES DE COMBOS BUSCABLES (MARCA Y NCM)
+    // ==========================================
+    function initSearchableCombo(config) {
+        const container = document.getElementById(config.containerId);
+        const input = document.getElementById(config.inputId);
+        const menu = document.getElementById(config.menuId);
+        const toggleBtn = document.getElementById(config.toggleBtnId);
+        const clearBtn = document.getElementById(config.clearBtnId);
+        const select = document.getElementById(config.selectId);
+        if (!container || !input || !menu || !select) return;
+
+        function getOptions() {
+            const opts = [];
+            for (let i = 0; i < select.options.length; i++) {
+                const opt = select.options[i];
+                opts.push({
+                    value: opt.value,
+                    text: opt.textContent.trim(),
+                    selected: opt.selected
+                });
+            }
+            return opts;
+        }
+
+        let options = getOptions();
+        let activeIndex = -1;
+
+        function normalizeStr(str) {
+            return (str || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase();
+        }
+
+        function renderOptions(filterText = '') {
+            menu.innerHTML = '';
+            activeIndex = -1;
+            const normFilter = normalizeStr(filterText);
+            const currentSelectedValue = select.value;
+
+            let matches = 0;
+            options.forEach((opt, idx) => {
+                const normText = normalizeStr(opt.text);
+                const normVal = normalizeStr(opt.value);
+                const matchesFilter = !normFilter || normText.includes(normFilter) || normVal.includes(normFilter);
+
+                if (matchesFilter) {
+                    matches++;
+                    const li = document.createElement('li');
+                    li.className = 'combo-dropdown-item' + (opt.value === currentSelectedValue ? ' selected' : '');
+                    li.dataset.value = opt.value;
+                    li.dataset.text = opt.text;
+                    li.dataset.index = idx;
+
+                    if (config.isNcm && opt.value) {
+                        const parts = opt.text.split(' - ');
+                        const code = parts[0] || opt.value;
+                        const desc = parts.slice(1).join(' - ') || '';
+                        li.innerHTML = `
+                            <span class="d-flex align-items-center gap-2 text-truncate">
+                                <span class="badge bg-light text-dark font-monospace border">${escapeHtml(code)}</span>
+                                <span class="small text-truncate" title="${escapeHtml(desc)}">${escapeHtml(desc)}</span>
+                            </span>
+                            ${opt.value === currentSelectedValue ? '<i class="bi bi-check-lg text-primary ms-1"></i>' : ''}
+                        `;
+                    } else {
+                        li.innerHTML = `
+                            <span class="text-truncate">${escapeHtml(opt.text)}</span>
+                            ${opt.value === currentSelectedValue ? '<i class="bi bi-check-lg text-primary ms-1"></i>' : ''}
+                        `;
+                    }
+
+                    li.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        selectOption(opt.value, opt.text);
+                    });
+
+                    menu.appendChild(li);
+                }
+            });
+
+            if (matches === 0) {
+                const emptyLi = document.createElement('li');
+                emptyLi.className = 'combo-dropdown-item no-results';
+                emptyLi.innerHTML = '<span class="small"><i class="bi bi-search me-1"></i>Sin coincidencias</span>';
+                menu.appendChild(emptyLi);
+            }
+        }
+
+        function selectOption(val, text) {
+            select.value = val;
+            if (val === '') {
+                input.value = '';
+                if (clearBtn) clearBtn.classList.add('d-none');
+            } else {
+                input.value = text;
+                if (clearBtn) clearBtn.classList.remove('d-none');
+            }
+            closeMenu();
+            submitMercanciasFilter();
+        }
+
+        function openMenu() {
+            document.querySelectorAll('.combo-dropdown-menu.show').forEach(m => {
+                if (m !== menu) m.classList.remove('show');
+            });
+            options = getOptions();
+            renderOptions(input.value);
+            menu.classList.add('show');
+
+            const selectedItem = menu.querySelector('.combo-dropdown-item.selected');
+            if (selectedItem) {
+                selectedItem.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function closeMenu() {
+            menu.classList.remove('show');
+            activeIndex = -1;
+        }
+
+        function revertText() {
+            const currentSelectedValue = select.value;
+            const currentOpt = options.find(o => o.value === currentSelectedValue);
+            if (currentOpt && currentOpt.value !== '') {
+                input.value = currentOpt.text;
+                if (clearBtn) clearBtn.classList.remove('d-none');
+            } else {
+                input.value = '';
+                if (clearBtn) clearBtn.classList.add('d-none');
+            }
+        }
+
+        input.addEventListener('focus', function() {
+            openMenu();
+            this.select();
+        });
+
+        input.addEventListener('input', function() {
+            openMenu();
+            renderOptions(this.value);
+            if (clearBtn) {
+                if (this.value.trim().length > 0) {
+                    clearBtn.classList.remove('d-none');
+                } else if (!select.value) {
+                    clearBtn.classList.add('d-none');
+                }
+            }
+        });
+
+        input.addEventListener('keydown', function(e) {
+            const visibleItems = menu.querySelectorAll('.combo-dropdown-item:not(.no-results)');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!menu.classList.contains('show')) {
+                    openMenu();
+                    return;
+                }
+                if (visibleItems.length > 0) {
+                    activeIndex = (activeIndex + 1) % visibleItems.length;
+                    updateActiveItem(visibleItems);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!menu.classList.contains('show')) {
+                    openMenu();
+                    return;
+                }
+                if (visibleItems.length > 0) {
+                    activeIndex = (activeIndex - 1 + visibleItems.length) % visibleItems.length;
+                    updateActiveItem(visibleItems);
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (menu.classList.contains('show') && visibleItems.length > 0) {
+                    if (activeIndex >= 0 && activeIndex < visibleItems.length) {
+                        const target = visibleItems[activeIndex];
+                        selectOption(target.dataset.value, target.dataset.text);
+                    } else {
+                        const target = visibleItems[0];
+                        selectOption(target.dataset.value, target.dataset.text);
+                    }
+                } else if (this.value.trim() === '') {
+                    selectOption('', '');
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeMenu();
+                revertText();
+            }
+        });
+
+        function updateActiveItem(items) {
+            items.forEach((it, idx) => {
+                if (idx === activeIndex) {
+                    it.classList.add('active');
+                    it.scrollIntoView({ block: 'nearest' });
+                } else {
+                    it.classList.remove('active');
+                }
+            });
+        }
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (menu.classList.contains('show')) {
+                    closeMenu();
+                } else {
+                    input.focus();
+                }
+            });
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                selectOption('', '');
+                input.focus();
+            });
+        }
+
+        document.addEventListener('click', function(e) {
+            if (!container.contains(e.target)) {
+                if (menu.classList.contains('show')) {
+                    closeMenu();
+                    revertText();
+                }
+            }
+        });
+
+        window['syncCombo_' + config.selectId] = function() {
+            options = getOptions();
+            revertText();
+        };
+    }
+
+    // Inicializar combos buscables
+    initSearchableCombo({
+        containerId: 'comboMarcaContainer',
+        inputId: 'comboMarcaInput',
+        menuId: 'comboMarcaMenu',
+        toggleBtnId: 'comboMarcaToggleBtn',
+        clearBtnId: 'comboMarcaClearBtn',
+        selectId: 'filterMarcaSelect',
+        isNcm: false
+    });
+
+    initSearchableCombo({
+        containerId: 'comboNcmContainer',
+        inputId: 'comboNcmInput',
+        menuId: 'comboNcmMenu',
+        toggleBtnId: 'comboNcmToggleBtn',
+        clearBtnId: 'comboNcmClearBtn',
+        selectId: 'filterNcmSelect',
+        isNcm: true
+    });
 
     window.filterByMarca = function(marca) {
         const sel = document.getElementById('filterMarcaSelect');
@@ -834,6 +1220,9 @@
                 sel.value = '';
             }
         }
+        if (typeof window['syncCombo_filterMarcaSelect'] === 'function') {
+            window['syncCombo_filterMarcaSelect']();
+        }
         submitMercanciasFilter();
     };
 
@@ -856,6 +1245,9 @@
                 sel.appendChild(opt);
                 sel.value = marca;
             }
+        }
+        if (typeof window['syncCombo_filterMarcaSelect'] === 'function') {
+            window['syncCombo_filterMarcaSelect']();
         }
         const searchInput = document.getElementById('liveSearchInput');
         if (searchInput) {
@@ -885,6 +1277,9 @@
             } else if (!ncm) {
                 sel.value = '';
             }
+        }
+        if (typeof window['syncCombo_filterNcmSelect'] === 'function') {
+            window['syncCombo_filterNcmSelect']();
         }
         submitMercanciasFilter();
     };

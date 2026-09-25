@@ -282,3 +282,35 @@ def test_pagination_preserves_year_and_origin_filters():
         resp_pull = client.post("/api/updates/git/pull")
         assert resp_pull.status_code == 200
         assert resp_pull.json()["success"] is True
+
+
+def test_mercancias_searchable_combos_and_live_filter():
+    """Verifica que /mercancias contenga los combos buscables de Marca y NCM y la lógica de filtrado."""
+    resp = client.get("/mercancias")
+    assert resp.status_code == 200
+    html = resp.text
+    # Combos buscables
+    assert "comboMarcaContainer" in html
+    assert "comboMarcaInput" in html
+    assert "comboNcmContainer" in html
+    assert "comboNcmInput" in html
+    assert "initSearchableCombo" in html
+    assert "val.length >= 3" in html
+    # Selects originales para envio de formulario
+    assert 'name="marca"' in html
+    assert 'id="filterMarcaSelect"' in html
+    assert 'name="ncm"' in html
+    assert 'id="filterNcmSelect"' in html
+
+    # Filtrar por marca existente
+    resp_marca = client.get("/mercancias?marca=SAMSUNG")
+    assert resp_marca.status_code == 200
+    assert "SMARTPHONE" in resp_marca.text
+    assert "NOTEBOOK" not in resp_marca.text
+
+    # Filtrar por NCM existente
+    resp_ncm = client.get("/mercancias?ncm=8471.30.12")
+    assert resp_ncm.status_code == 200
+    assert "NOTEBOOK" in resp_ncm.text
+    assert "SMARTPHONE" not in resp_ncm.text
+
