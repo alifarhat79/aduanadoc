@@ -33,12 +33,12 @@ if not errorlevel 1 (
     echo [*] Git detectado en el sistema.
     echo [*] Descargando archivos y actualizaciones desde GitHub...
     echo.
+    git fetch origin main
     git pull origin main
     if errorlevel 1 (
         echo.
-        echo [AVISO] Intentando sincronizacion limpia con GitHub...
-        git fetch origin main
-        git reset --mixed origin/main
+        echo [AVISO] Sincronizando archivos para coincidir exactamente con GitHub...
+        git reset --hard origin/main
     )
     echo.
     echo ================================================================

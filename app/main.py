@@ -17,7 +17,7 @@ from pathlib import Path
 from app.config import settings
 from app.database import init_db
 from app.services.gdrive_watcher import GDriveWatcher
-from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater, planillas, sync_unified
+from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater, planillas, sync_unified, marcas
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -52,6 +52,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    response = await call_next(request)
+    if "text/html" in response.headers.get("content-type", ""):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # Servir archivos estáticos
 static_dir = Path(__file__).resolve().parent / "static"
 os.makedirs(static_dir / "css", exist_ok=True)
@@ -70,6 +79,7 @@ app.include_router(revisar.router)
 app.include_router(exportacion.router)
 app.include_router(backup_updater.router)
 app.include_router(sync_unified.router)
+app.include_router(marcas.router)
 
 
 if __name__ == "__main__":

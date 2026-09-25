@@ -3,6 +3,8 @@ from fastapi.templating import Jinja2Templates
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.auto_reload = True
+templates.env.cache = None
 
 def format_smart_value(val, campo=""):
     """Formatea valores según su tipo y nombre de campo (0,000.00 para decimales, 0,000 para enteros, DD/MM/YYYY para fechas)."""

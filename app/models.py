@@ -1,6 +1,6 @@
 from datetime import datetime, date, timezone
 from sqlalchemy import (
-    Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, JSON, Index
+    Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, JSON, Index, Boolean
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -229,5 +229,18 @@ class MarcaSubitemEtiqueta(Base):
     orden = Column(Integer, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class MarcaRegla(Base):
+    """Reglas de equivalencia y normalización automática de marcas (ej: LIF POD -> LIFEPOD)."""
+    __tablename__ = "marcas_reglas"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    patron_origen = Column(String(150), nullable=False, unique=True, index=True) # Ej: "LIF POD"
+    marca_destino = Column(String(150), nullable=False, index=True)               # Ej: "LIFEPOD"
+    activo = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
 
 

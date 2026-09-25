@@ -26,19 +26,33 @@ if errorlevel 1 (
 
 echo [*] Utilizando Python: %PY_CMD%
 
-REM 2. Sincronizacion con Git
+REM 2. Sincronizacion y actualizacion automatica
+where git >nul 2>&1
+if errorlevel 1 (
+    if exist "C:\Program Files\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files\Git\cmd"
+    if exist "C:\Program Files (x86)\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files (x86)\Git\cmd"
+    if exist "%LOCALAPPDATA%\Programs\Git\cmd\git.exe" set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Git\cmd"
+)
+
 where git >nul 2>&1
 if not errorlevel 1 (
+    echo [*] Sincronizando con GitHub (Git)...
     if not exist ".git" (
-        echo [*] Configurando vinculo automatico con GitHub...
         git init -q >nul 2>&1
         git remote add origin https://github.com/alifarhat79/aduanadoc.git >nul 2>&1
         git fetch origin main -q >nul 2>&1
         git branch -M main >nul 2>&1
-        git reset --mixed origin/main >nul 2>&1
+        git reset --hard origin/main >nul 2>&1
+    ) else (
+        git fetch origin main -q >nul 2>&1
+        git pull origin main --ff-only >nul 2>&1
+        if errorlevel 1 (
+            git reset --hard origin/main >nul 2>&1
+        )
     )
-    echo [*] Sincronizando con repositorio Git...
-    git pull origin main --ff-only >nul 2>&1 || git pull origin main -q >nul 2>&1
+) else (
+    echo [*] Git no detectado. Sincronizando directamente desde GitHub via HTTP...
+    "%PY_CMD%" "%~dp0actualizar_desde_github.py"
 )
 
 REM 3. Dependencias

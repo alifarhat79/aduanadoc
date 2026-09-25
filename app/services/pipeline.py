@@ -236,7 +236,11 @@ def process_pdf_file(
     db.flush()  # Para obtener despacho.id
 
     # 10. Guardar Ítems
+    from app.services.brand_normalizer import get_normalized_brand
     for it in items_data:
+        raw_marca = it.get("marca")
+        clean_marca = get_normalized_brand(db, raw_marca) if raw_marca else None
+
         item_obj = DespachoItem(
             despacho_id=despacho.id,
             numero_item=it.get("numero_item", 1),
@@ -244,7 +248,7 @@ def process_pdf_file(
             codigo_ncm=it.get("codigo_ncm"),
             codigo_producto=it.get("codigo_producto"),
             descripcion=it.get("descripcion"),
-            marca=it.get("marca"),
+            marca=clean_marca,
             cantidad=it.get("cantidad"),
             unidad=it.get("unidad", "UNIDAD"),
             peso_neto=it.get("peso_neto"),

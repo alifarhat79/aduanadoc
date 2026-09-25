@@ -500,6 +500,8 @@ class UpdaterService:
                 return self.connect_git_repo(repo_url=repo_url)
         except Exception as e:
             logger.warning(f"[UpdaterService] Error en git pull, usando fallback: {e}")
+            return self.connect_git_repo(repo_url=repo_url)
+
     def git_push(self, commit_msg: str = "chore: auto-sync updates") -> Dict[str, Any]:
         """
         Agrega cambios pendientes, realiza commit y hace push a GitHub para que otras PCs se actualicen.
@@ -580,7 +582,7 @@ class UpdaterService:
                     subprocess.run([git_executable, "fetch", "origin"], cwd=str(BASE_DIR), capture_output=True, timeout=30)
                 
                 subprocess.run([git_executable, "branch", "-M", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
-                subprocess.run([git_executable, "reset", "--mixed", "origin/main"], cwd=str(BASE_DIR), capture_output=True, timeout=15)
+                subprocess.run([git_executable, "reset", "--hard", "origin/main"], cwd=str(BASE_DIR), capture_output=True, timeout=15)
                 status = self.get_git_status()
                 if status.get("commit_hash"):
                     self._save_installed_commit(status["commit_hash"], status.get("commit_msg", ""), status.get("commit_date", ""))
