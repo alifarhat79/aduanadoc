@@ -239,7 +239,7 @@ def process_pdf_file(
     from app.services.brand_normalizer import get_normalized_brand
     for it in items_data:
         raw_marca = it.get("marca")
-        clean_marca = get_normalized_brand(db, raw_marca) if raw_marca else None
+        clean_marca = get_normalized_brand(raw_marca, db=db) if raw_marca else None
 
         item_obj = DespachoItem(
             despacho_id=despacho.id,

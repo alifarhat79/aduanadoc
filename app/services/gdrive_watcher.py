@@ -1,7 +1,8 @@
 import asyncio
 import logging
+import threading
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from app.database import SessionLocal
 from app.config import settings
@@ -19,12 +20,41 @@ class GDriveWatcher:
         self.last_checked_at: Optional[datetime] = None
         self.last_result: Dict[str, Any] = {}
         self.task: Optional[asyncio.Task] = None
+        # Despachos importados automáticamente que la interfaz aún no mostró en el modal
+        self.pending_imports: List[Dict[str, str]] = []
+        self._pending_lock = threading.Lock()
 
     @classmethod
     def get_instance(cls) -> "GDriveWatcher":
         if cls._instance is None:
             cls._instance = GDriveWatcher()
         return cls._instance
+
+    def register_imports(self, result: Dict[str, Any], origen: str = "Google Drive"):
+        """Guarda los despachos recién importados para que el modal de la interfaz los muestre."""
+        with self._pending_lock:
+            ya = {p["numero"] for p in self.pending_imports}
+            for d in result.get("detalles", []):
+                if d.get("estado") in ["PROCESADO", "PROCESADO_EXITOSO"] and d.get("numero_despacho"):
+                    if d["numero_despacho"] in ya:
+                        continue
+                    self.pending_imports.append({
+                        "numero": d.get("numero_despacho"),
+                        "importador": d.get("importador") or "Importador Registrado",
+                        "origen": origen,
+                        "tipo": "nuevo"
+                    })
+
+    def peek_pending(self) -> List[Dict[str, str]]:
+        with self._pending_lock:
+            return list(self.pending_imports)
+
+    def consume_pending(self) -> List[Dict[str, str]]:
+        """Devuelve y vacía la lista de despachos importados pendientes de mostrar."""
+        with self._pending_lock:
+            items = list(self.pending_imports)
+            self.pending_imports.clear()
+            return items
 
     async def start(self):
         """Inicia el bucle de vigilancia en segundo plano."""
@@ -93,6 +123,7 @@ class GDriveWatcher:
 
         nuevos = result.get("nuevos_procesados", 0)
         if nuevos > 0:
+            self.register_imports(result)
             logger.info(f"[GDriveWatcher] ¡Nuevos despachos detectados y procesados automáticamente!: {nuevos}")
             # Notificación Windows
             try:

@@ -28,12 +28,10 @@ async def lifespan(app: FastAPI):
         print(f"[Error DB] Error al inicializar base de datos: {db_err}")
 
     # Iniciar Vigilante de Google Drive en segundo plano de forma segura
+    # (el bucle del vigilante hace el primer escaneo 1 segundo después de arrancar)
     try:
-        import asyncio
         watcher = GDriveWatcher.get_instance()
         await watcher.start()
-        # Disparar escaneo inmediato al arrancar el sistema
-        asyncio.create_task(watcher.scan_immediate())
     except Exception as w_err:
         print(f"[Aviso] Vigilante Google Drive omitido: {w_err}")
 

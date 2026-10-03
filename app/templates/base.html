@@ -903,34 +903,44 @@
         };
 
         // ==========================================
-        // Lectura Inmediata de Google Drive al Abrir
+        // Detección automática de despachos nuevos en Google Drive
+        // Abre el modal de importación solo, sin apretar "Sincronizar"
         // ==========================================
-        function verificarGoogleDriveAlAbrir() {
-            fetch('/api/sync/immediate-gdrive')
+        const DRIVE_CHECK_KEY = 'aduanadoc_last_drive_check';
+        const DRIVE_CHECK_MIN_MS = 60 * 1000;   // Consultar Drive como máximo 1 vez por minuto al navegar
+        const PENDING_POLL_MS = 30 * 1000;      // Revisar importaciones del vigilante cada 30 s
+
+        function modalSincronizacionVisible() {
+            const overlay = document.getElementById('sysSyncModalOverlay');
+            return syncInProgress || (overlay && overlay.style.display === 'flex');
+        }
+
+        function abrirModalImportacionAutomatica(data) {
+            if (modalSincronizacionVisible()) return;
+            window.abrirModalSincronizacion();
+            const total = (data.pendientes || []).length + (data.nuevos_en_drive || []).length;
+            document.getElementById('sysSyncTitle').textContent = 'Nuevos despachos en Google Drive';
+            document.getElementById('sysSyncStepDesc').textContent =
+                `Se detectaron ${total} despacho(s) nuevo(s). Importando automáticamente...`;
+        }
+
+        function verificarNuevosDespachos(consultarDrive) {
+            if (modalSincronizacionVisible()) return;
+            if (consultarDrive) sessionStorage.setItem(DRIVE_CHECK_KEY, String(Date.now()));
+            fetch(`/api/sync/check-new?drive=${consultarDrive ? 'true' : 'false'}`)
                 .then(r => r.json())
                 .then(data => {
-                    if (data && data.nuevos_procesados > 0) {
-                        const toast = document.createElement('div');
-                        toast.className = 'alert alert-success alert-dismissible fade show position-fixed bottom-0 end-0 m-4 shadow-lg';
-                        toast.style.zIndex = '99999';
-                        toast.style.maxWidth = '380px';
-                        toast.innerHTML = `
-                            <div class="d-flex align-items-start gap-2">
-                                <i class="bi bi-cloud-arrow-down-fill text-success fs-3"></i>
-                                <div>
-                                    <strong class="text-success">¡Google Drive Actualizado!</strong>
-                                    <p class="mb-2 small text-dark">Se detectaron y agregaron <b>${data.nuevos_procesados}</b> nuevos despachos automáticamente.</p>
-                                    <button class="btn btn-sm btn-success fw-bold py-1 px-3" onclick="window.location.reload()">
-                                        <i class="bi bi-arrow-clockwise me-1"></i> Actualizar Pantalla
-                                    </button>
-                                </div>
-                            </div>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        `;
-                        document.body.appendChild(toast);
-                    }
+                    if (data && data.hay_nuevos) abrirModalImportacionAutomatica(data);
                 })
                 .catch(() => {});
+        }
+
+        function verificarGoogleDriveAlAbrir() {
+            const last = parseInt(sessionStorage.getItem(DRIVE_CHECK_KEY) || '0', 10);
+            const consultarDrive = (Date.now() - last) > DRIVE_CHECK_MIN_MS;
+            verificarNuevosDespachos(consultarDrive);
+            // Mientras el sistema esté abierto, abrir el modal si el vigilante importa despachos nuevos
+            setInterval(() => verificarNuevosDespachos(false), PENDING_POLL_MS);
         }
 
         // Ejecutar comprobaciones al cargar

@@ -4,6 +4,8 @@ import json
 import hashlib
 import tempfile
 import logging
+import re
+import threading
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -15,7 +17,13 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Candado global: evita que el vigilante automático y la sincronización manual procesen el mismo PDF en paralelo
+_SCAN_LOCK = threading.Lock()
+
 class GoogleDriveService:
+    # Archivos que fallaron al procesarse en esta sesión del servidor (nombre -> error)
+    failed_files: Dict[str, str] = {}
+
     def __init__(self, folder_id: Optional[str] = None, credentials_file: Optional[str] = None):
         self.folder_id = folder_id or os.getenv("GDRIVE_FOLDER_ID", "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv")
         self.credentials_file = credentials_file or os.getenv("GDRIVE_CREDENTIALS_FILE", "./service_account.json")
@@ -66,22 +74,9 @@ class GoogleDriveService:
         owner = propietario or propietario_default or "Google Drive"
         return self.scan_and_process_folder(db=db, propietario_default=owner, allow_duplicate=allow_duplicate)
 
-    def scan_and_process_folder(
-        self,
-        db: Session,
-        propietario_default: str = "Google Drive",
-        allow_duplicate: bool = False,
-        propietario: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Escanea la carpeta de Google Drive por API, procesa los PDFs nuevos y omite duplicados.
-        """
-        owner = propietario or propietario_default or "Google Drive"
-        drive_service = self.get_drive_service()
-        
-        # Consultar archivos PDF en la carpeta con paginación completa (soporta Unidades Compartidas y Mi Unidad)
+    def _list_pdf_files(self, drive_service) -> List[Dict[str, Any]]:
+        """Lista todos los PDFs de la carpeta de Google Drive (con paginación)."""
         query = f"'{self.folder_id}' in parents and (mimeType = 'application/pdf' or name contains '.pdf' or name contains '.PDF') and trashed = false"
-        
         files = []
         page_token = None
         while True:
@@ -97,6 +92,67 @@ class GoogleDriveService:
             page_token = results.get('nextPageToken')
             if not page_token:
                 break
+        return files
+
+    @staticmethod
+    def _find_existing_by_name(db: Session, file_name: str) -> Optional[Despacho]:
+        """Busca un despacho ya registrado por nombre de archivo o por número de despacho contenido en el nombre."""
+        existente = db.query(Despacho).filter(
+            (Despacho.nombre_archivo_original == file_name) |
+            (Despacho.archivo_pdf.like(f"%{file_name}%"))
+        ).first()
+        if not existente:
+            match_num = re.search(r"\b([0-9]{2}[0-9A-Za-z]{10,18})\b", file_name)
+            if match_num:
+                existente = db.query(Despacho).filter(Despacho.numero_despacho == match_num.group(1).upper()).first()
+        return existente
+
+    def detect_new_files(self, db: Session) -> List[str]:
+        """
+        Detección RÁPIDA (sin descargar) de PDFs en Google Drive que aún no están en la base.
+        Excluye los archivos que ya fallaron al procesarse para no reabrir el modal en bucle.
+        """
+        drive_service = self.get_drive_service()
+        nuevos = []
+        for f in self._list_pdf_files(drive_service):
+            name = f['name'].strip()
+            if name in GoogleDriveService.failed_files:
+                continue
+            if not self._find_existing_by_name(db, name):
+                nuevos.append(name)
+        return nuevos
+
+    @staticmethod
+    def is_scanning() -> bool:
+        return _SCAN_LOCK.locked()
+
+    def scan_and_process_folder(
+        self,
+        db: Session,
+        propietario_default: str = "Google Drive",
+        allow_duplicate: bool = False,
+        propietario: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Escanea la carpeta de Google Drive por API, procesa los PDFs nuevos y omite duplicados.
+        Usa un candado global para que el vigilante y la sincronización manual no procesen el mismo PDF a la vez.
+        """
+        with _SCAN_LOCK:
+            # Refrescar la sesión: otro escaneo pudo haber insertado despachos mientras esperábamos el candado
+            db.expire_all()
+            return self._scan_and_process_folder_locked(db, propietario_default, propietario)
+
+    def _scan_and_process_folder_locked(
+        self,
+        db: Session,
+        propietario_default: str,
+        propietario: Optional[str]
+    ) -> Dict[str, Any]:
+        owner = propietario or propietario_default or "Google Drive"
+        drive_service = self.get_drive_service()
+        
+        # Consultar archivos PDF en la carpeta con paginación completa (soporta Unidades Compartidas y Mi Unidad)
+        files = self._list_pdf_files(drive_service)
         
         total_encontrados = len(files)
         nuevos_procesados = 0
@@ -109,23 +165,11 @@ class GoogleDriveService:
         for f in files:
             file_id = f['id']
             file_name = f['name'].strip()
+            tmp_path = None
 
             try:
-                # 1. Comprobación RÁPIDA por NOMBRE DE ARCHIVO antes de descargar:
-                # Si el nombre ya está registrado en la base de datos, se omite de inmediato sin descargar.
-                existente_por_nombre = db.query(Despacho).filter(
-                    (Despacho.nombre_archivo_original == file_name) |
-                    (Despacho.archivo_pdf.like(f"%{file_name}%"))
-                ).first()
-
-                # Si el nombre del archivo contiene un código de despacho conocido (ej: 26021ZF2I000919N.pdf)
-                if not existente_por_nombre:
-                    import re
-                    match_num = re.search(r"\b([0-9]{2}[0-9A-Za-z]{10,18})\b", file_name)
-                    if match_num:
-                        posible_num = match_num.group(1).upper()
-                        existente_por_nombre = db.query(Despacho).filter(Despacho.numero_despacho == posible_num).first()
-
+                # 1. Comprobación RÁPIDA por NOMBRE DE ARCHIVO (o número de despacho) antes de descargar
+                existente_por_nombre = self._find_existing_by_name(db, file_name)
                 if existente_por_nombre:
                     omitidos_duplicados += 1
                     detalles.append({
@@ -212,6 +256,17 @@ class GoogleDriveService:
 
             except Exception as err:
                 errores += 1
+                GoogleDriveService.failed_files[file_name] = str(err)
+                logger.error(f"[GoogleDriveService] Error procesando '{file_name}': {err}")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                if tmp_path and os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
                 detalles.append({
                     "archivo": file_name,
                     "estado": "ERROR",

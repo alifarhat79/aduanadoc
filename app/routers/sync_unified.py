@@ -29,6 +29,38 @@ async def immediate_gdrive_check():
         "detalles": res.get("detalles", [])
     }
 
+@router.get("/check-new")
+async def check_new_despachos(drive: bool = True):
+    """
+    Comprobación rápida para abrir automáticamente el modal de importación:
+    - pendientes: despachos que el vigilante ya importó y la interfaz aún no mostró.
+    - nuevos_en_drive: PDFs en Google Drive aún no registrados (sin descargarlos). Solo si drive=true.
+    """
+    watcher = GDriveWatcher.get_instance()
+    pendientes = watcher.peek_pending()
+    nuevos_en_drive: List[str] = []
+    error = None
+    if drive and GoogleDriveService.is_api_available():
+        def run_detect():
+            db = SessionLocal()
+            try:
+                return GoogleDriveService().detect_new_files(db)
+            finally:
+                db.close()
+        try:
+            nuevos_en_drive = await asyncio.wait_for(asyncio.to_thread(run_detect), timeout=30.0)
+        except Exception as e:
+            error = str(e)
+            logger.warning(f"[CheckNew] No se pudo consultar Google Drive: {e}")
+
+    return {
+        "hay_nuevos": bool(pendientes or nuevos_en_drive),
+        "pendientes": pendientes,
+        "nuevos_en_drive": nuevos_en_drive,
+        "escaneando": GoogleDriveService.is_scanning(),
+        "error": error
+    }
+
 @router.get("/stream")
 async def unified_sync_stream():
     """
@@ -61,6 +93,7 @@ async def unified_sync_stream():
         yield send_evt(20, 1, "gdrive_scan", "Examinando carpeta de Google Drive (DESPACHOS FINIQUITADOS)...", [])
         
         gdrive_items = []
+        gdrive_errores: List[str] = []
         try:
             gdrive = GoogleDriveService()
             if GoogleDriveService.is_api_available():
@@ -71,9 +104,19 @@ async def unified_sync_stream():
                     finally:
                         db.close()
 
-                g_res = await asyncio.to_thread(run_gdrive)
+                g_task = asyncio.ensure_future(asyncio.to_thread(run_gdrive))
+                pct = 20
+                while not g_task.done():
+                    await asyncio.wait({g_task}, timeout=2.0)
+                    if not g_task.done():
+                        pct = min(pct + 1, 38)
+                        yield send_evt(pct, 1, "gdrive_scan", "Descargando y procesando despachos nuevos de Google Drive...", [])
+                g_res = g_task.result()
                 detalles = g_res.get("detalles", [])
                 for d in detalles:
+                    if d.get("estado") == "ERROR":
+                        gdrive_errores.append(f"{d.get('archivo')}: {d.get('error')}")
+                        logger.error(f"[SyncStream] Error procesando {d.get('archivo')}: {d.get('error')}")
                     if d.get("estado") in ["PROCESADO", "PROCESADO_EXITOSO"] and d.get("numero_despacho"):
                         item = {
                             "numero": d.get("numero_despacho"),
@@ -85,13 +128,25 @@ async def unified_sync_stream():
                         adicionados.append(item)
             else:
                 logger.warning("[SyncStream] Google API no disponible")
+                gdrive_errores.append("Google API no disponible (pip install google-api-python-client google-auth)")
         except Exception as ge:
             logger.error(f"[SyncStream] Error en Google Drive: {ge}")
+            gdrive_errores.append(str(ge))
+
+        # Agregar los despachos que el vigilante automático importó en segundo plano (al arrancar o cada minuto)
+        ya_listados = {i["numero"] for i in gdrive_items}
+        for item in GDriveWatcher.get_instance().consume_pending():
+            if item["numero"] not in ya_listados:
+                ya_listados.add(item["numero"])
+                gdrive_items.append(item)
+                adicionados.append(item)
 
         if gdrive_items:
             yield send_evt(40, 2, "gdrive_done", f"¡Se importaron {len(gdrive_items)} despachos nuevos desde Google Drive!", gdrive_items)
-        else:
+        elif not gdrive_errores:
             yield send_evt(40, 2, "gdrive_done", "Google Drive al día. 0 despachos nuevos pendientes.", [])
+        if gdrive_errores:
+            yield send_evt(40, 2, "gdrive_error", f"⚠ {len(gdrive_errores)} archivo(s) de Google Drive con error: {gdrive_errores[0][:120]}", [])
         
         await asyncio.sleep(0.5)
 
@@ -157,6 +212,8 @@ async def unified_sync_stream():
 
         # --- Paso 5: Finalización ---
         final_msg = f"¡Sincronización exitosa! Total de despachos adicionados: {len(adicionados)}." if adicionados else "¡Todo al día! Tu sistema está sincronizado con Google Drive y la Nube."
+        if gdrive_errores:
+            final_msg += f" ⚠ {len(gdrive_errores)} archivo(s) de Google Drive no se pudieron procesar (ver log)."
         yield send_evt(100, 5, "finalizado", final_msg, adicionados, is_final=True)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
