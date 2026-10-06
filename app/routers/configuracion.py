@@ -24,10 +24,18 @@ ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 AUTH_COOKIE_NAME = "aduanadoc_admin_session"
 
 # --- UTILIDADES DE ENCRIPTACIÓN Y SESIÓN DE PROGRAMADOR ---
+def _admin_password() -> str:
+    """Contraseña de programador: viene de aduanadoc_claves.env (Drive) o del .env local. Nunca del código."""
+    return (os.getenv("CONFIG_ADMIN_PASSWORD") or getattr(settings, "CONFIG_ADMIN_PASSWORD", "") or "").strip()
+
+def _secret_key() -> str:
+    secret = (os.getenv("SECRET_KEY") or getattr(settings, "SECRET_KEY", "") or "").strip()
+    return secret or f"aduanadoc::{_admin_password()}"
+
 def create_admin_token() -> str:
     timestamp = str(int(time.time()))
-    pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
-    secret = getattr(settings, "SECRET_KEY", "aduanadoc_programmer_secret_key_2026")
+    pwd = _admin_password()
+    secret = _secret_key()
     signature = hmac.new(
         secret.encode(),
         f"admin_session_{pwd}_{timestamp}".encode(),
@@ -44,8 +52,10 @@ def verify_admin_token(token: str) -> bool:
         # Token válido por 7 días
         if time.time() - ts > 7 * 86400:
             return False
-        pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
-        secret = getattr(settings, "SECRET_KEY", "aduanadoc_programmer_secret_key_2026")
+        pwd = _admin_password()
+        if not pwd:
+            return False
+        secret = _secret_key()
         expected_sig = hmac.new(
             secret.encode(),
             f"admin_session_{pwd}_{ts_str}".encode(),
@@ -93,8 +103,13 @@ class GDriveLocalScanPayload(BaseModel):
 # --- RUTAS DE AUTENTICACIÓN ---
 @router.post("/login")
 async def login_admin(payload: LoginPayload):
-    current_pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
-    if payload.password == current_pwd:
+    current_pwd = _admin_password()
+    if not current_pwd:
+        raise HTTPException(
+            status_code=503,
+            detail="Contraseña de programador no configurada. Defina CONFIG_ADMIN_PASSWORD en aduanadoc_claves.env (Google Drive) o en el .env de esta PC."
+        )
+    if hmac.compare_digest(payload.password.encode(), current_pwd.encode()):
         token = create_admin_token()
         response = JSONResponse(content={"success": True, "message": "Acceso concedido"})
         response.set_cookie(
@@ -119,8 +134,8 @@ async def logout_admin():
 @router.post("/api/cambiar-password")
 async def cambiar_password_api(payload: ChangePasswordPayload, request: Request):
     require_admin_auth(request)
-    current_pwd = os.getenv("CONFIG_ADMIN_PASSWORD", getattr(settings, "CONFIG_ADMIN_PASSWORD", "Sohalia2012*@"))
-    if payload.current_password != current_pwd:
+    current_pwd = _admin_password()
+    if not current_pwd or not hmac.compare_digest(payload.current_password.encode(), current_pwd.encode()):
         raise HTTPException(status_code=400, detail="La contraseña actual no es correcta.")
     
     if len(payload.new_password.strip()) < 6:
@@ -135,7 +150,11 @@ async def cambiar_password_api(payload: ChangePasswordPayload, request: Request)
         pass
     
     token = create_admin_token()
-    response = JSONResponse(content={"success": True, "message": "Contraseña de programador actualizada exitosamente."})
+    response = JSONResponse(content={
+        "success": True,
+        "message": "Contraseña actualizada en esta PC. Para que aplique en TODAS las PCs, cámbiela también en "
+                   "aduanadoc_claves.env (Google Drive); ese archivo tiene prioridad al reiniciar."
+    })
     response.set_cookie(
         key=AUTH_COOKIE_NAME,
         value=token,
@@ -293,29 +312,15 @@ async def guardar_configuracion_api(payload: SaveTursoPayload, request: Request 
             ENV_PATH.touch()
         set_key(str(ENV_PATH), "TURSO_DATABASE_URL", url)
         set_key(str(ENV_PATH), "TURSO_AUTH_TOKEN", token)
-
-        # Actualizar app/config.py para que viaje automáticamente por Git
-        config_file = BASE_DIR / "app" / "config.py"
-        if config_file.exists():
-            import re
-            content = config_file.read_text(encoding="utf-8")
-            content = re.sub(r'TURSO_DATABASE_URL:\s*str\s*=\s*".*?"', f'TURSO_DATABASE_URL: str = "{url}"', content)
-            content = re.sub(r'TURSO_AUTH_TOKEN:\s*str\s*=\s*".*?"', f'TURSO_AUTH_TOKEN: str = "{token}"', content)
-            config_file.write_text(content, encoding="utf-8")
-
-            try:
-                import subprocess
-                subprocess.run(["git", "add", "app/config.py"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
-                subprocess.run(["git", "commit", "-m", "chore: sincronizar credenciales Turso"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
-                subprocess.run(["git", "push", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
-            except Exception:
-                pass
+        # NOTA: las claves ya NO se escriben en app/config.py ni se suben a GitHub (repositorio público).
+        # Para todas las PCs se distribuyen con aduanadoc_claves.env en Google Drive.
     except Exception:
         pass
 
     return {
         "success": True,
-        "message": "Configuración guardada y sincronizada para todas las PCs."
+        "message": "Configuración guardada en esta PC. Para aplicarla en TODAS las PCs, actualice también "
+                   "aduanadoc_claves.env en Google Drive (tiene prioridad al reiniciar)."
     }
 
 
@@ -414,30 +419,14 @@ async def guardar_notificaciones_api(payload: SaveNotificationsPayload, request:
         set_key(str(ENV_PATH), "TELEGRAM_CHAT_ID", chat_id)
         set_key(str(ENV_PATH), "WEBHOOK_URL", webhook)
         set_key(str(ENV_PATH), "NOTIFICATIONS_ENABLED", "true" if enabled else "false")
-
-        # Actualizar app/config.py para que viaje automáticamente por Git a todas las PCs
-        config_file = BASE_DIR / "app" / "config.py"
-        if config_file.exists():
-            import re
-            content = config_file.read_text(encoding="utf-8")
-            content = re.sub(r'TELEGRAM_BOT_TOKEN:\s*str\s*=\s*".*?"', f'TELEGRAM_BOT_TOKEN: str = "{token}"', content)
-            content = re.sub(r'TELEGRAM_CHAT_ID:\s*str\s*=\s*".*?"', f'TELEGRAM_CHAT_ID: str = "{chat_id}"', content)
-            config_file.write_text(content, encoding="utf-8")
-
-            # Intentar sincronizar con Git
-            try:
-                import subprocess
-                subprocess.run(["git", "add", "app/config.py"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
-                subprocess.run(["git", "commit", "-m", "chore: sincronizar credenciales Telegram"], cwd=str(BASE_DIR), capture_output=True, timeout=5)
-                subprocess.run(["git", "push", "origin", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
-            except Exception:
-                pass
+        # NOTA: las claves ya NO se escriben en app/config.py ni se suben a GitHub (repositorio público).
     except Exception:
         pass
 
     return {
         "success": True,
-        "message": "Configuración de notificaciones guardada y sincronizada para todas las PCs."
+        "message": "Notificaciones guardadas en esta PC. Para aplicarlas en TODAS las PCs, actualice también "
+                   "aduanadoc_claves.env en Google Drive (tiene prioridad al reiniciar)."
     }
 
 

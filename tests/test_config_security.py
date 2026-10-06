@@ -1,3 +1,4 @@
+import os
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -20,7 +21,7 @@ def test_configuracion_login_wrong_password():
 
 def test_configuracion_login_and_access_full_lifecycle():
     # 1. Login exitoso con la clave maestra
-    response = client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
+    response = client.post("/configuracion/login", json={"password": os.environ["CONFIG_ADMIN_PASSWORD"]})
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True

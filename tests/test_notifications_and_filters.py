@@ -1,3 +1,4 @@
+import os
 import pytest
 from datetime import date, datetime
 from fastapi.testclient import TestClient
@@ -203,11 +204,11 @@ def test_notification_service_formatting_and_telegram_mock():
 def test_notification_api_endpoints():
     """Prueba los endpoints de guardar y probar configuración de notificaciones."""
     import os
-    orig_token = os.getenv("TELEGRAM_BOT_TOKEN", "8815110549:AAGsv9YjEqrYAqRS-qsCJh1U5prxVvIi2bI")
+    orig_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     orig_chat = os.getenv("TELEGRAM_CHAT_ID", "67567393,817311653")
     orig_webhook = os.getenv("WEBHOOK_URL", "")
 
-    client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
+    client.post("/configuracion/login", json={"password": os.environ["CONFIG_ADMIN_PASSWORD"]})
     # Guardar configuración
     payload = {
         "telegram_bot_token": "987654:TESTTOKEN",

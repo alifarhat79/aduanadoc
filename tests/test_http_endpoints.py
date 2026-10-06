@@ -1,3 +1,4 @@
+import os
 from fastapi.testclient import TestClient
 from datetime import date
 from app.database import init_db, SessionLocal
@@ -143,7 +144,7 @@ def test_configuracion_view_endpoint():
     assert "Acceso Restringido" in response.text
 
     # Autenticado -> pantalla de configuración
-    client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
+    client.post("/configuracion/login", json={"password": os.environ["CONFIG_ADMIN_PASSWORD"]})
     res_auth = client.get("/configuracion")
     assert res_auth.status_code == 200
     assert "Conexión con Turso Cloud Database" in res_auth.text
@@ -155,7 +156,7 @@ def test_configuracion_guardar_api():
     original_token = os.getenv("TURSO_AUTH_TOKEN", "")
     original_url = os.getenv("TURSO_DATABASE_URL", "")
 
-    client.post("/configuracion/login", json={"password": "Sohalia2012*@"})
+    client.post("/configuracion/login", json={"password": os.environ["CONFIG_ADMIN_PASSWORD"]})
     payload = {
         "database_url": "libsql://despachos-alifarhat.aws-us-east-1.turso.io",
         "auth_token": original_token or "test_dummy_token"

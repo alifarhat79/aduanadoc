@@ -42,7 +42,7 @@ if not errorlevel 1 (
     ) else (
         git fetch origin main -q >nul 2>&1
         git pull origin main --ff-only >nul 2>&1
-        if errorlevel 1 git reset --hard origin/main >nul 2>&1
+        if errorlevel 1 call "%~dp0actualizar_seguro.bat"     
     )
 ) else (
     echo [*] Git no detectado. Sincronizando directamente desde GitHub...
