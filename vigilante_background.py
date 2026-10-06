@@ -89,6 +89,14 @@ def ejecutar_vigilancia():
     except Exception:
         pass
 
+    # 3b. Sincronizar claves desde Google Drive y reportar arranque por Telegram
+    try:
+        from app.services.secrets_sync import startup_secrets_and_report
+        res = startup_secrets_and_report(origen="Vigilante sin servidor")
+        logger.info(f"[Claves] Estado: {res.get('estado')} - {res.get('detalle', '')}")
+    except Exception as s_err:
+        logger.warning(f"[Claves] Sincronización omitida: {s_err}")
+
     # 4. Bucle principal de vigilancia
     primera_vez = True
     while EJECUTANDO:

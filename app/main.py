@@ -27,6 +27,15 @@ async def lifespan(app: FastAPI):
     except Exception as db_err:
         print(f"[Error DB] Error al inicializar base de datos: {db_err}")
 
+    # Sincronizar claves desde Google Drive (archivo privado aduanadoc_claves.env) y
+    # enviar reporte de arranque por Telegram. Si Drive no responde, sigue con el .env local.
+    try:
+        import asyncio
+        from app.services.secrets_sync import startup_secrets_and_report
+        await asyncio.wait_for(asyncio.to_thread(startup_secrets_and_report, "Servidor web"), timeout=20.0)
+    except Exception as s_err:
+        print(f"[Aviso] Sincronización de claves omitida: {s_err}")
+
     # Iniciar Vigilante de Google Drive en segundo plano de forma segura
     # (el bucle del vigilante hace el primer escaneo 1 segundo después de arrancar)
     try:
