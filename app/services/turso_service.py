@@ -120,7 +120,7 @@ class TursoService:
 
         items = db.query(DespachoItem).filter(DespachoItem.despacho_id == despacho_id).all()
 
-        # 1. Verificar si ya existe en Turso por numero_despacho o hash_archivo
+        # 1. Verificar si ya existe en Turso por numero_despacho y, si no, por hash_archivo
         turso_target_id = None
         check_stmts = []
         if despacho.numero_despacho and despacho.numero_despacho.strip() not in ("", "S/N", "None"):
@@ -128,43 +128,54 @@ class TursoService:
                 "sql": "SELECT id FROM despachos WHERE numero_despacho = ? LIMIT 1;",
                 "args": [{"type": "text", "value": despacho.numero_despacho.strip()}]
             })
-        elif despacho.hash_archivo:
+        if despacho.hash_archivo:
             check_stmts.append({
                 "sql": "SELECT id FROM despachos WHERE hash_archivo = ? LIMIT 1;",
                 "args": [{"type": "text", "value": despacho.hash_archivo.strip()}]
             })
 
         if check_stmts:
-            try:
-                res_check = await self.execute_raw(check_stmts)
-                rows = res_check.get("results", [])[0].get("response", {}).get("result", {}).get("rows", [])
-                if rows and len(rows) > 0:
+            res_check = await self.execute_raw(check_stmts)
+            for r in res_check.get("results", [])[:len(check_stmts)]:
+                if "response" not in r:
+                    raise Exception(f"Error comprobando existencia en Turso: {r}")
+                rows = r.get("response", {}).get("result", {}).get("rows", [])
+                if rows:
                     val_obj = rows[0][0]
                     turso_target_id = int(val_obj.get("value") if isinstance(val_obj, dict) else val_obj)
-            except Exception as e:
-                logger.debug(f"[TursoService] Error comprobando existencia en Turso: {e}")
-
-        # Si no existía en Turso, usamos el ID local como sugerencia
-        if turso_target_id is None:
-            turso_target_id = despacho.id
+                    break
 
         despacho_cols = [c.name for c in Despacho.__table__.columns]
         item_cols = [c.name for c in DespachoItem.__table__.columns if c.name != "id"]
 
-        stmts = []
-
-        # 2. Despacho: UPSERT / REPLACE con turso_target_id
-        cols_sql = ", ".join(despacho_cols)
-        placeholders = ", ".join(["?"] * len(despacho_cols))
-        desp_sql = f"INSERT OR REPLACE INTO despachos ({cols_sql}) VALUES ({placeholders})"
-        
-        args = []
-        for col in despacho_cols:
-            if col == "id":
-                args.append(self._convert_value_to_arg(turso_target_id))
-            else:
-                args.append(self._convert_value_to_arg(getattr(despacho, col, None)))
-        stmts.append({"sql": desp_sql, "args": args})
+        if turso_target_id is None:
+            # NUEVO en Turso: NO usar el ID local (cada PC numera distinto y pisaría otro despacho).
+            # Se inserta sin ID para que Turso asigne uno libre.
+            ins_cols = [c for c in despacho_cols if c != "id"]
+            ins_sql = f"INSERT INTO despachos ({', '.join(ins_cols)}) VALUES ({', '.join(['?'] * len(ins_cols))})"
+            ins_args = [self._convert_value_to_arg(getattr(despacho, col, None)) for col in ins_cols]
+            res_ins = await self.execute_raw([{"sql": ins_sql, "args": ins_args}])
+            first = res_ins.get("results", [{}])[0]
+            if "response" not in first:
+                raise Exception(f"Error insertando despacho en Turso: {first}")
+            new_id = first["response"]["result"].get("last_insert_rowid")
+            if new_id is None:
+                raise Exception("Turso no devolvió el ID del despacho insertado")
+            turso_target_id = int(new_id)
+            stmts = []
+        else:
+            # YA EXISTE en Turso: actualizar esa misma fila (mismo despacho)
+            stmts = []
+            cols_sql = ", ".join(despacho_cols)
+            placeholders = ", ".join(["?"] * len(despacho_cols))
+            desp_sql = f"INSERT OR REPLACE INTO despachos ({cols_sql}) VALUES ({placeholders})"
+            args = []
+            for col in despacho_cols:
+                if col == "id":
+                    args.append(self._convert_value_to_arg(turso_target_id))
+                else:
+                    args.append(self._convert_value_to_arg(getattr(despacho, col, None)))
+            stmts.append({"sql": desp_sql, "args": args})
 
         # 3. Eliminar items anteriores en Turso para este despacho
         stmts.append({
@@ -347,8 +358,7 @@ class TursoService:
             if not existing and nombre_arch:
                 existing = db.query(Despacho).filter(Despacho.nombre_archivo_original == nombre_arch).first()
 
-            if not existing and turso_id is not None:
-                existing = db.query(Despacho).filter(Despacho.id == turso_id).first()
+            # NO buscar por ID: cada PC numera distinto y se pisaría un despacho diferente.
 
             is_new = False
             if not existing:
@@ -358,7 +368,7 @@ class TursoService:
 
             for col in Despacho.__table__.columns:
                 col_name = col.name
-                if col_name == "id" and existing.id:
+                if col_name == "id":  # el ID local lo asigna esta PC, nunca se copia el de Turso
                     continue
                 if col_name in row_dict:
                     val = row_dict[col_name]
@@ -526,8 +536,7 @@ class TursoService:
             if not existing and nombre_arch:
                 existing = db.query(Despacho).filter(Despacho.nombre_archivo_original == nombre_arch).first()
 
-            if not existing and turso_id is not None:
-                existing = db.query(Despacho).filter(Despacho.id == turso_id).first()
+            # NO buscar por ID: cada PC numera distinto y se pisaría un despacho diferente.
 
             if not existing:
                 existing = Despacho()
@@ -536,7 +545,7 @@ class TursoService:
 
             for col in Despacho.__table__.columns:
                 col_name = col.name
-                if col_name == "id" and existing.id:
+                if col_name == "id":  # el ID local lo asigna esta PC, nunca se copia el de Turso
                     continue
                 if col_name in row_dict:
                     val = row_dict[col_name]

@@ -199,8 +199,9 @@ def send_startup_report(sync_result: Dict[str, Any], origen: str = "Servidor web
         return {"success": False, "error": "reporte desactivado"}
 
     pc = socket.gethostname()
+    limpieza = sync_result.get("limpieza") or {}
     try:
-        if REPORT_STAMP.exists():
+        if REPORT_STAMP.exists() and not limpieza.get("eliminados"):
             last = json.loads(REPORT_STAMP.read_text(encoding="utf-8"))
             last_at = datetime.fromisoformat(last.get("at", "2000-01-01T00:00:00"))
             if datetime.now() - last_at < REPORT_MIN_INTERVAL and last.get("estado") == sync_result.get("estado"):
@@ -223,11 +224,20 @@ def send_startup_report(sync_result: Dict[str, Any], origen: str = "Servidor web
         f"• Usuario: {os.getenv('USERNAME', '?')}\n"
         f"• Carpeta: <code>{BASE_DIR}</code>\n"
         f"• Versión: {_version_actual()}\n"
-        f"• Despachos en la base: {_contar_despachos()}\n"
+        f"• Despachos en la base: {_contar_despachos()} (en Turso: {_contar_turso()})\n"
         f"• service_account.json: {'sí' if sync_result.get('service_account') else 'NO'}\n"
         f"• .env propio con claves: {', '.join(env_local) if env_local else 'NO'}\n"
         f"• Claves Drive: {iconos.get(estado, estado)}"
     )
+    if limpieza.get("eliminados"):
+        texto += f"\n🧹 Duplicados exactos eliminados: {len(limpieza['eliminados'])} ({', '.join(limpieza['eliminados'][:5])})"
+    if limpieza.get("omitidos"):
+        texto += f"\n⚠️ Duplicados NO eliminados (usados en planillas): {', '.join(limpieza['omitidos'][:5])}"
+    turso_res = sync_result.get("turso") or {}
+    if "subidos" in turso_res:
+        texto += f"\n☁️ Sync Turso al arrancar: {turso_res['subidos']} subidos, {turso_res['bajados']} bajados"
+    if limpieza.get("error"):
+        texto += f"\n⚠️ Error en limpieza de duplicados: {limpieza['error']}"
     if "Google Drive" in str(BASE_DIR) or "My Drive" in str(BASE_DIR) or "Mi unidad" in str(BASE_DIR):
         texto += "\n⚠️ El programa corre DENTRO de Google Drive: conviene moverlo a C:\\aduanadoc"
 
@@ -245,11 +255,64 @@ def send_startup_report(sync_result: Dict[str, Any], origen: str = "Servidor web
         return {"success": False, "error": str(e)}
 
 
-def startup_secrets_and_report(origen: str = "Servidor web") -> Dict[str, Any]:
-    """Atajo para el arranque: sincroniza claves y envía el reporte."""
-    result = sync_secrets_from_drive()
+def _contar_turso() -> str:
+    try:
+        import asyncio
+        from app.services.turso_service import TursoService
+        t = TursoService()
+        if not t.is_configured():
+            return "no configurado"
+        res = asyncio.run(asyncio.wait_for(t.execute_raw([{"sql": "SELECT COUNT(*) FROM despachos;"}]), timeout=10))
+        val = res["results"][0]["response"]["result"]["rows"][0][0]
+        return str(val.get("value") if isinstance(val, dict) else val)
+    except Exception:
+        return "?"
+
+
+def startup_secrets_and_report(origen: str = "Servidor web", sync_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Atajo para el arranque: limpia duplicados exactos, sincroniza claves y envía el reporte."""
+    limpieza: Dict[str, Any] = {}
+    if not _is_test_run():
+        try:
+            from app.services.maintenance import remove_exact_duplicates
+            limpieza = remove_exact_duplicates()
+        except Exception as e:
+            limpieza = {"error": str(e)[:200]}
+    result = sync_result if sync_result is not None else sync_secrets_from_drive()
+    result["limpieza"] = limpieza
+    if not _is_test_run():
+        result["turso"] = _sincronizar_turso()
+        if result["turso"].get("error"):
+            limpieza.setdefault("error", f"Sync Turso: {result['turso']['error']}")
     try:
         result["reporte"] = send_startup_report(result, origen=origen)
     except Exception as e:
         result["reporte"] = {"success": False, "error": str(e)}
     return result
+
+
+def _sincronizar_turso() -> Dict[str, Any]:
+    """Sube a Turso los despachos locales que falten y baja los nuevos de otras PCs."""
+    try:
+        import asyncio
+        from app.database import SessionLocal
+        from app.services.turso_service import TursoService
+        t = TursoService()
+        if not t.is_configured():
+            return {"omitido": "Turso no configurado"}
+
+        async def _run():
+            db = SessionLocal()
+            try:
+                subida = await t.push_delta_to_turso(db)
+                bajada = await t.pull_despachos_quick(db)
+                return {"subidos": subida.get("despachos_subidos", 0), "bajados": bajada.get("despachos_nuevos", 0)}
+            finally:
+                db.close()
+
+        res = asyncio.run(asyncio.wait_for(_run(), timeout=90))
+        logger.info(f"[Arranque] Sync Turso: {res}")
+        return res
+    except Exception as e:
+        logger.warning(f"[Arranque] Sync Turso falló: {e}")
+        return {"error": str(e)[:150]}

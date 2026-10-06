@@ -31,10 +31,18 @@ async def lifespan(app: FastAPI):
     # enviar reporte de arranque por Telegram. Si Drive no responde, sigue con el .env local.
     try:
         import asyncio
-        from app.services.secrets_sync import startup_secrets_and_report
-        await asyncio.wait_for(asyncio.to_thread(startup_secrets_and_report, "Servidor web"), timeout=20.0)
+        from app.services.secrets_sync import startup_secrets_and_report, sync_secrets_from_drive
+        try:
+            sync_res = await asyncio.wait_for(asyncio.to_thread(sync_secrets_from_drive), timeout=20.0)
+        except Exception as s_err:
+            print(f"[Aviso] Sincronización de claves omitida: {s_err}")
+            sync_res = {"estado": "error", "detalle": str(s_err)[:200]}
+        # Limpieza de duplicados + sync Turso + reporte Telegram en segundo plano (no bloquea el arranque)
+        app.state.startup_task = asyncio.create_task(
+            asyncio.to_thread(startup_secrets_and_report, "Servidor web", sync_res)
+        )
     except Exception as s_err:
-        print(f"[Aviso] Sincronización de claves omitida: {s_err}")
+        print(f"[Aviso] Tareas de arranque omitidas: {s_err}")
 
     # Iniciar Vigilante de Google Drive en segundo plano de forma segura
     # (el bucle del vigilante hace el primer escaneo 1 segundo después de arrancar)

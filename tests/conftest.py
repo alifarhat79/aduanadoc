@@ -14,4 +14,17 @@ from app.config import settings  # noqa: E402  (carga .env primero, luego lo sob
 TEST_ADMIN_PASSWORD = "clave_de_prueba_123"
 
 os.environ["CONFIG_ADMIN_PASSWORD"] = TEST_ADMIN_PASSWORD
+# Nunca tocar la base Turso real desde las pruebas (antes se subían despachos de prueba a la nube).
+os.environ["TURSO_DATABASE_URL"] = ""
+os.environ["TURSO_AUTH_TOKEN"] = ""
 settings.CONFIG_ADMIN_PASSWORD = TEST_ADMIN_PASSWORD
+
+# Los endpoints de configuración guardan claves con set_key(ENV_PATH): en pruebas se usa
+# un .env temporal para no pisar el .env real de la PC.
+import tempfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+from app.routers import configuracion as _configuracion  # noqa: E402
+
+_TEST_ENV = Path(tempfile.gettempdir()) / "aduanadoc_pruebas.env"
+_TEST_ENV.write_text("", encoding="utf-8")
+_configuracion.ENV_PATH = _TEST_ENV
