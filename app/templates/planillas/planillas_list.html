@@ -171,7 +171,7 @@
                                     <a href="/planillas/{{ p.id }}/pdf" class="btn btn-outline-danger" title="Exportar a PDF">
                                         <i class="bi bi-file-earmark-pdf"></i>
                                     </a>
-                                    <button type="button" class="btn btn-outline-danger" onclick="eliminarPlanilla({{ p.id }}, '{{ p.despacho_numero or p.id }}')" title="Eliminar">
+                                    <button type="button" class="btn btn-outline-danger" onclick="eliminarPlanilla({{ p.id }}, {{ (p.despacho_numero or p.id)|string|tojson|forceescape }})" title="Eliminar">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>

@@ -1,3 +1,4 @@
+import html
 import logging
 import httpx
 import os
@@ -7,6 +8,12 @@ from pathlib import Path
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _h(value: Any) -> str:
+    """Escapa texto para Telegram en modo HTML. Los datos vienen de PDFs y nombres de archivo:
+    un '<' o '&' hacía que Telegram rechazara el mensaje (y permitía inyectar enlaces)."""
+    return html.escape(str(value), quote=False)
 
 class NotificationService:
     def __init__(
@@ -115,15 +122,15 @@ class NotificationService:
         # 1. Mensaje para Telegram en HTML
         tg_text = (
             f"📦 <b>¡Nuevo Despacho Procesado!</b>\n\n"
-            f"📄 <b>Nº Despacho:</b> <code>{nro_despacho}</code>\n"
-            f"👤 <b>Importador:</b> {importador}\n"
-            f"🏷️ <b>Dueño / Cliente:</b> {propietario}\n"
-            f"🚦 <b>Canal:</b> {canal_emoji} <b>{canal}</b>\n"
+            f"📄 <b>Nº Despacho:</b> <code>{_h(nro_despacho)}</code>\n"
+            f"👤 <b>Importador:</b> {_h(importador)}\n"
+            f"🏷️ <b>Dueño / Cliente:</b> {_h(propietario)}\n"
+            f"🚦 <b>Canal:</b> {canal_emoji} <b>{_h(canal)}</b>\n"
             f"💰 <b>Total FOB:</b> ${fob:,.2f} USD\n"
             f"💵 <b>Total CIF:</b> ${cif:,.2f} USD\n"
             f"📋 <b>Mercancías / Ítems:</b> {items_count} extraídos\n"
-            f"📁 <b>Archivo:</b> {archivo}\n"
-            f"🤖 <b>Origen:</b> {source}\n\n"
+            f"📁 <b>Archivo:</b> {_h(archivo)}\n"
+            f"🤖 <b>Origen:</b> {_h(source)}\n\n"
             f"<i>AduanaDoc - Sistema de Gestión Aduanera</i>"
         )
 
@@ -169,14 +176,14 @@ class NotificationService:
             return {"success": False, "message": "Notificaciones desactivadas."}
 
         anterior_clean = propietario_anterior or "Sin Asignar"
-        anterior_str = f"\n<i>(Anterior: {anterior_clean})</i>" if anterior_clean != propietario_nuevo else ""
-        imp_str = f"\n🏢 <b>Importador:</b> {importador_nombre}" if importador_nombre else ""
+        anterior_str = f"\n<i>(Anterior: {_h(anterior_clean)})</i>" if anterior_clean != propietario_nuevo else ""
+        imp_str = f"\n🏢 <b>Importador:</b> {_h(importador_nombre)}" if importador_nombre else ""
 
         tg_text = (
             f"✏️ <b>Corrección de Dueño / Cliente</b>\n\n"
-            f"📌 <b>Nº Despacho:</b> <code>{numero_despacho}</code>\n"
-            f"👤 <b>Nuevo Dueño:</b> <b>{propietario_nuevo}</b>{anterior_str}{imp_str}\n\n"
-            f"<i>☁️ Base de Datos Actualizada & Sincronizado a Turso Cloud</i>"
+            f"📌 <b>Nº Despacho:</b> <code>{_h(numero_despacho)}</code>\n"
+            f"👤 <b>Nuevo Dueño:</b> <b>{_h(propietario_nuevo)}</b>{anterior_str}{imp_str}\n\n"
+            f"<i>☁️ Base de Datos Actualizada &amp; Sincronizado a Turso Cloud</i>"
         )
 
         results = {}

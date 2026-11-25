@@ -1,3 +1,10 @@
+// Escapa datos (nombre de archivo, importador, mensajes) antes de usar innerHTML (XSS)
+function esc(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // upload.js - Manejador de carga masiva de PDFs y feedback en tiempo real
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -132,11 +139,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             tr.innerHTML = `
-                <td class="fw-semibold small text-truncate" style="max-width: 200px;">${res.filename}</td>
-                <td class="fw-bold text-primary">${res.numero_despacho || '-'}</td>
-                <td class="small text-truncate" style="max-width: 180px;">${res.importador || '-'}</td>
-                <td><span class="badge ${badgeClass}">${res.status}</span></td>
-                <td class="small text-muted">${res.message}</td>
+                <td class="fw-semibold small text-truncate" style="max-width: 200px;">${esc(res.filename)}</td>
+                <td class="fw-bold text-primary">${esc(res.numero_despacho || '-')}</td>
+                <td class="small text-truncate" style="max-width: 180px;">${esc(res.importador || '-')}</td>
+                <td><span class="badge ${badgeClass}">${esc(res.status)}</span></td>
+                <td class="small text-muted">${esc(res.message)}</td>
                 <td class="text-end">${actionHtml}</td>
             `;
 

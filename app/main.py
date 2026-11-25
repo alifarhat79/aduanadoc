@@ -67,6 +67,34 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def block_cross_site_requests(request, call_next):
+    """
+    Protección CSRF: el servidor escucha en 127.0.0.1 sin autenticación para operadores, así que
+    cualquier página web abierta en el navegador podía enviar un formulario POST a
+    http://127.0.0.1:8000 (p. ej. /api/updates/apply -> "git reset --hard", o
+    /api/updates/git/push). Los navegadores siempre envían el encabezado Origin en peticiones
+    POST/PUT/PATCH/DELETE entre sitios: si no coincide con este mismo servidor, se rechaza.
+    Clientes que no son navegador (scripts, pruebas) no envían Origin y no se ven afectados.
+    """
+    if request.method in _UNSAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin is not None:
+            from urllib.parse import urlsplit
+            host = (request.headers.get("host") or "").lower()
+            origin_host = urlsplit(origin).netloc.lower() if origin != "null" else ""
+            if not origin_host or origin_host != host:
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Petición bloqueada: origen externo no permitido."}
+                )
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def add_no_cache_headers(request, call_next):
     response = await call_next(request)

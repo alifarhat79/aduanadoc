@@ -89,6 +89,28 @@ def _apply_value(key: str, value: str) -> bool:
     return changed
 
 
+def _trusted_owner_emails(drive) -> set:
+    """Correos autorizados como dueños del archivo de claves (en minúsculas)."""
+    emails = {
+        e.strip().lower()
+        for e in (os.getenv("SECRETS_TRUSTED_OWNERS") or "").split(",")
+        if e.strip()
+    }
+    folder_id = os.getenv("GDRIVE_FOLDER_ID") or getattr(settings, "GDRIVE_FOLDER_ID", "")
+    if folder_id:
+        try:
+            meta = drive.files().get(
+                fileId=folder_id, fields="owners(emailAddress)", supportsAllDrives=True
+            ).execute()
+            emails |= {
+                (o.get("emailAddress") or "").lower()
+                for o in meta.get("owners", []) if o.get("emailAddress")
+            }
+        except Exception as e:
+            logger.warning(f"[Claves] No se pudo leer el dueño de la carpeta de Drive: {e}")
+    return emails
+
+
 def sync_secrets_from_drive() -> Dict[str, Any]:
     """
     Descarga `aduanadoc_claves.env` desde Google Drive y aplica las claves.
@@ -118,20 +140,44 @@ def sync_secrets_from_drive() -> Dict[str, Any]:
             return result
 
         drive = GoogleDriveService().get_drive_service()
-        found = drive.files().list(
+        candidatos = drive.files().list(
             q=f"name = '{SECRETS_FILE_NAME}' and trashed = false",
-            fields="files(id, name, modifiedTime)",
+            fields="files(id, name, modifiedTime, owners(emailAddress))",
             orderBy="modifiedTime desc",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
-            pageSize=5,
+            pageSize=10,
         ).execute().get("files", [])
 
-        if not found:
+        if not candidatos:
             result.update(
                 estado="no_compartido",
                 detalle=f"'{SECRETS_FILE_NAME}' no está compartido con la cuenta de servicio",
             )
+            return result
+
+        # SEGURIDAD: el nombre del archivo y el correo de la cuenta de servicio son públicos
+        # (repositorio público). Cualquiera podría compartir con esa cuenta un archivo llamado
+        # igual y redirigir Turso/Telegram/Webhook de TODAS las PCs. Solo se acepta un archivo
+        # cuyo dueño sea de confianza: el dueño de la carpeta de despachos de Drive o los correos
+        # indicados en SECRETS_TRUSTED_OWNERS del .env local (separados por coma).
+        confiables = _trusted_owner_emails(drive)
+        if not confiables:
+            result.update(
+                estado="sin_dueno_confiable",
+                detalle="No se pudo determinar el dueño de confianza (defina SECRETS_TRUSTED_OWNERS en el .env)",
+            )
+            return result
+        found = [
+            f for f in candidatos
+            if {(o.get("emailAddress") or "").lower() for o in f.get("owners", [])} & confiables
+        ]
+        if not found:
+            result.update(
+                estado="dueno_no_confiable",
+                detalle=f"{len(candidatos)} archivo(s) '{SECRETS_FILE_NAME}' de dueños no autorizados: ignorados",
+            )
+            logger.warning(f"[Claves] {result['detalle']}")
             return result
 
         content = drive.files().get_media(fileId=found[0]["id"]).execute()
@@ -215,6 +261,8 @@ def send_startup_report(sync_result: Dict[str, Any], origen: str = "Servidor web
         "no_compartido": "⚠️ Archivo de claves NO compartido con la cuenta del sistema",
         "sin_service_account": "❌ Falta service_account.json (no lee Google Drive)",
         "sin_libreria_google": "❌ Faltan librerías de Google",
+        "dueno_no_confiable": "🚨 Se IGNORÓ un archivo de claves de un dueño NO autorizado (posible ataque); se usa el .env local",
+        "sin_dueno_confiable": "⚠️ No se pudo verificar el dueño del archivo de claves; se usa el .env local",
         "error": f"❌ Error: {sync_result.get('detalle', '')}",
     }
     env_local = sync_result.get("env_local_tenia") or []

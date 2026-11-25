@@ -368,6 +368,19 @@
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Escapa texto antes de insertarlo con innerHTML. Los datos (importador, marca,
+        // descripción, Nº despacho...) vienen de PDFs y de Drive: sin escapar, un PDF podía
+        // ejecutar código en el navegador (XSS) al abrirse el modal de sincronización.
+        window.aduEsc = function(value) {
+            if (value === null || value === undefined) return '';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        };
+
         document.getElementById('sidebarToggle')?.addEventListener('click', function() {
             document.getElementById('wrapper').classList.toggle('toggled');
         });
@@ -829,10 +842,10 @@
                                     </div>
                                     <div>
                                         <div style="font-weight: 800; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #ffffff; font-size: 0.92rem; letter-spacing: 0.02em;">
-                                            ${item.numero}
+                                            ${aduEsc(item.numero)}
                                         </div>
                                         <div style="font-size: 0.76rem; color: #a7f3d0; margin-top: 1px;">
-                                            ${item.importador} • <span style="background: rgba(0,0,0,0.45); padding: 1px 7px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 0.7rem; font-weight: 600;">${item.origen}</span>
+                                            ${aduEsc(item.importador)} • <span style="background: rgba(0,0,0,0.45); padding: 1px 7px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 0.7rem; font-weight: 600;">${aduEsc(item.origen)}</span>
                                         </div>
                                     </div>
                                 </div>

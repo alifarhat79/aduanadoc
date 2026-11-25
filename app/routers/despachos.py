@@ -349,12 +349,21 @@ async def delete_despacho(despacho_id: int, db: Session = Depends(get_db)):
     numero_despacho = despacho.numero_despacho
     hash_archivo = despacho.hash_archivo
 
-    # Si se desea eliminar el archivo físico
-    if os.path.exists(despacho.archivo_pdf):
-        try:
-            os.remove(despacho.archivo_pdf)
-        except Exception:
-            pass
+    # Eliminar el archivo físico solo si ningún otro despacho apunta al mismo PDF
+    # (los traídos de Turso o los marcados DUPLICADO pueden compartir ruta).
+    if despacho.archivo_pdf:
+        from app.config import BASE_DIR
+        pdf_path = Path(despacho.archivo_pdf)
+        if not pdf_path.is_absolute():
+            pdf_path = (BASE_DIR / despacho.archivo_pdf).resolve()
+        compartido = db.query(Despacho.id).filter(
+            Despacho.archivo_pdf == despacho.archivo_pdf, Despacho.id != despacho.id
+        ).first()
+        if pdf_path.exists() and not compartido:
+            try:
+                os.remove(pdf_path)
+            except Exception:
+                pass
 
     db.delete(despacho)
     db.commit()

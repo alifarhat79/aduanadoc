@@ -654,7 +654,7 @@ function showCatalogDropdown(items, inputEl, rowIndex) {
                         <strong class="text-primary">${escapeHtml(it.marca || 'GENÉRICO')}</strong> - ${escapeHtml(it.mercaderia)}
                     </div>
                     <div class="text-muted small" style="font-size: 0.72rem;">
-                        📅 Fecha: <strong>${it.fecha || '-'}</strong> | Desp: <strong>${it.despacho_numero}</strong> | ${it.importador}
+                        📅 Fecha: <strong>${it.fecha || '-'}</strong> | Desp: <strong>${aduEsc(it.despacho_numero)}</strong> | ${aduEsc(it.importador)}
                     </div>
                 </div>
                 <div class="text-end ps-2">
@@ -760,14 +760,14 @@ function renderModalResults(items) {
             <tr class="${rowClass}">
                 <td>
                     ${recentBadge}<br>
-                    <strong>${it.despacho_numero}</strong>
+                    <strong>${aduEsc(it.despacho_numero)}</strong>
                 </td>
                 <td><span class="badge bg-primary-subtle text-primary">${escapeHtml(it.marca || 'GENÉRICO')}</span></td>
                 <td>
                     <strong>${escapeHtml(it.mercaderia)}</strong>
-                    ${it.codigo_producto ? `<div class="text-muted small">Cód: ${it.codigo_producto}</div>` : ''}
+                    ${it.codigo_producto ? `<div class="text-muted small">Cód: ${aduEsc(it.codigo_producto)}</div>` : ''}
                 </td>
-                <td class="text-truncate" style="max-width: 140px;">${it.importador || '-'}</td>
+                <td class="text-truncate" style="max-width: 140px;">${aduEsc(it.importador || '-')}</td>
                 <td class="text-end fw-bold text-success fs-6">$${formatMoney(it.precio_normal)}</td>
                 <td class="text-center">
                     <button type="button" class="btn btn-sm ${isRecent ? 'btn-warning fw-bold text-dark' : 'btn-outline-primary'}" onclick="selectModalItem(${idx})">

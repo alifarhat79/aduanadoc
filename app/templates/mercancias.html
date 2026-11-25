@@ -101,7 +101,7 @@
                         <div class="btn-group btn-group-sm marca-pill-group">
                             <button type="button" 
                                     class="btn btn-sm {% if selected_marca == m.marca %}btn-primary text-white shadow-sm{% else %}btn-light border text-dark{% endif %} marca-pill fw-semibold shadow-2xs d-flex align-items-center gap-1"
-                                    onclick="filterByMarca('{{ m.marca }}')" 
+                                    onclick="filterByMarca({{ (m.marca)|string|tojson|forceescape }})" 
                                     data-marca="{{ m.marca }}"
                                     title="Filtrar toda la marca {{ m.marca }}">
                                 <span>{{ m.marca }}</span>
@@ -118,12 +118,12 @@
                             <ul class="dropdown-menu shadow-lg border-0 py-2 brand-dropdown-menu" style="min-width: 320px; max-height: 480px; overflow-y: auto;">
                                 <li class="dropdown-header text-uppercase fw-bold text-primary small d-flex justify-content-between align-items-center pb-1">
                                     <span><i class="bi bi-tags-fill me-1"></i>{{ m.marca }} ({{ m.familias|length }} líneas)</span>
-                                    <button type="button" class="btn btn-link btn-sm p-0 text-secondary text-decoration-none" onclick="event.stopPropagation(); openEditLabelsModal('{{ m.marca }}')" title="Administrar familias y etiquetas de {{ m.marca }}">
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-secondary text-decoration-none" onclick="event.stopPropagation(); openEditLabelsModal({{ (m.marca)|string|tojson|forceescape }})" title="Administrar familias y etiquetas de {{ m.marca }}">
                                         <i class="bi bi-pencil-square me-1"></i><small>Editar</small>
                                     </button>
                                 </li>
                                 <li>
-                                    <a class="dropdown-item py-2 fw-semibold small text-primary" href="javascript:void(0)" onclick="filterByMarca('{{ m.marca }}')">
+                                    <a class="dropdown-item py-2 fw-semibold small text-primary" href="javascript:void(0)" onclick="filterByMarca({{ (m.marca)|string|tojson|forceescape }})">
                                         <i class="bi bi-grid-fill me-2 opacity-75"></i>Ver todo {{ m.marca }} ({{ "{:,}".format(m.total_items) }})
                                     </a>
                                 </li>
@@ -141,7 +141,7 @@
                                         <!-- Encabezado de Familia con Acordeón -->
                                         <div class="d-flex align-items-center justify-content-between px-2 py-1 rounded family-header-row" style="background-color: rgba(0,0,0,0.02);">
                                             <!-- Clic en el nombre/carpeta: Filtra TODA la familia -->
-                                            <a href="javascript:void(0)" class="text-decoration-none d-flex align-items-center gap-2 flex-grow-1 text-truncate py-1 family-filter-link" onclick="filterBySubitem('{{ m.marca }}', '{{ fam.patron_familia }}')" title="Filtrar toda la familia {{ fam.familia }} ({{ "{:,}".format(fam.total_items) }})">
+                                            <a href="javascript:void(0)" class="text-decoration-none d-flex align-items-center gap-2 flex-grow-1 text-truncate py-1 family-filter-link" onclick="filterBySubitem({{ (m.marca)|string|tojson|forceescape }}, {{ (fam.patron_familia)|string|tojson|forceescape }})" title="Filtrar toda la familia {{ fam.familia }} ({{ "{:,}".format(fam.total_items) }})">
                                                 <i class="bi bi-folder2-open text-warning" style="font-size: 0.95rem;"></i>
                                                 <span class="fw-bold text-dark family-name-text small">{{ fam.familia }}</span>
                                                 <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-0" style="font-size: 0.65rem;">{{ "{:,}".format(fam.total_items) }}</span>
@@ -154,14 +154,14 @@
                                         <!-- Sub-lista de variantes (Sub-subítems) -->
                                         <ul class="list-unstyled ps-3 pe-1 py-1 mb-1 family-variants-list" style="display: none; background-color: rgba(248, 249, 250, 0.85); border-left: 2px solid #dee2e6; margin-left: 12px;">
                                             <li>
-                                                <a class="dropdown-item py-1 small text-muted fst-italic d-flex justify-content-between align-items-center rounded" href="javascript:void(0)" onclick="filterBySubitem('{{ m.marca }}', '{{ fam.patron_familia }}')">
+                                                <a class="dropdown-item py-1 small text-muted fst-italic d-flex justify-content-between align-items-center rounded" href="javascript:void(0)" onclick="filterBySubitem({{ (m.marca)|string|tojson|forceescape }}, {{ (fam.patron_familia)|string|tojson|forceescape }})">
                                                     <span><i class="bi bi-arrow-return-right me-1 text-primary"></i>Ver todo {{ fam.familia }}</span>
                                                     <span class="badge bg-light text-muted border rounded-pill px-1" style="font-size: 0.62rem;">{{ "{:,}".format(fam.total_items) }}</span>
                                                 </a>
                                             </li>
                                             {% for v in fam.variantes %}
                                             <li class="variant-menu-li">
-                                                <a class="dropdown-item py-1 px-2 small d-flex justify-content-between align-items-center rounded variant-filter-link" href="javascript:void(0)" onclick="filterBySubitem('{{ m.marca }}', '{{ v.patron }}')" title="Filtrar por {{ fam.familia }} {{ v.nombre }}">
+                                                <a class="dropdown-item py-1 px-2 small d-flex justify-content-between align-items-center rounded variant-filter-link" href="javascript:void(0)" onclick="filterBySubitem({{ (m.marca)|string|tojson|forceescape }}, {{ (v.patron)|string|tojson|forceescape }})" title="Filtrar por {{ fam.familia }} {{ v.nombre }}">
                                                     <span class="d-flex align-items-center gap-1 text-truncate" style="max-width: 170px;">
                                                         <i class="bi bi-dot text-secondary fs-6"></i>
                                                         <span class="fw-medium text-dark variant-name-text">{{ v.nombre }}</span>
@@ -174,7 +174,7 @@
                                         {% else %}
                                         <!-- Familia con 1 sola variante directa -->
                                         {% set single_var = fam.variantes[0] if fam.variantes else None %}
-                                        <a class="dropdown-item d-flex justify-content-between align-items-center py-2 family-simple-item rounded" href="javascript:void(0)" onclick="filterBySubitem('{{ m.marca }}', '{{ single_var.patron if single_var else fam.patron_familia }}')" title="Filtrar por {{ fam.familia }}">
+                                        <a class="dropdown-item d-flex justify-content-between align-items-center py-2 family-simple-item rounded" href="javascript:void(0)" onclick="filterBySubitem({{ (m.marca)|string|tojson|forceescape }}, {{ (single_var.patron if single_var else fam.patron_familia)|string|tojson|forceescape }})" title="Filtrar por {{ fam.familia }}">
                                             <span class="d-flex align-items-center gap-2 text-truncate" style="max-width: 190px;">
                                                 <i class="bi bi-box-seam text-muted" style="font-size: 0.8rem;"></i>
                                                 <span class="fw-medium text-dark family-name-text">{{ fam.familia }}</span>
@@ -190,7 +190,7 @@
                                 </div>
                                 <li><hr class="dropdown-divider my-1"></li>
                                 <li>
-                                    <a class="dropdown-item text-secondary small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="openEditLabelsModal('{{ m.marca }}')">
+                                    <a class="dropdown-item text-secondary small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="openEditLabelsModal({{ (m.marca)|string|tojson|forceescape }})">
                                         <i class="bi bi-gear text-muted"></i>
                                         <span>Administrar familias y etiquetas</span>
                                     </a>
@@ -213,7 +213,7 @@
                     {% for n in ncm_kpis %}
                         <button type="button" 
                                 class="btn btn-sm {% if selected_ncm == n.codigo %}btn-info text-white shadow-sm{% else %}btn-light border text-dark{% endif %} fw-semibold shadow-2xs d-flex align-items-center gap-1"
-                                onclick="filterByNcm('{{ n.codigo }}')" 
+                                onclick="filterByNcm({{ (n.codigo)|string|tojson|forceescape }})" 
                                 title="{{ n.rubro }} ({{ n.capitulo_nombre }})">
                             <span class="font-monospace fw-bold">{{ n.codigo_corto }}</span>
                             <span class="small text-truncate" style="max-width: 180px;">{{ n.rubro }}</span>
@@ -276,7 +276,7 @@
                     <div>
                         <small class="text-muted d-block fw-semibold" style="font-size: 0.68rem; letter-spacing: 0.5px;">NCM DESTACADO (QUÉ ES)</small>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <button type="button" onclick="filterByNcm('{{ top_ncm_info.codigo }}')" class="badge bg-success-subtle text-success-emphasis border border-success-subtle font-monospace text-decoration-none fw-bold" style="font-size: 0.82rem; cursor: pointer;" title="Clic para filtrar por este NCM">
+                            <button type="button" onclick="filterByNcm({{ (top_ncm_info.codigo)|string|tojson|forceescape }})" class="badge bg-success-subtle text-success-emphasis border border-success-subtle font-monospace text-decoration-none fw-bold" style="font-size: 0.82rem; cursor: pointer;" title="Clic para filtrar por este NCM">
                                 {{ top_ncm_info.codigo_corto }}
                             </button>
                             <span class="small fw-semibold text-dark text-truncate" style="max-width: 250px;" title="{{ top_ncm_info.rubro }} ({{ top_ncm_info.capitulo_nombre }})">
@@ -526,7 +526,7 @@
                         </td>
                         <td class="font-monospace small">
                             {% if it.codigo_ncm %}
-                                <button type="button" class="btn btn-link p-0 font-monospace small text-decoration-none text-dark fw-bold" onclick="filterByNcm('{{ it.codigo_ncm }}')" title="Filtrar por esta posición NCM">
+                                <button type="button" class="btn btn-link p-0 font-monospace small text-decoration-none text-dark fw-bold" onclick="filterByNcm({{ (it.codigo_ncm)|string|tojson|forceescape }})" title="Filtrar por esta posición NCM">
                                     {{ it.codigo_ncm }}
                                 </button>
                             {% else %}
@@ -535,7 +535,7 @@
                         </td>
                         <td>
                             {% if it.marca %}
-                                <button type="button" onclick="filterByMarca('{{ it.marca }}')" class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1 text-decoration-none btn btn-sm py-0 border-0" title="Filtrar por esta marca">
+                                <button type="button" onclick="filterByMarca({{ (it.marca)|string|tojson|forceescape }})" class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1 text-decoration-none btn btn-sm py-0 border-0" title="Filtrar por esta marca">
                                     {{ it.marca }}
                                 </button>
                             {% else %}
@@ -1292,7 +1292,7 @@
         currentEditingMarca = marca;
         document.getElementById('modalMarcaName').textContent = marca;
         const tbody = document.getElementById('labelsTableBody');
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando familias y variantes de ' + marca + '...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando familias y variantes de ' + aduEsc(marca) + '...</td></tr>';
         
         const modal = new bootstrap.Modal(document.getElementById('editLabelsModal'));
         modal.show();
@@ -1334,14 +1334,14 @@
 
         tr.innerHTML = `
             <td>
-                <input type="text" class="form-control form-control-sm label-familia-input fw-semibold text-primary" value="${familia || ''}" placeholder="Ej: Asad, Yara" required>
+                <input type="text" class="form-control form-control-sm label-familia-input fw-semibold text-primary" value="${aduEsc(familia || '')}" placeholder="Ej: Asad, Yara" required>
             </td>
             <td>
-                <input type="text" class="form-control form-control-sm label-nombre-input fw-medium text-dark" value="${nombre || ''}" placeholder="Ej: Bourbon, Candy" required>
+                <input type="text" class="form-control form-control-sm label-nombre-input fw-medium text-dark" value="${aduEsc(nombre || '')}" placeholder="Ej: Bourbon, Candy" required>
             </td>
             <td>
                 <div class="input-group input-group-sm">
-                    <input type="text" class="form-control form-control-sm label-patron-input font-monospace" value="${patron || ''}" placeholder="Ej: ASAD BOURBON" required>
+                    <input type="text" class="form-control form-control-sm label-patron-input font-monospace" value="${aduEsc(patron || '')}" placeholder="Ej: ASAD BOURBON" required>
                     ${total !== null && total !== undefined ? `<span class="input-group-text bg-light text-muted small py-0 px-1" style="font-size:0.65rem;">${total}</span>` : ''}
                 </div>
             </td>
@@ -1539,8 +1539,8 @@
                     <tr id="auditRow_${it.id}">
                         <td>
                             <div class="fw-semibold text-dark">
-                                <a href="/despacho/${it.despacho_id}" target="_blank" class="text-decoration-none" title="Ver despacho">
-                                    ${it.numero_despacho} <i class="bi bi-box-arrow-up-right font-monospace" style="font-size: 0.68rem;"></i>
+                                <a href="/despachos/${it.despacho_id}" target="_blank" class="text-decoration-none" title="Ver despacho">
+                                    ${aduEsc(it.numero_despacho)} <i class="bi bi-box-arrow-up-right font-monospace" style="font-size: 0.68rem;"></i>
                                 </a>
                             </div>
                             <div class="text-muted font-monospace" style="font-size: 0.72rem;">
@@ -1548,9 +1548,9 @@
                             </div>
                         </td>
                         <td>
-                            <span class="badge bg-light text-dark border font-monospace mb-1">${it.marca_actual || 'Sin Marca'}</span>
+                            <span class="badge bg-light text-dark border font-monospace mb-1">${aduEsc(it.marca_actual || 'Sin Marca')}</span>
                             <div class="text-muted font-monospace" style="font-size: 0.72rem;">
-                                Cód: ${it.codigo_actual || '<span class="text-muted opacity-50">Ninguno</span>'}
+                                Cód: ${it.codigo_actual ? aduEsc(it.codigo_actual) : '<span class="text-muted opacity-50">Ninguno</span>'}
                             </div>
                         </td>
                         <td>

@@ -1,4 +1,6 @@
 import os
+import asyncio
+import logging
 import tempfile
 import shutil
 from typing import List, Optional
@@ -11,6 +13,8 @@ from app.config import settings
 from app.services.pipeline import process_pdf_file
 from app.services.turso_service import TursoService
 from app.templates_config import templates
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
 
@@ -49,32 +53,51 @@ async def process_batch_files(
             })
             continue
 
+        content = await file.read()
+        # Validar tamaño ANTES de crear el temporal (antes quedaba un archivo temporal huérfano)
+        size_mb = len(content) / (1024 * 1024)
+        if size_mb > settings.MAX_UPLOAD_MB:
+            results.append({
+                "filename": filename,
+                "status": "ERROR",
+                "message": f"El archivo excede el tamaño máximo permitido ({settings.MAX_UPLOAD_MB} MB)",
+                "despacho_id": None
+            })
+            continue
+
         # Guardar en archivo temporal para procesamiento seguro
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            content = await file.read()
-            # Validar tamaño
-            size_mb = len(content) / (1024 * 1024)
-            if size_mb > settings.MAX_UPLOAD_MB:
-                results.append({
-                    "filename": filename,
-                    "status": "ERROR",
-                    "message": f"El archivo excede el tamaño máximo permitido ({settings.MAX_UPLOAD_MB} MB)",
-                    "despacho_id": None
-                })
-                continue
-
             tmp_file.write(content)
             tmp_path = tmp_file.name
 
         try:
-            despacho, log = process_pdf_file(
+            # El OCR/extracción es lento y sincrónico: se ejecuta en un hilo para no congelar
+            # todo el servidor (vigilante, otras pantallas) mientras se procesa el lote.
+            despacho, log = await asyncio.to_thread(
+                process_pdf_file,
                 db=db,
                 file_path=tmp_path,
                 original_filename=filename,
                 allow_duplicate=allow_duplicate,
                 propietario=propietario
             )
-            
+
+            # Duplicado rechazado: el pipeline devuelve el despacho EXISTENTE sin crear uno nuevo.
+            # Antes se informaba "Procesado exitosamente", se re-subía a Turso, se notificaba por
+            # Telegram como despacho nuevo y se generaba un backup.
+            if log is not None and log.metodo == "DUPLICATE_CHECK":
+                results.append({
+                    "filename": filename,
+                    "status": "DUPLICADO",
+                    "message": log.errores or "Archivo ya registrado previamente.",
+                    "despacho_id": despacho.id if despacho else None,
+                    "numero_despacho": (despacho.numero_despacho if despacho else None) or "S/N",
+                    "importador": (despacho.importador_nombre if despacho else None) or "No identificado",
+                    "fob": despacho.valor_fob if despacho else None,
+                    "cif": despacho.valor_cif if despacho else None
+                })
+                continue
+
             # Auto-sincronización con Turso Cloud si está configurado
             turso_msg = ""
             turso = TursoService()

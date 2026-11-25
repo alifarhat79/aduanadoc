@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Body, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -6,6 +6,7 @@ from typing import Optional
 from app.services.backup_service import BackupService
 from app.services.updater_service import UpdaterService
 from app.config import settings
+from app.routers.configuracion import require_admin_auth
 
 router = APIRouter(tags=["Backup & Actualizaciones"])
 
@@ -23,14 +24,16 @@ async def create_backup_api(reason: Optional[str] = "MANUAL_WEB"):
     return result
 
 @router.get("/api/backup/listar")
-async def list_backups_api():
-    """Retorna la lista de respaldos ZIP disponibles."""
+async def list_backups_api(request: Request):
+    """Retorna la lista de respaldos ZIP disponibles (solo programador)."""
+    require_admin_auth(request)
     service = BackupService()
     return {"backups": service.list_backups()}
 
 @router.get("/api/backup/download/{filename}")
-async def download_backup_api(filename: str):
-    """Descarga un archivo ZIP de respaldo directamente al navegador."""
+async def download_backup_api(filename: str, request: Request):
+    """Descarga un archivo ZIP de respaldo (contiene TODA la base de datos: solo programador)."""
+    require_admin_auth(request)
     service = BackupService()
     target_path = service.get_backup_path(filename)
     if not target_path:
@@ -44,8 +47,9 @@ async def download_backup_api(filename: str):
     )
 
 @router.delete("/api/backup/{filename}")
-async def delete_backup_api(filename: str):
-    """Elimina un archivo de respaldo del servidor."""
+async def delete_backup_api(filename: str, request: Request):
+    """Elimina un archivo de respaldo del servidor (solo programador)."""
+    require_admin_auth(request)
     service = BackupService()
     if service.delete_backup(filename):
         return {"success": True, "message": f"Respaldo {filename} eliminado."}
@@ -58,8 +62,9 @@ async def check_updates_api():
     return updater.check_for_updates()
 
 @router.post("/api/updates/publish")
-async def publish_update_api(req: PublishUpdateRequest):
+async def publish_update_api(req: PublishUpdateRequest, request: Request):
     """Para el PROGRAMADOR: Empaqueta la versión actual y publica el paquete de actualización."""
+    require_admin_auth(request)
     updater = UpdaterService()
     result = updater.publish_update(new_version=req.version, changelog=req.changelog or "")
     if not result.get("success"):
@@ -91,8 +96,9 @@ async def git_pull_api():
     return result
 
 @router.post("/api/updates/git/push")
-async def git_push_api(payload: dict = Body(default={})):
-    """Ejecuta git push para enviar cambios locales a GitHub para actualizar otras PCs."""
+async def git_push_api(request: Request, payload: dict = Body(default={})):
+    """Ejecuta git push para enviar cambios locales a GitHub (repositorio PÚBLICO): solo programador."""
+    require_admin_auth(request)
     commit_msg = payload.get("commit_msg", "chore: auto-sync updates")
     updater = UpdaterService()
     result = updater.git_push(commit_msg=commit_msg)
@@ -101,8 +107,9 @@ async def git_push_api(payload: dict = Body(default={})):
     return result
 
 @router.post("/api/updates/git/connect")
-async def git_connect_api(payload: dict = Body(default={})):
-    """Vincula y conecta esta computadora con el repositorio GitHub oficial (o URL personalizada)."""
+async def git_connect_api(request: Request, payload: dict = Body(default={})):
+    """Vincula esta PC con un repositorio (y hace reset al código remoto): solo programador."""
+    require_admin_auth(request)
     repo_url = payload.get("repo_url", "https://github.com/alifarhat79/aduanadoc.git")
     updater = UpdaterService()
     result = updater.connect_git_repo(repo_url=repo_url)

@@ -97,9 +97,16 @@ class GoogleDriveService:
     @staticmethod
     def _find_existing_by_name(db: Session, file_name: str) -> Optional[Despacho]:
         """Busca un despacho ya registrado por nombre de archivo o por número de despacho contenido en el nombre."""
+        # El pipeline guarda el PDF como "<timestamp>_<hash8>_<nombre original>".
+        # Se compara el FINAL exacto de la ruta (con comodines escapados). Antes se usaba
+        # LIKE '%nombre%': "_" actuaba como comodín y un nombre que fuera sufijo de otro
+        # (p. ej. "1.pdf" dentro de "..._11.pdf") se omitía para siempre como "ya existente".
         existente = db.query(Despacho).filter(
             (Despacho.nombre_archivo_original == file_name) |
-            (Despacho.archivo_pdf.like(f"%{file_name}%"))
+            (Despacho.archivo_pdf == file_name) |
+            Despacho.archivo_pdf.endswith(f"_{file_name}", autoescape=True) |
+            Despacho.archivo_pdf.endswith(f"/{file_name}", autoescape=True) |
+            Despacho.archivo_pdf.endswith(f"\\{file_name}", autoescape=True)
         ).first()
         if not existente:
             match_num = re.search(r"\b([0-9]{2}[0-9A-Za-z]{10,18})\b", file_name)
@@ -319,8 +326,10 @@ class GoogleDriveService:
         if not folder.exists() or not folder.is_dir():
             raise FileNotFoundError(f"La carpeta local '{local_path}' no existe o no es accesible.")
 
-        pdf_files = list(folder.glob("*.pdf")) + list(folder.glob("*.PDF"))
-        
+        # En Windows glob no distingue mayúsculas: "*.pdf" + "*.PDF" listaba cada archivo DOS veces
+        # (inflando el conteo de duplicados). Se filtra una sola vez por extensión.
+        pdf_files = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == ".pdf")
+
         total_encontrados = len(pdf_files)
         nuevos_procesados = 0
         omitidos_duplicados = 0
@@ -330,18 +339,8 @@ class GoogleDriveService:
         for p in pdf_files:
             file_name = p.name.strip()
             try:
-                # 1. Comprobar primero por Nombre de Archivo
-                existente_por_nombre = db.query(Despacho).filter(
-                    (Despacho.nombre_archivo_original == file_name) |
-                    (Despacho.archivo_pdf.like(f"%{file_name}%"))
-                ).first()
-
-                if not existente_por_nombre:
-                    import re
-                    match_num = re.search(r"\b([0-9]{2}[0-9A-Za-z]{10,18})\b", file_name)
-                    if match_num:
-                        posible_num = match_num.group(1).upper()
-                        existente_por_nombre = db.query(Despacho).filter(Despacho.numero_despacho == posible_num).first()
+                # 1. Comprobar primero por Nombre de Archivo (o número de despacho en el nombre)
+                existente_por_nombre = self._find_existing_by_name(db, file_name)
 
                 if existente_por_nombre:
                     omitidos_duplicados += 1
@@ -405,6 +404,13 @@ class GoogleDriveService:
 
             except Exception as err:
                 errores += 1
+                logger.error(f"[GoogleDriveService] Error procesando local '{file_name}': {err}")
+                # Sin rollback, un error de base dejaba la sesión inválida y TODOS los archivos
+                # siguientes fallaban con "transaction has been rolled back".
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
                 detalles.append({
                     "archivo": file_name,
                     "estado": "ERROR",

@@ -12,6 +12,22 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _local_pdf_exists(path_str: Optional[str]) -> bool:
+    """True si la ruta de PDF guardada en esta PC apunta a un archivo que existe aquí."""
+    if not path_str:
+        return False
+    try:
+        from pathlib import Path
+        from app.config import BASE_DIR
+        p = Path(path_str)
+        if not p.is_absolute():
+            p = BASE_DIR / p
+        return p.exists()
+    except Exception:
+        return False
+
+
 class TursoService:
     def __init__(self, db_url: Optional[str] = None, auth_token: Optional[str] = None):
         raw_url = (db_url or os.getenv("TURSO_DATABASE_URL", "libsql://despachos-alifarhat.aws-us-east-1.turso.io") or "").strip().strip("'").strip('"')
@@ -66,6 +82,9 @@ class TursoService:
 
     async def init_turso_schema(self):
         """Crea las tablas e índices en Turso con exactamente las mismas columnas que el modelo local."""
+        # Una vez por instancia: antes se repetía por CADA despacho (cientos de viajes extra a la nube).
+        if getattr(self, "_schema_ready", False):
+            return {"cached": True}
         def build_create_table(model, table_name):
             cols_def = []
             for col in model.__table__.columns:
@@ -84,7 +103,9 @@ class TursoService:
             {"sql": "CREATE INDEX IF NOT EXISTS idx_turso_despachos_hash ON despachos(hash_archivo);"},
             {"sql": "CREATE INDEX IF NOT EXISTS idx_turso_items_despacho_id ON despacho_items(despacho_id);"}
         ]
-        return await self.execute_raw(schema_stmts)
+        res = await self.execute_raw(schema_stmts)
+        self._schema_ready = True
+        return res
 
     def _convert_value_to_arg(self, val: Any) -> Dict[str, Any]:
         """Convierte un valor de Python al formato tipado de libSQL HTTP API."""
@@ -366,9 +387,13 @@ class TursoService:
                 db.add(existing)
                 is_new = True
 
+            keep_local_pdf = (not is_new) and _local_pdf_exists(existing.archivo_pdf)
             for col in Despacho.__table__.columns:
                 col_name = col.name
                 if col_name == "id":  # el ID local lo asigna esta PC, nunca se copia el de Turso
+                    continue
+                if col_name == "archivo_pdf" and keep_local_pdf:
+                    # La ruta en Turso es la de la PC que lo subió: no pisar un PDF que SÍ existe aquí
                     continue
                 if col_name in row_dict:
                     val = row_dict[col_name]
@@ -391,6 +416,9 @@ class TursoService:
                     except Exception:
                         setattr(existing, col_name, str(val) if val is not None else None)
 
+            # Solo cuenta como "actualizado" si algún valor cambió de verdad. Antes contaba TODAS
+            # las filas existentes y la pantalla /despachos se recargaba sola en cada foco.
+            changed = (not is_new) and db.is_modified(existing)
             db.flush()
             if turso_id is not None:
                 turso_id_to_local_id[turso_id] = existing.id
@@ -398,7 +426,7 @@ class TursoService:
             if is_new:
                 inserted_despachos.append(existing)
                 inserted_count += 1
-            else:
+            elif changed:
                 updated_count += 1
 
         db.commit()
@@ -538,14 +566,20 @@ class TursoService:
 
             # NO buscar por ID: cada PC numera distinto y se pisaría un despacho diferente.
 
+            is_new = False
             if not existing:
                 existing = Despacho()
                 db.add(existing)
                 new_despachos_inserted.append(existing)
+                is_new = True
 
+            keep_local_pdf = (not is_new) and _local_pdf_exists(existing.archivo_pdf)
             for col in Despacho.__table__.columns:
                 col_name = col.name
                 if col_name == "id":  # el ID local lo asigna esta PC, nunca se copia el de Turso
+                    continue
+                if col_name == "archivo_pdf" and keep_local_pdf:
+                    # La ruta en Turso es la de la PC que lo subió: no pisar un PDF que SÍ existe aquí
                     continue
                 if col_name in row_dict:
                     val = row_dict[col_name]
@@ -677,15 +711,8 @@ class TursoService:
                 "sql": "DELETE FROM despachos WHERE hash_archivo = ?;",
                 "args": [{"type": "text", "value": hash_archivo.strip()}]
             })
-        elif despacho_id:
-            stmts.append({
-                "sql": "DELETE FROM despacho_items WHERE despacho_id = ?;",
-                "args": [{"type": "integer", "value": str(despacho_id)}]
-            })
-            stmts.append({
-                "sql": "DELETE FROM despachos WHERE id = ?;",
-                "args": [{"type": "integer", "value": str(despacho_id)}]
-            })
+        # NOTA: nunca se borra por despacho_id: el ID local de esta PC no es el ID en Turso
+        # (cada PC numera distinto) y se eliminaría un despacho DIFERENTE en la nube.
 
         if stmts:
             try:

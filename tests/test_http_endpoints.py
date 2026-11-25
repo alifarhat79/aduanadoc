@@ -174,9 +174,10 @@ def test_configuracion_guardar_api():
 
 def test_despacho_pdf_inline_endpoint():
     import os
-    # Asegurar un archivo físico dummy para la prueba
-    os.makedirs("./uploads/test", exist_ok=True)
-    dummy_pdf_path = "./uploads/test/test_dummy.pdf"
+    from app.config import settings
+    # Asegurar un archivo físico dummy para la prueba (en la carpeta temporal de pruebas)
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "test"), exist_ok=True)
+    dummy_pdf_path = os.path.join(settings.UPLOAD_DIR, "test", "test_dummy.pdf")
     with open(dummy_pdf_path, "wb") as f:
         f.write(b"%PDF-1.4 sample dummy content")
 

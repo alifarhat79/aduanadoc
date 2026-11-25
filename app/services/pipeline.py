@@ -88,10 +88,13 @@ def process_pdf_file(
     if not items_data:
         fob_val = extracted.get("valor_fob") or 0.0
         nro_d = extracted.get("numero_despacho") or "S/N"
+        # Regla del sistema: un dato que no está en el documento NO se inventa. Antes se ponía
+        # siempre la NCM de perfumes 3303.00.10.000L a cualquier mercadería no reconocida.
+        errors_list.append("No se pudieron extraer los ítems de mercancías: se creó un ítem genérico (revisar)")
         items_data.append({
             "numero_item": 1,
             "numero_subitem": None,
-            "codigo_ncm": "3303.00.10.000L",
+            "codigo_ncm": None,
             "codigo_producto": None,
             "descripcion": f"Mercadería General Declarada - Despacho {nro_d}",
             "marca": extracted.get("exportador_nombre") or "General",

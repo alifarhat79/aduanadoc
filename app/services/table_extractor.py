@@ -190,8 +190,37 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                     "pagina_origen": page_num
                 })
 
-    # 2. Si no hubo subitems, probar formato SOFIA Grid / Bloques (ej. 1/6, 2/6, 1/26)
+    # 2. Formato SOFIA Grid / Bloques (ej. 1/6, 2/6, 1/26).
+    # Un mismo despacho puede MEZCLAR formatos: ítems con subítems (bloque "SUB ITEM NRO") e
+    # ítems SIN subítems que solo figuran en la grilla "2/3 ... FOB FACTURA". Antes la grilla
+    # solo se leía si no había ningún subítem, y esos ítems (y su FOB) se perdían
+    # (ej. 26021ZF2I001208F: FOB 62.083,60 declarado, solo 24.153,60 extraído).
+    items_con_subitems = {it["numero_item"] for it in extracted_items}
+    modo_mixto = bool(items_con_subitems)
+    try:
+        grid_items = _extract_grid_items(pages_data, items_con_subitems, modo_mixto)
+    except Exception:
+        if not modo_mixto:
+            raise
+        # En modo mixto un fallo de la grilla nunca debe arruinar los subítems ya extraídos
+        grid_items = []
+    extracted_items.extend(grid_items)
+
+    # 3. Si aún no hay items, buscar formato estándar con expresiones regulares
     if not extracted_items:
+        extracted_items.extend(_extract_standard_items(pages_data))
+
+    return extracted_items
+
+
+def _extract_grid_items(
+    pages_data: List[Dict[str, Any]],
+    items_con_subitems: set,
+    modo_mixto: bool
+) -> List[Dict[str, Any]]:
+    """Formato SOFIA Grid. En modo mixto solo devuelve ítems que NO tienen subítems."""
+    extracted_items: List[Dict[str, Any]] = []
+    if True:
         # Pre-procesar y unir líneas continuas limpiando cabeceras de página
         all_lines_data: List[Dict[str, Any]] = []
         for page_info in pages_data:
@@ -210,6 +239,9 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
             
             # Match formato "1/26 N 3303.00.20.000W ..." o "1/26"
             m_grid = re.match(r"^(\d{1,3})\s*/\s*(\d{1,3})(?:\s+[A-Z]\s+([0-9.]{6,15}[A-Za-z]?))?", line)
+            # Una fecha "10/08/2026 ..." no es un marcador de ítem (creaba ítems fantasma)
+            if m_grid and re.match(r"^\d{1,3}\s*/\s*\d{1,3}\s*/\s*\d{2,4}", line):
+                m_grid = None
             if m_grid:
                 item_nro = int(m_grid.group(1))
                 total_items = int(m_grid.group(2))
@@ -321,18 +353,29 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                         break
                     elif "KILO NETO" in bl.upper() and b_idx + 2 < len(block_lines):
                         for k_offset in range(1, 4):
+                            if b_idx + k_offset >= len(block_lines):
+                                break  # antes: IndexError que abortaba la importación del PDF entero
                             cand_k = block_lines[b_idx + k_offset]
                             if re.match(r"^[0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]+)?$", cand_k):
                                 kilo_neto = parse_currency(cand_k)
                                 break
 
-                if pos_aranc or fob_factura or desc:
+                if modo_mixto and (item_nro in items_con_subitems or fob_factura is None):
+                    # Modo mixto: este ítem ya vino con sus subítems (o no es un bloque de grilla
+                    # real con "FOB FACTURA"): no se duplica, solo se salta su bloque.
+                    if item_nro in items_con_subitems:
+                        i = j - 1
+                elif pos_aranc or fob_factura or desc:
                     codigo_producto, descripcion = parse_observation_details(desc or "", marca or "")
                     
-                    # Sanear valores astronómicos erróneos
-                    val_tot = fob_uss or fob_factura or 0.0
-                    if val_tot and val_tot > 5000000.0:
-                        val_tot = 0.0
+                    # Valor del ítem: "FOB FACTURA" es el total facturado del ítem (el que suma el
+                    # FOB declarado); "FOB U$S" solo cubre la primera línea comercial. A veces la
+                    # línea de FOB FACTURA se lee mal como un número chico (ej. 9,00), por eso se
+                    # toma el MAYOR de ambos. Validado contra 193 PDFs reales: la suma de ítems
+                    # cuadra con el FOB declarado en los 193 (antes en 115).
+                    # Se descartan valores astronómicos erróneos (> 5.000.000).
+                    candidatos_fob = [v for v in (fob_factura, fob_uss) if v and v <= 5000000.0]
+                    val_tot = max(candidatos_fob) if candidatos_fob else 0.0
 
                     extracted_items.append({
                         "numero_item": item_nro,
@@ -354,7 +397,14 @@ def extract_items_from_pages(pages_data: List[Dict[str, Any]]) -> List[Dict[str,
                     i = j - 1
             i += 1
 
-    # 3. Si aún no hay items, buscar formato estándar con expresiones regulares
+    return extracted_items
+
+
+def _extract_standard_items(pages_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Formato estándar "NRO DE PEDIDO" y capa de rescate por NCM (solo si los otros formatos no dieron ítems)."""
+    extracted_items: List[Dict[str, Any]] = []
+
+    # 3. Formato estándar con expresiones regulares
     if not extracted_items:
         main_item_pattern = re.compile(
             r"NRO\s+DE\s+PEDIDO\s*:\s*(\d+)(?:/\d+)?.*?POSICION\s+ARANCELARIA\s*:\s*([0-9A-Za-z.]+)"

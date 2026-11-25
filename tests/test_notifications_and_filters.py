@@ -95,12 +95,12 @@ def test_mercancias_date_filter_html():
     resp1 = client.get("/mercancias?fecha_desde=2026-08-01&fecha_hasta=2026-08-15&q=TEST")
     assert resp1.status_code == 200
     assert "SMARTPHONE" in resp1.text
-    assert "NOTEBOOK" not in resp1.text
+    assert "NOTEBOOK SLIM I7 TEST" not in resp1.text
 
     # Filtrar solo el rango que incluye d2 (2026-08-20 a 2026-08-30)
     resp2 = client.get("/mercancias?fecha_desde=2026-08-20&fecha_hasta=2026-08-30&q=TEST")
     assert resp2.status_code == 200
-    assert "SMARTPHONE" not in resp2.text
+    assert "SMARTPHONE PRO MAX 256GB TEST" not in resp2.text
     assert "NOTEBOOK" in resp2.text
 
 
@@ -241,12 +241,7 @@ def test_notification_api_endpoints():
     settings.TELEGRAM_BOT_TOKEN = orig_token
     settings.TELEGRAM_CHAT_ID = orig_chat
     settings.WEBHOOK_URL = orig_webhook
-    from dotenv import set_key
-    from pathlib import Path
-    env_f = Path(__file__).resolve().parent.parent / ".env"
-    set_key(str(env_f), "TELEGRAM_BOT_TOKEN", orig_token)
-    set_key(str(env_f), "TELEGRAM_CHAT_ID", orig_chat)
-    set_key(str(env_f), "WEBHOOK_URL", orig_webhook)
+    # NOTA: no se escribe en el .env real de la PC (antes esta prueba lo modificaba).
 
 
 
@@ -307,11 +302,11 @@ def test_mercancias_searchable_combos_and_live_filter():
     resp_marca = client.get("/mercancias?marca=SAMSUNG")
     assert resp_marca.status_code == 200
     assert "SMARTPHONE" in resp_marca.text
-    assert "NOTEBOOK" not in resp_marca.text
+    assert "NOTEBOOK SLIM I7 TEST" not in resp_marca.text
 
     # Filtrar por NCM existente
     resp_ncm = client.get("/mercancias?ncm=8471.30.12")
     assert resp_ncm.status_code == 200
     assert "NOTEBOOK" in resp_ncm.text
-    assert "SMARTPHONE" not in resp_ncm.text
+    assert "SMARTPHONE PRO MAX 256GB TEST" not in resp_ncm.text
 

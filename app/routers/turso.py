@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
@@ -7,8 +7,23 @@ import os
 from app.database import get_db
 from app.services.turso_service import TursoService
 from app.config import settings
+from app.routers.configuracion import require_admin_auth
 
 router = APIRouter(prefix="/turso", tags=["Turso Cloud"])
+
+
+def _creds_from_payload(payload, request: Request):
+    """
+    Credenciales enviadas por el usuario: solo el programador (sesión de /configuracion) puede
+    usarlas. Antes cualquiera podía indicar una URL/token propios y la PC subía TODA la base a
+    esa nube (y quedaba apuntando a ella para las sincronizaciones automáticas).
+    Sin payload se usan las credenciales ya configuradas en esta PC.
+    """
+    url = (payload.database_url if payload else None) or None
+    token = (payload.auth_token if payload else None) or None
+    if url or token:
+        require_admin_auth(request)
+    return url, token
 
 class TursoConfigPayload(BaseModel):
     database_url: str
@@ -26,9 +41,8 @@ async def get_turso_config():
     }
 
 @router.post("/api/test")
-async def test_turso_endpoint(payload: Optional[TursoConfigPayload] = None):
-    url = payload.database_url if payload else None
-    token = payload.auth_token if payload else None
+async def test_turso_endpoint(request: Request, payload: Optional[TursoConfigPayload] = None):
+    url, token = _creds_from_payload(payload, request)
     turso = TursoService(db_url=url, auth_token=token)
     try:
         res = await turso.test_connection()
@@ -38,12 +52,12 @@ async def test_turso_endpoint(payload: Optional[TursoConfigPayload] = None):
 
 @router.post("/api/push")
 async def push_to_turso_endpoint(
+    request: Request,
     payload: Optional[TursoConfigPayload] = None,
     db: Session = Depends(get_db)
 ):
     """Sube todos los datos locales a Turso en la nube."""
-    url = payload.database_url if payload else None
-    token = payload.auth_token if payload else None
+    url, token = _creds_from_payload(payload, request)
     turso = TursoService(db_url=url, auth_token=token)
 
     # Si se pasaron credenciales, guardarlas en el entorno de la sesión
@@ -63,12 +77,12 @@ async def push_to_turso_endpoint(
 
 @router.post("/api/pull")
 async def pull_from_turso_endpoint(
+    request: Request,
     payload: Optional[TursoConfigPayload] = None,
     db: Session = Depends(get_db)
 ):
     """Descarga todos los datos desde Turso Cloud hacia la PC local."""
-    url = payload.database_url if payload else None
-    token = payload.auth_token if payload else None
+    url, token = _creds_from_payload(payload, request)
     turso = TursoService(db_url=url, auth_token=token)
 
     if url and token:

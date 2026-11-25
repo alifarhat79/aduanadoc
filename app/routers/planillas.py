@@ -352,6 +352,9 @@ async def guardar_planilla_api(payload: PlanillaSaveRequest, db: Session = Depen
                 "message": "Planilla guardada y finiquitada correctamente." if planilla.estado == "FINIQUITADO" else "Borrador de planilla guardado correctamente."
             }
         )
+    except HTTPException:
+        db.rollback()
+        raise  # p. ej. 404 "Planilla no encontrada" (antes se convertía en un 500 genérico)
     except Exception as e:
         db.rollback()
         return JSONResponse(

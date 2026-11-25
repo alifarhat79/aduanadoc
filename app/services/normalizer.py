@@ -104,7 +104,9 @@ def parse_currency(raw_val: Optional[str]) -> Optional[float]:
         return None
 
     # Extraer solo secuencias numéricas con separadores
-    match = re.search(r"[-+]?[0-9.,]+", text)
+    # Debe empezar con dígito (o ".5"/",5"): antes "Gs. 75.000.000" capturaba el "." suelto
+    # que queda tras quitar "Gs" y devolvía None.
+    match = re.search(r"[-+]?(?:\d[\d.,]*|[.,]\d[\d.,]*)", text)
     if not match:
         return None
     cleaned = match.group(0)

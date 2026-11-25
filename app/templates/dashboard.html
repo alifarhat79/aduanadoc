@@ -192,7 +192,7 @@
                                         <a href="/despachos/{{ d.id }}" class="fw-bold text-primary text-decoration-none font-monospace">
                                             {{ d.numero_despacho or 'S/N' }}
                                         </a>
-                                        <button type="button" class="btn btn-link btn-sm p-0 text-secondary" title="Ver Mercancías y Marcas" onclick="openItemsModal({{ d.id }}, '{{ d.numero_despacho or 'S/N' }}')">
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-secondary" title="Ver Mercancías y Marcas" onclick="openItemsModal({{ d.id }}, {{ (d.numero_despacho or 'S/N')|string|tojson|forceescape }})">
                                             <i class="bi bi-box-seam text-warning"></i>
                                         </button>
                                     </div>
@@ -230,7 +230,7 @@
                                     <button class="btn btn-sm btn-light border shadow-2xs px-2 py-1 btn-trigger-ctx" 
                                             type="button" 
                                             title="Menú Contextual"
-                                            onclick="triggerMenuFromButton(event, {{ d.id }}, '{{ d.numero_despacho or 'S/N' }}')">
+                                            onclick="triggerMenuFromButton(event, {{ d.id }}, {{ (d.numero_despacho or 'S/N')|string|tojson|forceescape }})">
                                         <i class="bi bi-three-dots-vertical"></i>
                                     </button>
                                 </td>
@@ -510,17 +510,17 @@
             return;
         }
         tbody.innerHTML = campos.map(c => {
-            let valHtml = `<span class="fw-bold font-monospace text-dark">${c.valor}</span>`;
+            let valHtml = `<span class="fw-bold font-monospace text-dark">${aduEsc(c.valor)}</span>`;
             if (c.campo === 'canal') {
                 const bg = c.valor === 'VERDE' ? 'bg-success' : (c.valor === 'NARANJA' ? 'bg-warning text-dark' : 'bg-danger');
-                valHtml = `<span class="badge ${bg} px-2 py-1"><i class="bi bi-flag-fill me-1"></i>${c.valor}</span>`;
+                valHtml = `<span class="badge ${bg} px-2 py-1"><i class="bi bi-flag-fill me-1"></i>${aduEsc(c.valor)}</span>`;
             } else if (c.campo === 'propietario') {
-                valHtml = `<span class="badge bg-primary px-2 py-1"><i class="bi bi-person-fill me-1"></i>${c.valor}</span>`;
+                valHtml = `<span class="badge bg-primary px-2 py-1"><i class="bi bi-person-fill me-1"></i>${aduEsc(c.valor)}</span>`;
             }
 
             return `
                 <tr>
-                    <td class="fw-semibold text-muted" style="font-size: 0.82rem;">${c.label}</td>
+                    <td class="fw-semibold text-muted" style="font-size: 0.82rem;">${aduEsc(c.label)}</td>
                     <td>${valHtml}</td>
                 </tr>
             `;
@@ -575,10 +575,10 @@
         tbody.innerHTML = items.map(it => `
             <tr>
                 <td class="fw-semibold">${it.numero_item}.${it.numero_subitem || 1}</td>
-                <td class="font-monospace">${it.codigo_ncm || '-'}</td>
-                <td><span class="badge bg-light text-primary border fw-semibold">${it.marca || 'Sin Marca'}</span></td>
-                <td>${it.codigo_producto ? `<code class="bg-light px-1 border">${it.codigo_producto}</code>` : '-'}</td>
-                <td>${it.descripcion || '-'}</td>
+                <td class="font-monospace">${aduEsc(it.codigo_ncm || '-')}</td>
+                <td><span class="badge bg-light text-primary border fw-semibold">${aduEsc(it.marca || 'Sin Marca')}</span></td>
+                <td>${it.codigo_producto ? `<code class="bg-light px-1 border">${aduEsc(it.codigo_producto)}</code>` : '-'}</td>
+                <td>${aduEsc(it.descripcion || '-')}</td>
                 <td class="text-end font-monospace">${(it.cantidad || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                 <td class="text-end fw-semibold text-dark">$${(it.valor_total || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
             </tr>

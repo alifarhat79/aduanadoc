@@ -14,6 +14,10 @@ from app.services.backup_service import BackupService
 
 logger = logging.getLogger(__name__)
 
+# Evita que varias pestañas/PCs del mismo servidor apliquen la actualización a la vez
+import threading as _threading
+_APPLY_LOCK = _threading.Lock()
+
 class UpdaterService:
     def __init__(self, updates_dir: Optional[str] = None):
         self.updates_dir = Path(updates_dir or settings.UPDATES_DIR)
@@ -103,13 +107,13 @@ class UpdaterService:
             }
 
     def _get_installed_commit(self) -> Dict[str, Any]:
-        """Obtiene la información del commit instalado actualmente en esta PC."""
+        """
+        Obtiene la información del commit instalado actualmente en esta PC.
+        Si hay repositorio Git, la fuente de verdad es HEAD. installed_version.json solo se usa
+        en PCs sin Git: antes se leía primero y, si quedaba desactualizado (o con "1.0.9-test"
+        escrito por las pruebas), el sistema creía SIEMPRE que había una actualización.
+        """
         ver_file = BASE_DIR / "data" / "installed_version.json"
-        if ver_file.exists():
-            try:
-                return json.loads(ver_file.read_text(encoding="utf-8"))
-            except Exception:
-                pass
 
         # Si existe .git
         git_dir = BASE_DIR / ".git"
@@ -129,12 +133,59 @@ class UpdaterService:
             except Exception:
                 pass
 
+        if ver_file.exists():
+            try:
+                return json.loads(ver_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
         return {
             "commit_hash": settings.APP_VERSION,
             "commit_msg": "Versión instalada",
             "commit_date": "",
             "updated_at": datetime.now().isoformat()
         }
+
+    def _local_history_contains(self, full_sha: str) -> bool:
+        """True si el commit indicado ya forma parte del historial local (HEAD lo contiene)."""
+        if not (BASE_DIR / ".git").exists() or not full_sha:
+            return False
+        import subprocess
+        try:
+            proc = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", full_sha, "HEAD"],
+                cwd=str(BASE_DIR), capture_output=True, text=True, timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return proc.returncode == 0
+        except Exception:
+            return False
+
+    def _save_local_work_before_reset(self, git_executable: str) -> Dict[str, Any]:
+        """
+        Antes de un 'git reset --hard' guarda el trabajo local (igual que actualizar_seguro.bat):
+        - rama 'respaldo-antes-de-actualizar' apuntando al HEAD actual (commits sin subir)
+        - 'git stash -u' con los cambios sin commitear (los archivos ignorados como .env,
+          data/ o uploads/ no se tocan).
+        """
+        import subprocess
+        info: Dict[str, Any] = {"rama_respaldo": False, "stash": False}
+        kw = dict(cwd=str(BASE_DIR), capture_output=True, text=True, timeout=20,
+                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        try:
+            head = subprocess.run([git_executable, "rev-parse", "--verify", "HEAD"], **kw)
+            if head.returncode == 0:
+                b = subprocess.run([git_executable, "branch", "-f", "respaldo-antes-de-actualizar", "HEAD"], **kw)
+                info["rama_respaldo"] = b.returncode == 0
+                status = subprocess.run([git_executable, "status", "--porcelain"], **kw)
+                if status.stdout.strip():
+                    st = subprocess.run(
+                        [git_executable, "stash", "push", "-u", "-m",
+                         f"respaldo automatico antes de actualizar {datetime.now():%Y-%m-%d %H:%M}"], **kw)
+                    info["stash"] = st.returncode == 0
+        except Exception as e:
+            info["error"] = str(e)[:150]
+        return info
 
     def _save_installed_commit(self, commit_hash: str, commit_msg: str = "", commit_date: str = ""):
         """Guarda la versión y commit instalado en data/installed_version.json."""
@@ -179,6 +230,11 @@ class UpdaterService:
 
                     # Comparar si hay nuevo commit
                     has_update = bool(remote_sha and local_hash and not local_hash.startswith(remote_sha) and not remote_full_sha.startswith(local_hash))
+                    # Si el commit de GitHub YA está en el historial local (esta PC está igual o
+                    # ADELANTADA, p. ej. la PC del programador con commits sin subir), no es una
+                    # actualización: aplicarla haría "reset --hard" y descartaría trabajo local.
+                    if has_update and remote_full_sha and self._local_history_contains(remote_full_sha):
+                        has_update = False
 
                     return {
                         "has_update": has_update,
@@ -255,7 +311,16 @@ class UpdaterService:
         """
         Para OTRAS PCs: Aplica la actualización automáticamente desde GitHub o ZIP,
         preservando intacta la base de datos (data/despachos.db), uploads y credenciales (.env).
+        Solo una actualización a la vez (cada pestaña abierta la dispara al cargar).
         """
+        if not _APPLY_LOCK.acquire(blocking=False):
+            return {"success": False, "error": "Ya hay una actualización en curso en esta PC."}
+        try:
+            return self._apply_update_locked()
+        finally:
+            _APPLY_LOCK.release()
+
+    def _apply_update_locked(self) -> Dict[str, Any]:
         check = self.check_for_updates()
         if check.get("source") == "github":
             return self.connect_git_repo()
@@ -582,6 +647,9 @@ class UpdaterService:
                     subprocess.run([git_executable, "fetch", "origin"], cwd=str(BASE_DIR), capture_output=True, timeout=30)
                 
                 subprocess.run([git_executable, "branch", "-M", "main"], cwd=str(BASE_DIR), capture_output=True, timeout=10)
+                # Nunca perder trabajo local: antes el reset --hard descartaba commits sin subir
+                # y cambios sin guardar (y la interfaz lo dispara sola al detectar actualización).
+                self._save_local_work_before_reset(git_executable)
                 subprocess.run([git_executable, "reset", "--hard", "origin/main"], cwd=str(BASE_DIR), capture_output=True, timeout=15)
                 status = self.get_git_status()
                 if status.get("commit_hash"):

@@ -206,11 +206,11 @@
                                             </small>
                                             <div class="d-flex gap-2">
                                                 <button type="button" class="btn btn-sm btn-outline-primary fw-semibold px-3" 
-                                                        onclick="openCustomMergeModal({{ cl.variantes | tojson | forceescape }}, '{{ cl.marca_sugerida }}')">
+                                                        onclick="openCustomMergeModal({{ cl.variantes | tojson | forceescape }}, {{ (cl.marca_sugerida)|string|tojson|forceescape }})">
                                                     <i class="bi bi-pencil-square me-1"></i> Personalizar
                                                 </button>
                                                 <button type="button" class="btn btn-sm btn-primary fw-semibold px-3 shadow-sm" 
-                                                        onclick="executeClusterMerge('{{ cl.cluster_id }}', {{ cl.variantes | tojson | forceescape }}, '{{ cl.marca_sugerida }}')">
+                                                        onclick="executeClusterMerge({{ (cl.cluster_id)|string|tojson|forceescape }}, {{ cl.variantes | tojson | forceescape }}, {{ (cl.marca_sugerida)|string|tojson|forceescape }})">
                                                     <i class="bi bi-lightning-charge-fill me-1"></i> Unificar a {{ cl.marca_sugerida }}
                                                 </button>
                                             </div>
@@ -290,10 +290,10 @@
                                             <a href="/mercancias?marca={{ m.marca }}" target="_blank" class="btn btn-outline-secondary btn-sm" title="Ver mercancías de esta marca">
                                                 <i class="bi bi-box-seam me-1"></i>Ver
                                             </a>
-                                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="openRenombrarModal('{{ m.marca }}', {{ m.total_items }})" title="Cambiar nombre de marca">
+                                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="openRenombrarModal({{ (m.marca)|string|tojson|forceescape }}, {{ m.total_items }})" title="Cambiar nombre de marca">
                                                 <i class="bi bi-pencil me-1"></i>Renombrar
                                             </button>
-                                            <button type="button" class="btn btn-outline-warning text-dark btn-sm" onclick="openUnificarIndividualModal('{{ m.marca }}', {{ m.total_items }})" title="Unificar esta marca con otra existente">
+                                            <button type="button" class="btn btn-outline-warning text-dark btn-sm" onclick="openUnificarIndividualModal({{ (m.marca)|string|tojson|forceescape }}, {{ m.total_items }})" title="Unificar esta marca con otra existente">
                                                 <i class="bi bi-shuffle me-1"></i>Unificar
                                             </button>
                                         </div>

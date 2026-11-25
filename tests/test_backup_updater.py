@@ -28,7 +28,24 @@ def test_backup_service_create_and_list():
     assert path is not None
     assert path.exists()
 
+def _login_programador():
+    res = client.post("/configuracion/login", json={"password": os.environ["CONFIG_ADMIN_PASSWORD"]})
+    assert res.status_code == 200
+
+
+def test_backup_admin_endpoints_require_login():
+    """Listar/descargar/borrar respaldos (contienen toda la base) y publicar exigen sesión de programador."""
+    anon = TestClient(app)
+    assert anon.get("/api/backup/listar").status_code == 401
+    assert anon.delete("/api/backup/backup_aduanadoc_x.zip").status_code == 401
+    assert anon.get("/api/backup/download/backup_aduanadoc_x.zip").status_code == 401
+    assert anon.post("/api/updates/publish", json={"version": "9.9.9"}).status_code == 401
+    assert anon.post("/api/updates/git/push", json={}).status_code == 401
+    assert anon.post("/api/updates/git/connect", json={}).status_code == 401
+
+
 def test_backup_api_endpoints():
+    _login_programador()
     # 1. Crear backup por API
     res = client.post("/api/backup/crear", json={"reason": "TEST_API"})
     assert res.status_code == 200
@@ -78,6 +95,7 @@ def test_updater_service_publish_check_apply():
     settings.APP_VERSION = "1.0.0"
 
 def test_updater_api_endpoints():
+    _login_programador()
     # 1. Publicar vía API
     res_pub = client.post("/api/updates/publish", json={"version": "1.0.9-test", "changelog": "API Test"})
     assert res_pub.status_code == 200

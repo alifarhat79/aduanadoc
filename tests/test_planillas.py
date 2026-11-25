@@ -9,11 +9,13 @@ client = TestClient(app)
 
 def create_sample_catalogo_data():
     db = SessionLocal()
-    d = db.query(Despacho).filter(Despacho.numero_despacho == "26021ZF2I000919N").first()
+    # Número propio de esta prueba: antes reutilizaba el de test_http_endpoints y, si ese
+    # despacho ya existía (sin ítem LATTAFA), la búsqueda solo pasaba con datos reales.
+    d = db.query(Despacho).filter(Despacho.numero_despacho == "TESTPLANILLA0001").first()
     if not d:
         d = Despacho(
             propietario="Cliente Test S.A.",
-            numero_despacho="26021ZF2I000919N",
+            numero_despacho="TESTPLANILLA0001",
             fecha_despacho=date(2026, 8, 10),
             importador_nombre="FLORACE S.A",
             importador_documento="800409361",
