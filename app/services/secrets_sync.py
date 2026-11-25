@@ -20,11 +20,13 @@ import json
 import socket
 import logging
 import subprocess
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 from app.config import settings, BASE_DIR
+from app.services.errores_red import describir_error, es_error_de_conexion
 
 logger = logging.getLogger(__name__)
 
@@ -354,14 +356,27 @@ def _sincronizar_turso() -> Dict[str, Any]:
             db = SessionLocal()
             try:
                 subida = await t.push_delta_to_turso(db)
+                if subida.get("success") is False and subida.get("error"):
+                    raise ConnectionError(subida["error"])
                 bajada = await t.pull_despachos_quick(db)
                 return {"subidos": subida.get("despachos_subidos", 0), "bajados": bajada.get("despachos_nuevos", 0)}
             finally:
                 db.close()
 
-        res = asyncio.run(asyncio.wait_for(_run(), timeout=90))
-        logger.info(f"[Arranque] Sync Turso: {res}")
-        return res
+        # Si internet falla justo al arrancar, se reintenta (antes quedaba sin sincronizar hasta
+        # el próximo arranque). Cada intento es seguro: solo sube lo que falta y baja lo nuevo.
+        esperas = (15, 45)
+        for intento in range(len(esperas) + 1):
+            try:
+                res = asyncio.run(asyncio.wait_for(_run(), timeout=90))
+                logger.info(f"[Arranque] Sync Turso: {res}")
+                return res
+            except Exception as e:
+                if intento == len(esperas) or not es_error_de_conexion(e):
+                    raise
+                logger.warning(f"[Arranque] Sync Turso sin conexión ({describir_error(e)}); "
+                               f"reintento en {esperas[intento]} s.")
+                time.sleep(esperas[intento])
     except Exception as e:
-        logger.warning(f"[Arranque] Sync Turso falló: {e}")
-        return {"error": str(e)[:150]}
+        logger.warning(f"[Arranque] Sync Turso falló: {describir_error(e)}")
+        return {"error": describir_error(e)[:150]}

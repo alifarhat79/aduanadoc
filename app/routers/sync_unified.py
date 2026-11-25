@@ -50,8 +50,10 @@ async def check_new_despachos(drive: bool = True):
         try:
             nuevos_en_drive = await asyncio.wait_for(asyncio.to_thread(run_detect), timeout=30.0)
         except Exception as e:
-            error = str(e)
-            logger.warning(f"[CheckNew] No se pudo consultar Google Drive: {e}")
+            from app.services.errores_red import describir_error
+            error = ("Google Drive no respondió en 30 s" if isinstance(e, asyncio.TimeoutError)
+                     else describir_error(e))
+            logger.warning(f"[CheckNew] No se pudo consultar Google Drive: {error}")
 
     return {
         "hay_nuevos": bool(pendientes or nuevos_en_drive),

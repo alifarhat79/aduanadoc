@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date
@@ -9,6 +10,7 @@ from sqlalchemy import inspect
 
 from app.models import Despacho, DespachoItem, DespachoAuditoria
 from app.config import settings
+from app.services.errores_red import describir_error
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +71,23 @@ class TursoService:
 
         payload = {"requests": requests}
 
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post(self.pipeline_url, headers=headers, json=payload)
-            if resp.status_code != 200:
-                raise Exception(f"Error de Turso ({resp.status_code}): {resp.text}")
-            return resp.json()
+        # Si la conexión ni siquiera se pudo abrir (internet caído un momento), se reintenta: la
+        # petición no llegó a Turso, así que reintentar nunca duplica escrituras. Un tiempo agotado
+        # DESPUÉS de enviar no se reintenta, porque la escritura pudo haberse aplicado.
+        esperas = (2.0, 5.0)
+        for intento in range(len(esperas) + 1):
+            try:
+                async with httpx.AsyncClient(timeout=45.0) as client:
+                    resp = await client.post(self.pipeline_url, headers=headers, json=payload)
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                if intento == len(esperas):
+                    raise
+                logger.info(f"[TursoService] Sin conexión con Turso ({describir_error(e)}); reintento en {esperas[intento]:.0f} s.")
+                await asyncio.sleep(esperas[intento])
+        if resp.status_code != 200:
+            raise Exception(f"Error de Turso ({resp.status_code}): {resp.text}")
+        return resp.json()
 
     async def test_connection(self) -> Dict[str, Any]:
         """Prueba la conectividad ejecutando un SELECT 1."""
@@ -295,7 +309,12 @@ class TursoService:
                         if v1:
                             turso_hashes.add(str(v1).strip())
         except Exception as e:
-            logger.warning(f"[TursoService] Error obteniendo identificadores de Turso para push delta: {e}")
+            # Sin esta lista TODOS los despachos parecerían faltar en la nube y se subirían todos,
+            # pisando en Turso los datos y las líneas cargadas desde otras PCs. Se aborta el intento.
+            logger.warning(f"[TursoService] No se pudo leer qué despachos ya están en Turso ({describir_error(e)}); "
+                           "no se sube nada en este intento.")
+            return {"success": False, "error": f"No se pudo consultar Turso: {describir_error(e)}",
+                    "despachos_subidos": 0, "items_subidos": 0}
 
         # 2. Filtrar despachos locales que faltan en la nube
         query = db.query(Despacho)

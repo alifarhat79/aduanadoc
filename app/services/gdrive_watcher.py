@@ -86,7 +86,13 @@ class GDriveWatcher:
                 try:
                     await self._perform_scan()
                 except Exception as e:
-                    logger.error(f"[GDriveWatcher] Error durante el escaneo automático: {e}")
+                    from app.services.errores_red import describir_error, es_error_de_conexion
+                    if es_error_de_conexion(e):
+                        # Internet caído o Google lento: no es un error del programa, se reintenta solo
+                        logger.warning(f"[GDriveWatcher] Sin conexión con Google Drive ({describir_error(e)}); "
+                                       f"se reintentará en {self.interval_seconds} s.")
+                    else:
+                        logger.error(f"[GDriveWatcher] Error durante el escaneo automático: {describir_error(e)}")
 
             # Esperar el intervalo configurado
             await asyncio.sleep(self.interval_seconds)
