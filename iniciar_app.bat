@@ -57,9 +57,10 @@ if errorlevel 1 (
     "%PY_CMD%" -m pip install -r requirements.txt
 )
 
-REM 4. Abrir navegador
-echo [*] Abriendo navegador web en http://127.0.0.1:8000
-start "" cmd /c "timeout /t 2 /nobreak >nul & start http://127.0.0.1:8000"
+REM 4. Abrir navegador recien cuando el servidor responda (antes se abria a los 2 s fijos y
+REM    mostraba "127.0.0.1 rechazo la conexion" porque el servidor todavia estaba arrancando)
+echo [*] El navegador se abrira solo cuando el servidor este listo: http://127.0.0.1:8000
+start "" /b "%PY_CMD%" "%~dp0scripts\abrir_navegador.py" http://127.0.0.1:8000
 
 REM 5. Servidor FastAPI
 echo [*] Iniciando servidor AduanaDoc...
