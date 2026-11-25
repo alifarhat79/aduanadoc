@@ -12,8 +12,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -90,6 +91,78 @@ def api_validacion(db: Session = Depends(get_db)):
 @router.get("/api/versiones")
 def api_versiones(db: Session = Depends(get_db)):
     return arancel_service.listar_versiones(db)
+
+
+# ---------------- Asistente de clasificación con IA (Claude) ----------------
+
+class ConsultaIA(BaseModel):
+    descripcion: str = Field(..., min_length=3, max_length=1000)
+    detalles: str = Field("", max_length=1500)
+
+
+@router.get("/api/ia/estado")
+def api_ia_estado():
+    from app.services import ia_service
+    return {"configurada": ia_service.esta_configurada(), "modelo": ia_service.MODELO}
+
+
+@router.post("/api/ia/clasificar")
+def api_ia_clasificar(consulta: ConsultaIA, db: Session = Depends(get_db)):
+    """Sugiere NCM con Claude, siempre validados contra el arancel vigente. Solo lee datos locales."""
+    from app.services import ia_service
+    try:
+        return ia_service.clasificar_ncm(db, consulta.descripcion, consulta.detalles)
+    except ia_service.IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
+
+
+MAX_LISTA_BYTES = 20 * 1024 * 1024
+
+
+@router.post("/api/ia/candidatos")
+def api_ia_candidatos(candidatos: str = Form(..., max_length=500), db: Session = Depends(get_db)):
+    """Valida los NCM posibles antes de clasificar (sin usar la IA)."""
+    from app.services import ia_service
+    try:
+        nodos = ia_service.resolver_candidatos(db, candidatos)
+    except ia_service.IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
+    return [{"ncm": n["c"], "d": n["d"], "descripcion": n["t"], "anv": n.get("anv"), "iva_t": n.get("iva_t")} for n in nodos]
+
+
+@router.post("/api/ia/clasificar-lista")
+def api_ia_clasificar_lista(
+    candidatos: str = Form(..., max_length=500),
+    texto: str = Form("", max_length=60000),
+    archivo: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    """Clasifica cada producto de una lista o factura entre los NCM elegidos por el usuario."""
+    from app.services import ia_service
+    contenido, nombre = None, ""
+    if archivo is not None and archivo.filename:
+        nombre = Path(archivo.filename).name
+        contenido = archivo.file.read(MAX_LISTA_BYTES + 1)
+        if len(contenido) > MAX_LISTA_BYTES:
+            raise HTTPException(status_code=413, detail="El archivo supera 20 MB.")
+    try:
+        return ia_service.clasificar_lista(db, candidatos, texto, contenido, nombre)
+    except ia_service.IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
+
+
+@router.post("/api/ia/lista-xlsx")
+def api_ia_lista_xlsx(resultado: dict = Body(...)):
+    """Excel de la clasificación: hoja Resumen, hoja Todos y una hoja por cada NCM (no vuelve a consultar la IA)."""
+    from app.services import ia_service
+    try:
+        contenido = ia_service.exportar_lista_xlsx(resultado)
+    except ia_service.IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
+    nombre = f"clasificacion_ncm_{datetime.now():%Y%m%d_%H%M}.xlsx"
+    return Response(content=contenido,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
 
 
 def _guardar_subida(archivo: UploadFile, destino: Path, extensiones, limite: int) -> None:

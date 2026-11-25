@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     TURSO_DATABASE_URL: str = ""
     TURSO_AUTH_TOKEN: str = ""
 
+    # Inteligencia Artificial (Anthropic Claude): asistente de clasificación NCM.
+    # Se carga desde Configuración, el .env local o 'aduanadoc_claves.env' en Drive.
+    ANTHROPIC_API_KEY: str = ""
+
     # Google Drive Sync
     GDRIVE_FOLDER_ID: str = "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv"
     GDRIVE_CREDENTIALS_FILE: str = "./service_account.json"

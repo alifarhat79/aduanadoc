@@ -165,6 +165,66 @@ async def cambiar_password_api(payload: ChangePasswordPayload, request: Request)
     return response
 
 
+# --- INTELIGENCIA ARTIFICIAL (API key de Anthropic) ---
+class SaveIAPayload(BaseModel):
+    api_key: str
+
+
+def _guardar_clave_ia(valor: str) -> None:
+    if not ENV_PATH.exists():
+        ENV_PATH.touch()
+    set_key(str(ENV_PATH), "ANTHROPIC_API_KEY", valor)
+    os.environ["ANTHROPIC_API_KEY"] = valor
+    settings.ANTHROPIC_API_KEY = valor
+
+
+@router.get("/api/ia")
+def estado_ia_api(request: Request):
+    require_admin_auth(request)
+    from app.services import ia_service
+    return {"configurada": ia_service.esta_configurada(), "clave": ia_service.clave_enmascarada(),
+            "modelo": ia_service.MODELO}
+
+
+@router.post("/api/ia/guardar")
+def guardar_ia_api(payload: SaveIAPayload, request: Request):
+    """Verifica la clave con Anthropic (sin gastar tokens) y recién entonces la guarda en el .env de esta PC."""
+    require_admin_auth(request)
+    from app.services import ia_service
+    clave = (payload.api_key or "").strip().strip("'\"")
+    if not clave:
+        raise HTTPException(status_code=400, detail="Pegue la API key de Anthropic (empieza con sk-ant-).")
+    if len(clave) > 300 or any(c.isspace() for c in clave):
+        raise HTTPException(status_code=400, detail="La clave tiene un formato inválido.")
+    prueba = ia_service.probar_clave(clave)
+    if not prueba["ok"] and not prueba.get("sin_conexion"):
+        raise HTTPException(status_code=400, detail=prueba["mensaje"])
+    _guardar_clave_ia(clave)
+    mensaje = prueba["mensaje"] if prueba["ok"] else (
+        "Clave guardada, pero no se pudo verificar ahora (sin conexión con Anthropic). Pruébela más tarde.")
+    return {"success": True, "verificada": prueba["ok"], "message": mensaje, "clave": ia_service.clave_enmascarada(clave)}
+
+
+@router.post("/api/ia/probar")
+def probar_ia_api(request: Request):
+    require_admin_auth(request)
+    from app.services import ia_service
+    if not ia_service.esta_configurada():
+        raise HTTPException(status_code=400, detail="No hay una API key guardada en esta PC.")
+    return ia_service.probar_clave()
+
+
+@router.delete("/api/ia")
+def borrar_ia_api(request: Request):
+    require_admin_auth(request)
+    if ENV_PATH.exists():
+        from dotenv import unset_key
+        unset_key(str(ENV_PATH), "ANTHROPIC_API_KEY")
+    os.environ.pop("ANTHROPIC_API_KEY", None)
+    settings.ANTHROPIC_API_KEY = ""
+    return {"success": True, "message": "API key eliminada de esta PC."}
+
+
 # --- PANTALLA PRINCIPAL (CON CANDADO) ---
 @router.get("", response_class=HTMLResponse)
 async def configuracion_view(request: Request, db: Session = Depends(get_db)):
@@ -192,6 +252,10 @@ async def configuracion_view(request: Request, db: Session = Depends(get_db)):
 
     is_configured = bool(turso_url and turso_token)
 
+    from app.services import ia_service
+    ia_configurada = ia_service.esta_configurada()
+    ia_clave = ia_service.clave_enmascarada()
+
     return templates.TemplateResponse(
         request=request,
         name="configuracion.html",
@@ -208,6 +272,9 @@ async def configuracion_view(request: Request, db: Session = Depends(get_db)):
             "total_despachos": total_despachos,
             "total_items": total_items,
             "env_path": str(ENV_PATH),
+            "ia_configurada": ia_configurada,
+            "ia_clave": ia_clave or "",
+            "ia_modelo": ia_service.MODELO,
             "es_programador_autenticado": True
         }
     )

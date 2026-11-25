@@ -51,7 +51,7 @@ if not errorlevel 1 (
 
 REM 3. Dependencias
 echo [*] Verificando dependencias...
-"%PY_CMD%" -c "import fastapi, uvicorn, sqlalchemy, openpyxl, reportlab, httpx, dotenv" >nul 2>&1
+"%PY_CMD%" -c "import fastapi, uvicorn, sqlalchemy, openpyxl, reportlab, httpx, dotenv, anthropic, xlrd" >nul 2>&1
 if errorlevel 1 (
     echo [*] Instalando dependencias necesarias...
     "%PY_CMD%" -m pip install -r requirements.txt

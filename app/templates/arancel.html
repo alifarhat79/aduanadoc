@@ -47,6 +47,7 @@
 
   <ul class="nav nav-tabs mb-3" role="tablist">
     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabBuscar" type="button"><i class="bi bi-search me-1"></i>Buscador</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabIA" type="button"><i class="bi bi-stars text-primary me-1"></i>Asistente IA</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabArbol" type="button"><i class="bi bi-diagram-3 me-1"></i>Por capítulos</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabMios" type="button"><i class="bi bi-star-fill text-warning me-1"></i>Tus NCM</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabValid" type="button"><i class="bi bi-shield-exclamation text-danger me-1"></i>Validación <span class="badge bg-danger-subtle text-danger-emphasis" id="badgeValid"></span></button></li>
@@ -83,6 +84,55 @@
           </div>
         </div>
         <div class="col-xl-6"><div class="ficha-sticky" id="ficha"></div></div>
+      </div>
+    </div>
+
+    <!-- ASISTENTE IA -->
+    <div class="tab-pane fade" id="tabIA">
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <div class="card border-0 shadow-sm p-3">
+            <h6 class="fw-bold"><i class="bi bi-stars text-primary me-1"></i>Asistente de clasificación con IA</h6>
+            <div id="iaSinClave" class="alert alert-warning small d-none mb-2">
+              <i class="bi bi-key me-1"></i>La IA no está configurada en esta PC. El programador puede ingresar la API key de
+              Anthropic en <a href="/configuracion">Configuración</a>.
+            </div>
+            <form id="formIA">
+              <label class="form-label small fw-semibold" for="iaDesc">Describa el producto</label>
+              <textarea id="iaDesc" class="form-control" rows="3" maxlength="1000" required
+                        placeholder="Ej.: auriculares inalámbricos bluetooth TWS con estuche de carga"></textarea>
+              <label class="form-label small fw-semibold mt-2" for="iaDet">Detalles (opcional)</label>
+              <textarea id="iaDet" class="form-control" rows="2" maxlength="1500"
+                        placeholder="Material, composición, uso, potencia, si viene en juego o surtido…"></textarea>
+              <button class="btn btn-primary btn-sm mt-2" type="submit" id="btnIA"><i class="bi bi-stars me-1"></i>Sugerir NCM</button>
+            </form>
+            <div class="small text-muted mt-3" style="font-size:.72rem">
+              Las sugerencias salen siempre del arancel vigente y se verifican contra él. Se envía a Anthropic: la descripción,
+              texto del arancel y hasta 2 descripciones de productos de sus despachos por NCM candidato; nunca clientes,
+              importadores ni valores. <b>La IA sugiere: la clasificación final es responsabilidad del despachante.</b>
+            </div>
+          </div>
+
+          <div class="card border-0 shadow-sm p-3 mt-3">
+            <h6 class="fw-bold"><i class="bi bi-list-check text-primary me-1"></i>Separar una lista o factura por NCM</h6>
+            <form id="formLista">
+              <label class="form-label small fw-semibold" for="lsCand">NCM posibles (separados por coma)</label>
+              <input id="lsCand" class="form-control font-monospace" maxlength="500" required placeholder="3304.99.10, 3304.99.90">
+              <div id="lsCandInfo" class="small mt-1"></div>
+              <label class="form-label small fw-semibold mt-2" for="lsTexto">Productos (uno por línea)</label>
+              <textarea id="lsTexto" class="form-control" rows="4" maxlength="60000"
+                        placeholder="CREMA HIDRATANTE FACIAL 50ML&#10;SERUM VITAMINA C 30ML&#10;LOCION TONICA 200ML"></textarea>
+              <label class="form-label small fw-semibold mt-2" for="lsArchivo">o suba una lista / factura</label>
+              <input id="lsArchivo" type="file" class="form-control form-control-sm" accept=".xlsx,.xls,.csv,.pdf,.txt">
+              <button class="btn btn-primary btn-sm mt-2" type="submit" id="btnLista"><i class="bi bi-stars me-1"></i>Separar por NCM</button>
+            </form>
+            <div class="small text-muted mt-2" style="font-size:.72rem">
+              Excel/CSV: se toma la columna de descripción (y marca/código si existen). Hasta 300 productos por vez.
+              <b>Si sube una factura PDF, la factura completa se envía a Anthropic</b> para leer sus productos.
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-7"><div id="iaResultado"></div></div>
       </div>
     </div>
 
@@ -576,6 +626,178 @@
     });
   }
 
+  // ---------------- Asistente IA ----------------
+  async function estadoIA() {
+    try {
+      const r = await api('/arancel/api/ia/estado');
+      $('iaSinClave').classList.toggle('d-none', r.configurada);
+      $('btnIA').disabled = !r.configurada;
+      $('btnLista').disabled = !r.configurada;
+    } catch (e) { /* el botón queda activo y el error se ve al consultar */ }
+  }
+  const COLOR_CONFIANZA = {alta: 'success', media: 'warning', baja: 'secondary'};
+  function renderIA(r) {
+    const sugerencias = r.sugerencias.map((s, i) => `
+      <div class="card border-0 shadow-sm p-3 mb-2 ${i === 0 ? 'border-start border-4 border-primary' : ''}">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <a href="#" class="code fs-5 text-decoration-none" data-ficha="${esc(s.d)}">${esc(s.ncm)}</a>
+            <span class="badge bg-${COLOR_CONFIANZA[s.confianza] || 'secondary'}-subtle text-${COLOR_CONFIANZA[s.confianza] || 'secondary'}-emphasis border ms-1">confianza ${esc(s.confianza)}</span>
+            <div class="fw-semibold">${esc(s.descripcion)}</div>
+            <div class="ruta">${esc(s.ruta)}</div>
+          </div>
+          <div class="text-end small text-nowrap">
+            <div>ANV <b>${s.anv !== null ? pct(s.anv) : esc(s.anv_t || '—')}</b></div>
+            <div>IVA ${esc(s.iva_t || '—')}</div>
+            ${s.lista ? `<span class="badge bg-dark-subtle text-dark-emphasis border">${esc(s.lista)}</span>` : ''}
+          </div>
+        </div>
+        <div class="small mt-2"><b>Fundamento:</b> ${esc(s.fundamento)}</div>
+        ${s.notas_aplicadas ? `<div class="small mt-1"><b>Notas legales:</b> ${esc(s.notas_aplicadas)}</div>` : ''}
+        ${s.por_que_no_otras ? `<div class="small mt-1 text-muted"><b>Por qué no otras:</b> ${esc(s.por_que_no_otras)}</div>` : ''}
+        <div class="small mt-1">${s.uso ? `<span class="badge badge-uso">Usado en ${fmt(s.uso.items, 0)} líneas de ${fmt(s.uso.despachos, 0)} despachos</span>`
+                                        : '<span class="text-muted">Nunca usado en tus despachos</span>'}</div>
+      </div>`).join('');
+    const c = r.consumo || {};
+    $('iaResultado').innerHTML = `
+      <div class="card border-0 shadow-sm p-3 mb-2">
+        <div class="small text-muted">Interpretación de la IA</div>
+        <div>${esc(r.interpretacion)}</div>
+      </div>
+      ${r.advertencia ? `<div class="alert alert-warning small py-2 mb-2"><i class="bi bi-exclamation-triangle me-1"></i>${esc(r.advertencia)}</div>` : ''}
+      ${sugerencias || '<div class="alert alert-secondary small">La IA no encontró un NCM con suficiente seguridad. Agregue más detalles del producto.</div>'}
+      ${r.informacion_faltante && r.informacion_faltante.length ? `<div class="card border-0 shadow-sm p-3 mb-2">
+          <div class="small fw-semibold mb-1"><i class="bi bi-question-circle me-1"></i>Datos que ayudarían a confirmar</div>
+          <ul class="small mb-0">${r.informacion_faltante.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+      <details class="small mb-1"><summary>Partidas revisadas (${r.partidas_revisadas.length})</summary>
+        ${r.partidas_revisadas.map(p => `<div><span class="font-monospace">${esc(p.codigo)}</span> ${esc(p.descripcion.slice(0, 120))} <span class="text-muted">— ${esc(p.motivo)}</span></div>`).join('')}
+      </details>
+      <div class="text-muted" style="font-size:.7rem">Modelo ${esc(r.modelo)} · ${fmt((c.entrada || 0) + (c.cache_escritura || 0) + (c.cache_lectura || 0), 0)} tokens de entrada
+        (${fmt(c.cache_lectura || 0, 0)} desde caché) y ${fmt(c.salida || 0, 0)} de salida · costo estimado US$ ${fmt(c.usd_estimado || 0, 3)}</div>`;
+  }
+  $('formIA').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('btnIA');
+    btn.disabled = true;
+    $('iaResultado').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Consultando a Claude: revisa el arancel completo y las notas legales (puede tardar hasta un minuto)…</div>';
+    try {
+      const r = await api('/arancel/api/ia/clasificar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({descripcion: $('iaDesc').value.trim(), detalles: $('iaDet').value.trim()})});
+      renderIA(r);
+    } catch (err) {
+      $('iaResultado').innerHTML = `<div class="alert alert-danger small">${esc(err.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('iaResultado').addEventListener('click', e => {
+    const a = e.target.closest('[data-ficha]');
+    if (a) { e.preventDefault(); irAFicha(a.dataset.ficha); }
+  });
+
+  // ---------------- Separar una lista o factura por NCM ----------------
+  let ultimaLista = null, filtroLista = '';
+  async function validarCandidatos() {
+    const v = $('lsCand').value.trim();
+    if (!v) { $('lsCandInfo').innerHTML = ''; return false; }
+    const fd = new FormData(); fd.append('candidatos', v);
+    try {
+      const c = await api('/arancel/api/ia/candidatos', {method: 'POST', body: fd});
+      $('lsCandInfo').innerHTML = c.map(x => `<div><span class="font-monospace fw-semibold">${esc(x.ncm)}</span> ${esc(x.descripcion)} <span class="text-muted">· ANV ${pct(x.anv)} · IVA ${esc(x.iva_t || '—')}</span></div>`).join('');
+      return true;
+    } catch (e) {
+      $('lsCandInfo').innerHTML = `<span class="text-danger">${esc(e.message)}</span>`;
+      return false;
+    }
+  }
+  $('lsCand').addEventListener('change', validarCandidatos);
+
+  const CONF_COLOR = {alta: 'success', media: 'warning', baja: 'secondary'};
+  function renderLista() {
+    const r = ultimaLista;
+    const filas = r.productos.filter(p => !filtroLista || p.ncm === filtroLista);
+    const chip = (clave, etiqueta, n, color) => n ? `<button type="button" class="btn btn-sm ${filtroLista === clave ? 'btn-' + color : 'btn-outline-' + color} me-1 mb-1" data-filtro="${esc(clave)}">${esc(etiqueta)} <span class="badge bg-light text-dark">${fmt(n, 0)}</span></button>` : '';
+    const c = r.consumo || {};
+    $('iaResultado').innerHTML = `
+      <div class="card border-0 shadow-sm p-3">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+          <div><div class="fw-bold">${fmt(r.productos.length, 0)} productos separados por NCM</div>
+            <div class="small text-muted">Origen: ${esc(r.origen)}</div></div>
+          <button type="button" class="btn btn-outline-success btn-sm" id="btnXlsxLista" title="Hoja Resumen, hoja Todos y una hoja por cada NCM"><i class="bi bi-file-earmark-excel me-1"></i>Descargar Excel (una hoja por NCM)</button>
+        </div>
+        <div class="mt-2">
+          ${chip('', 'Todos', r.productos.length, 'primary')}
+          ${r.candidatos.map(x => chip(x.ncm, x.ncm, r.resumen[x.ncm], 'primary')).join('')}
+          ${chip('NINGUNO', 'Ninguno de estos', r.resumen.NINGUNO, 'danger')}
+          ${chip('SIN_RESPUESTA', 'Sin respuesta', r.resumen.SIN_RESPUESTA, 'secondary')}
+        </div>
+        <div class="table-responsive mt-2" style="max-height:560px">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light sticky-top"><tr><th>#</th><th>Producto</th><th>NCM</th><th>Motivo</th></tr></thead>
+            <tbody>${filas.map(p => `<tr>
+              <td class="text-muted">${p.n}</td>
+              <td><div>${esc(p.descripcion)}</div><div class="ruta">${[p.marca, p.codigo, p.cantidad ? 'cant. ' + p.cantidad : ''].filter(Boolean).map(esc).join(' · ')}</div></td>
+              <td class="text-nowrap">${p.ncm === 'NINGUNO' ? '<span class="badge bg-danger-subtle text-danger-emphasis border">Ninguno</span>'
+                  : p.ncm === 'SIN_RESPUESTA' ? '<span class="badge bg-light text-secondary border">Sin respuesta</span>'
+                  : `<span class="code">${esc(p.ncm)}</span>`}
+                ${p.confianza ? `<div><span class="badge bg-${CONF_COLOR[p.confianza] || 'secondary'}-subtle text-${CONF_COLOR[p.confianza] || 'secondary'}-emphasis border">${esc(p.confianza)}</span></div>` : ''}</td>
+              <td class="small">${esc(p.motivo)}${p.otro_ncm ? `<div class="text-danger-emphasis">Correspondería: ${esc(p.otro_ncm)}</div>` : ''}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <div class="text-muted mt-2" style="font-size:.7rem">Modelo ${esc(r.modelo)} · ${fmt((c.entrada || 0) + (c.cache_escritura || 0) + (c.cache_lectura || 0), 0)} tokens de entrada
+          (${fmt(c.cache_lectura || 0, 0)} desde caché) y ${fmt(c.salida || 0, 0)} de salida · costo estimado US$ ${fmt(c.usd_estimado || 0, 3)}</div>
+      </div>`;
+  }
+  async function descargarXlsxLista(btn) {
+    btn.disabled = true;
+    try {
+      const resp = await fetch('/arancel/api/ia/lista-xlsx', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                              body: JSON.stringify(ultimaLista)});
+      if (!resp.ok) {
+        let detalle = '';
+        try { detalle = (await resp.json()).detail; } catch (e) { /* sin JSON */ }
+        throw new Error(detalle || `Error ${resp.status}`);
+      }
+      const nombre = (resp.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(await resp.blob());
+      a.download = nombre ? nombre[1] : 'clasificacion_ncm.xlsx';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch (err) {
+      alert(`No se pudo generar el Excel: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  $('iaResultado').addEventListener('click', e => {
+    const f = e.target.closest('[data-filtro]');
+    if (f && ultimaLista) { filtroLista = f.dataset.filtro; renderLista(); return; }
+    const b = e.target.closest('#btnXlsxLista');
+    if (b && ultimaLista) descargarXlsxLista(b);
+  });
+  $('formLista').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!(await validarCandidatos())) return;
+    const fd = new FormData();
+    fd.append('candidatos', $('lsCand').value.trim());
+    fd.append('texto', $('lsTexto').value);
+    if ($('lsArchivo').files[0]) fd.append('archivo', $('lsArchivo').files[0]);
+    const btn = $('btnLista');
+    btn.disabled = true;
+    $('iaResultado').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Clasificando los productos con Claude (una lista larga o una factura puede tardar unos minutos)…</div>';
+    try {
+      ultimaLista = await api('/arancel/api/ia/clasificar-lista', {method: 'POST', body: fd});
+      filtroLista = '';
+      renderLista();
+    } catch (err) {
+      $('iaResultado').innerHTML = `<div class="alert alert-danger small">${esc(err.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // ---------------- Pestañas con carga diferida ----------------
   const cargadas = {};
   document.querySelectorAll('.arancel [data-bs-toggle="tab"]').forEach(b => b.addEventListener('shown.bs.tab', () => {
@@ -586,6 +808,7 @@
     if (t === '#tabValid') cargarValidacion();
     if (t === '#tabVersiones') cargarVersiones();
     if (t === '#tabSim') simular();
+    if (t === '#tabIA') estadoIA();
   }));
 
   // ---------------- Arranque ----------------
