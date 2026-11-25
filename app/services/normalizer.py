@@ -180,18 +180,35 @@ COMPANY_CANONICAL_MAP = {
     'agatres': 'AGATRES',
 }
 
+# Palabras que indican una empresa EXTRANJERA (proveedores de Emiratos, EE.UU., Asia...): si aparecen
+# después del nombre de un cliente, es otra empresa ("MEGA ELECTRONICS FZE" no es el cliente MEGA).
+_MARCAS_EMPRESA_EXTRANJERA = re.compile(
+    r"\b(?:fze|fzco|fzc|fz|llc|l l c|ltd|limited|inc|corp|corporation|co|company|gmbh|pte|dmcc|"
+    r"trading|international|intl|plc|pty|bv|ag|sarl|spa|electronics)\b"
+)
+
+
 def normalize_company_name(name: Optional[str]) -> Optional[str]:
-    """Normaliza y unifica variaciones tipográficas de nombres de importadores y empresas."""
+    """
+    Normaliza y unifica variaciones tipográficas de nombres de importadores y empresas.
+    Los clientes conocidos se unifican por prefijo ("ERAS COMERCIAL SRL" -> "ERAS S.R.L."), salvo que el
+    resto del nombre indique una empresa extranjera distinta ("MEGA ELECTRONICS FZE" queda tal cual).
+    """
     if not name:
         return None
     s = clean_text(name)
     if not s:
         return None
-    
-    s_lower = s.lower().replace('.', '').replace(',', '').strip()
+
+    # Comillas, puntos y comas no cambian la empresa: '"HT" S.A.' == 'H.T. S.A.'
+    s_lower = re.sub(r"\s+", " ", re.sub(r"[.,\"'“”‘’]", "", s.lower())).strip()
     for k, v in COMPANY_CANONICAL_MAP.items():
         k_clean = k.replace('.', '').strip()
-        if s_lower == k_clean or s_lower.startswith(k_clean + ' '):
+        if s_lower == k_clean:
             return v
+        if s_lower.startswith(k_clean + ' '):
+            resto = s_lower[len(k_clean) + 1:]
+            if not _MARCAS_EMPRESA_EXTRANJERA.search(resto):
+                return v
     return s.strip().upper()
 

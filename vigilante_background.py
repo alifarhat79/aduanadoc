@@ -112,6 +112,8 @@ def ejecutar_vigilancia():
             finally:
                 db.close()
 
+            if result.get("aviso"):
+                logger.info(f"[Escaneo] {result['aviso']}")
             total = result.get("total_encontrados", 0)
             nuevos = result.get("nuevos_procesados", 0)
             omitidos = result.get("omitidos_duplicados", 0)

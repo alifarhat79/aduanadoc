@@ -100,7 +100,9 @@ async def unified_sync_stream():
                 def run_gdrive():
                     db = SessionLocal()
                     try:
-                        return gdrive.scan_and_process_folder(db=db, propietario_default="Sincronización Manual")
+                        # Sincronización pedida por el usuario: reintenta también los PDF que fallaron
+                        return gdrive.scan_and_process_folder(db=db, propietario_default="Sincronización Manual",
+                                                              reintentar_fallidos=True, espera_candado=120.0)
                     finally:
                         db.close()
 
@@ -112,6 +114,8 @@ async def unified_sync_stream():
                         pct = min(pct + 1, 38)
                         yield send_evt(pct, 1, "gdrive_scan", "Descargando y procesando despachos nuevos de Google Drive...", [])
                 g_res = g_task.result()
+                if g_res.get("aviso"):
+                    gdrive_errores.append(g_res["aviso"])  # p. ej. el vigilante en segundo plano está importando
                 detalles = g_res.get("detalles", [])
                 for d in detalles:
                     if d.get("estado") == "ERROR":

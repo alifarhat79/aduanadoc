@@ -156,6 +156,9 @@ def parse_numeric_value(val: Any) -> float:
             s = s.replace(',', '.')
         else:
             s = s.replace(',', '')
+    elif s.count('.') > 1:
+        # "1.234.567": varios puntos solo pueden ser separadores de miles (antes se leía 1.234)
+        s = s.replace('.', '')
 
     try:
         return float(s)

@@ -6,23 +6,84 @@ import tempfile
 import logging
 import re
 import threading
+import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from pathlib import Path
 
 from app.models import Despacho
+from app.services.candado_procesos import candado_entre_procesos
 from app.services.pipeline import process_pdf_file
 from app.services.turso_service import TursoService
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+@contextmanager
+def _candados_escaneo(espera: float):
+    """Candado de hilos (este proceso) + candado entre procesos, con espera máxima total."""
+    inicio = time.monotonic()
+    if not _SCAN_LOCK.acquire(timeout=max(0.0, espera)):
+        yield False
+        return
+    try:
+        restante = max(0.0, espera - (time.monotonic() - inicio))
+        with candado_entre_procesos("escaneo_pdfs", espera_max=restante) as obtenido:
+            yield obtenido
+    finally:
+        _SCAN_LOCK.release()
+
+
+def _refrescar_sesion(db: Session) -> None:
+    """
+    Tras esperar el candado, otro proceso pudo haber guardado despachos: se cierra la lectura en curso
+    (si no hay cambios pendientes) para que las comprobaciones de duplicados vean esos datos nuevos.
+    """
+    if not (db.new or db.dirty or db.deleted):
+        db.rollback()
+    db.expire_all()
+
 # Candado global: evita que el vigilante automático y la sincronización manual procesen el mismo PDF en paralelo
 _SCAN_LOCK = threading.Lock()
 
+# Esperas antes de reintentar automáticamente un PDF que falló (luego, una vez por día).
+# Antes se volvía a descargar y procesar cada 60 segundos para siempre.
+_ESPERAS_REINTENTO = (timedelta(minutes=5), timedelta(hours=1), timedelta(hours=6), timedelta(hours=24))
+
+
+def _resultado_vacio(aviso: str) -> Dict[str, Any]:
+    return {"total_encontrados": 0, "nuevos_procesados": 0, "procesados": 0, "omitidos_duplicados": 0,
+            "duplicados": 0, "errores": 0, "detalles": [], "aviso": aviso}
+
+
 class GoogleDriveService:
-    # Archivos que fallaron al procesarse en esta sesión del servidor (nombre -> error)
-    failed_files: Dict[str, str] = {}
+    # Archivos que fallaron al procesarse en esta sesión (nombre -> {error, firma, intentos, proximo})
+    failed_files: Dict[str, Any] = {}
+
+    @classmethod
+    def _registrar_fallo(cls, file_name: str, firma: Optional[str], err: Exception) -> None:
+        previo = cls.failed_files.get(file_name)
+        intentos = (previo.get("intentos", 0) if isinstance(previo, dict) and previo.get("firma") == firma else 0) + 1
+        espera = _ESPERAS_REINTENTO[min(intentos, len(_ESPERAS_REINTENTO)) - 1]
+        cls.failed_files[file_name] = {"error": str(err), "firma": firma, "intentos": intentos,
+                                       "proximo": datetime.now() + espera}
+
+    @classmethod
+    def _omitir_por_fallo_previo(cls, file_name: str, firma: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Devuelve el fallo anterior si todavía no corresponde reintentar (mismo archivo, espera vigente)."""
+        info = cls.failed_files.get(file_name)
+        if info is None:
+            return None
+        if not isinstance(info, dict):
+            return {"error": str(info)}
+        if firma and info.get("firma") and firma != info.get("firma"):
+            return None  # el archivo cambió en Drive: se reintenta enseguida
+        if info.get("proximo") and datetime.now() >= info["proximo"]:
+            return None
+        return info
 
     def __init__(self, folder_id: Optional[str] = None, credentials_file: Optional[str] = None):
         self.folder_id = folder_id or os.getenv("GDRIVE_FOLDER_ID", "1NP6zJHL9w_bV0W1BysIDRIZ5FXZzc5Kv")
@@ -138,22 +199,28 @@ class GoogleDriveService:
         db: Session,
         propietario_default: str = "Google Drive",
         allow_duplicate: bool = False,
-        propietario: Optional[str] = None
+        propietario: Optional[str] = None,
+        reintentar_fallidos: bool = False,
+        espera_candado: float = 0.0
     ) -> Dict[str, Any]:
         """
         Escanea la carpeta de Google Drive por API, procesa los PDFs nuevos y omite duplicados.
-        Usa un candado global para que el vigilante y la sincronización manual no procesen el mismo PDF a la vez.
+        Candados: de hilos (vigilante y sincronización manual del mismo servidor) y entre procesos
+        (servidor web y vigilante en segundo plano), para que nunca procesen el mismo PDF a la vez.
         """
-        with _SCAN_LOCK:
-            # Refrescar la sesión: otro escaneo pudo haber insertado despachos mientras esperábamos el candado
-            db.expire_all()
-            return self._scan_and_process_folder_locked(db, propietario_default, propietario)
+        with _candados_escaneo(espera_candado) as obtenido:
+            if not obtenido:
+                return _resultado_vacio("Otro proceso de AduanaDoc está importando PDFs en esta PC; "
+                                        "se revisará en el próximo ciclo.")
+            _refrescar_sesion(db)
+            return self._scan_and_process_folder_locked(db, propietario_default, propietario, reintentar_fallidos)
 
     def _scan_and_process_folder_locked(
         self,
         db: Session,
         propietario_default: str,
-        propietario: Optional[str]
+        propietario: Optional[str],
+        reintentar_fallidos: bool = False
     ) -> Dict[str, Any]:
         owner = propietario or propietario_default or "Google Drive"
         drive_service = self.get_drive_service()
@@ -172,6 +239,7 @@ class GoogleDriveService:
         for f in files:
             file_id = f['id']
             file_name = f['name'].strip()
+            firma = f.get('md5Checksum') or f.get('modifiedTime') or f.get('size')
             tmp_path = None
 
             try:
@@ -184,6 +252,17 @@ class GoogleDriveService:
                         "estado": "OMITIDO",
                         "motivo": f"Ya existe por nombre de archivo (Despacho Nº {existente_por_nombre.numero_despacho or existente_por_nombre.id})",
                         "despacho_id": existente_por_nombre.id
+                    })
+                    continue
+
+                # 1b. Un PDF que ya falló no se vuelve a descargar en cada ciclo: se espera a que cambie
+                #     en Drive o a que venza su espera (la sincronización manual lo reintenta siempre).
+                fallo_previo = None if reintentar_fallidos else self._omitir_por_fallo_previo(file_name, firma)
+                if fallo_previo is not None:
+                    detalles.append({
+                        "archivo": file_name,
+                        "estado": "OMITIDO_ERROR_PREVIO",
+                        "motivo": f"Falló antes ({fallo_previo.get('error', '')[:120]}); se reintentará más tarde",
                     })
                     continue
 
@@ -218,10 +297,11 @@ class GoogleDriveService:
                     file_path=tmp_path,
                     original_filename=file_name,
                     allow_duplicate=False,
-                    propietario=propietario_default
+                    propietario=owner
                 )
 
                 nuevos_procesados += 1
+                GoogleDriveService.failed_files.pop(file_name, None)
                 detalles.append({
                     "archivo": file_name,
                     "estado": "PROCESADO_EXITOSO",
@@ -263,7 +343,7 @@ class GoogleDriveService:
 
             except Exception as err:
                 errores += 1
-                GoogleDriveService.failed_files[file_name] = str(err)
+                GoogleDriveService._registrar_fallo(file_name, firma, err)
                 logger.error(f"[GoogleDriveService] Error procesando '{file_name}': {err}")
                 try:
                     db.rollback()
@@ -316,11 +396,29 @@ class GoogleDriveService:
         local_path: str,
         propietario_default: str = "Carpeta Local",
         allow_duplicate: bool = False,
-        propietario: Optional[str] = None
+        propietario: Optional[str] = None,
+        espera_candado: float = 120.0
     ) -> Dict[str, Any]:
         r"""
         Escanea una carpeta local sincronizada de Google Drive en Windows (ej: J:\My Drive\...).
+        Usa los mismos candados que el escaneo por API para no procesar un PDF dos veces.
         """
+        if not Path(local_path).is_dir():
+            raise FileNotFoundError(f"La carpeta local '{local_path}' no existe o no es accesible.")
+        with _candados_escaneo(espera_candado) as obtenido:
+            if not obtenido:
+                return _resultado_vacio("Otro proceso de AduanaDoc está importando PDFs en esta PC; "
+                                        "intente de nuevo en unos minutos.")
+            _refrescar_sesion(db)
+            return self._scan_local_folder_locked(db, local_path, propietario_default, propietario)
+
+    def _scan_local_folder_locked(
+        self,
+        db: Session,
+        local_path: str,
+        propietario_default: str,
+        propietario: Optional[str]
+    ) -> Dict[str, Any]:
         owner = propietario or propietario_default or "Carpeta Local"
         folder = Path(local_path)
         if not folder.exists() or not folder.is_dir():
@@ -372,7 +470,7 @@ class GoogleDriveService:
                     file_path=str(p),
                     original_filename=file_name,
                     allow_duplicate=False,
-                    propietario=propietario_default
+                    propietario=owner
                 )
 
                 nuevos_procesados += 1

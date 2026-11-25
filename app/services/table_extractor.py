@@ -2,6 +2,25 @@ import re
 from typing import List, Dict, Any
 from app.services.normalizer import clean_text, parse_currency
 
+_MEDIDA = re.compile(r"^\d+(?:ML|L|LT|G|GR|KG|MG|OZ|CM|MM|M|GB|TB|MB|W|KW|V|MAH|HZ|PCS|UN|U|PZ)$", re.IGNORECASE)
+
+
+def _parece_sku(token: str, ya_hay_codigo: bool) -> bool:
+    """
+    ¿La primera palabra de la descripción es un código interno (y no parte del nombre comercial)?
+    - Medidas ("100ML", "256GB") y modelos cortos ("IPHONE15", "SM58") NO son códigos.
+    - Si ya se encontró un código (EAN/REF), solo se quita un código evidente, casi todo dígitos con
+      prefijo de letras ("I0095135"), para no perder el modelo del producto.
+    """
+    digitos = sum(c.isdigit() for c in token)
+    letras = sum(c.isalpha() for c in token)
+    if digitos == 0 or _MEDIDA.match(token):
+        return False
+    if ya_hay_codigo:
+        return letras >= 1 and digitos >= 5 and digitos / len(token) >= 0.7
+    return digitos >= 4 or (("-" in token or "_" in token) and digitos >= 2 and letras >= 1)
+
+
 def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
     """
     Analiza la cadena de observación para separar:
@@ -51,11 +70,13 @@ def parse_observation_details(raw_obs: str, marca: str = "") -> tuple[str, str]:
                 codigo_producto = pot
             descripcion = descripcion[:end_ref_match.start()].strip()
 
-    # 5. Si aún no hay código o había un SKU interno al inicio sin etiqueta (ej. I0095135)
+    # 5. SKU interno al inicio sin etiqueta (ej. I0095135). Antes se quitaba CUALQUIER primera palabra
+    #    con un dígito, aunque ya hubiera código: "IPHONE15 PRO MAX" quedaba "PRO MAX" y "SM58 MICROFONO"
+    #    quedaba "MICROFONO" (el modelo se perdía). Ahora solo se toma si parece realmente un código.
     start_sku_match = re.match(r"^([A-Za-z0-9_-]{4,20})\s+(.*)$", descripcion)
     if start_sku_match:
         potential_sku = start_sku_match.group(1).strip()
-        if any(c.isdigit() for c in potential_sku):
+        if _parece_sku(potential_sku, ya_hay_codigo=bool(codigo_producto)):
             if not codigo_producto:
                 codigo_producto = potential_sku
             descripcion = start_sku_match.group(2).strip()

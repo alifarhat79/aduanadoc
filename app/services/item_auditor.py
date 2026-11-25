@@ -61,10 +61,16 @@ def diagnose_item(descripcion: Optional[str], marca: Optional[str] = "", codigo_
     # Procesar con el extractor para obtener la sugerencia
     clean_cod, clean_desc = parse_observation_details(raw_desc, raw_marca)
 
-    # Si se extrajo un código nuevo y antes no había
-    suggested_cod = clean_cod or raw_cod
+    # El código ya registrado (p. ej. un EAN válido) NUNCA se reemplaza: solo se completa si faltaba.
+    # Antes, "PERFUME YARA 100ML REF. ABC123" con EAN 6291108735411 sugería ABC123 y la corrección
+    # masiva lo aplicaba, perdiendo el EAN.
+    suggested_cod = raw_cod or clean_cod
     suggested_desc = clean_desc if clean_desc else raw_desc
     suggested_marca = raw_marca
+    conflicto_codigo = bool(raw_cod and clean_cod and clean_cod.upper() != raw_cod.upper())
+    if conflicto_codigo:
+        # Quitar la referencia de la descripción la perdería (el código guardado es otro): revisar a mano
+        issues.append(f"La descripción trae otro código ({clean_cod}) distinto del registrado ({raw_cod})")
 
     # Verificar si hubo un cambio real
     has_changes = (suggested_desc != raw_desc) or (suggested_cod != raw_cod and bool(suggested_cod))
@@ -74,6 +80,8 @@ def diagnose_item(descripcion: Optional[str], marca: Optional[str] = "", codigo_
 
     if issues:
         confidence = "high" if any(i in issues for i in ["Código/SKU incrustado en la descripción", "Texto de encabezado administrativo pegado", "Prefijo arancelario o de unidades"]) else "medium"
+        if conflicto_codigo:
+            confidence = "medium"  # nunca entra en la corrección masiva automática
 
     return {
         "is_clean": not issues and not has_changes,

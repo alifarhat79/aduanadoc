@@ -259,6 +259,8 @@ async def scan_gdrive_local_api(
         duplicados = results.get("duplicados", results.get("omitidos_duplicados", 0))
         errores = results.get("errores", 0)
 
+        if results.get("aviso"):
+            return {"success": False, "message": results["aviso"], "data": results}
         return {
             "success": True,
             "message": f"Escaneo de carpeta local completado: {procesados} nuevos despachos procesados, {duplicados} omitidos, {errores} errores.",
