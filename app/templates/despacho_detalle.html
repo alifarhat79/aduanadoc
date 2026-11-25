@@ -55,6 +55,19 @@
                     </button>
                 </div>
 
+                {% if validacion_arancel and items %}
+                {% set vr = validacion_arancel.resumen %}
+                <div class="small mb-2 d-flex flex-wrap align-items-center gap-2" id="resumenArancel">
+                    <span class="text-muted"><i class="bi bi-journal-bookmark-fill text-primary me-1"></i>NCM contra el arancel vigente ({{ validacion_arancel.version }}):</span>
+                    <span class="badge bg-success-subtle text-success-emphasis border"><i class="bi bi-check-circle-fill me-1"></i>{{ vr.get('ok', 0) }} correctos</span>
+                    {% if vr.get('tasa_distinta') %}<span class="badge bg-warning-subtle text-warning-emphasis border"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ vr.tasa_distinta }} con tasa distinta del ANV</span>{% endif %}
+                    {% if vr.get('no_existe') %}<span class="badge bg-danger-subtle text-danger-emphasis border"><i class="bi bi-x-octagon-fill me-1"></i>{{ vr.no_existe }} con NCM inexistente</span>{% endif %}
+                    {% if vr.get('sin_tasa') %}<span class="badge bg-light text-secondary border"><i class="bi bi-question-circle me-1"></i>{{ vr.sin_tasa }} sin tasa en el arancel</span>{% endif %}
+                    {% if vr.get('sin_ncm') %}<span class="badge bg-light text-secondary border">{{ vr.sin_ncm }} sin NCM</span>{% endif %}
+                    <span class="text-muted" style="font-size: 0.72rem;">Pase el mouse sobre el ícono de cada ítem para ver el detalle.</span>
+                </div>
+                {% endif %}
+
                 <!-- Buscador en Vivo General -->
                 <div class="input-group input-group-sm mb-3">
                     <span class="input-group-text bg-light"><i class="bi bi-search text-primary"></i></span>
@@ -132,7 +145,19 @@
                                 data-codigo="{{ it.codigo_producto or '' }}"
                                 data-desc="{{ it.descripcion or '' }}">
                                 <td class="fw-semibold">{{ it.numero_item }}{% if it.numero_subitem %}.{{ it.numero_subitem }}{% endif %}</td>
-                                <td class="font-monospace small fw-bold">{{ it.codigo_ncm or '-' }}</td>
+                                {% set ev = validacion_arancel.por_item.get(it.id) if validacion_arancel else none %}
+                                <td class="font-monospace small fw-bold text-nowrap">
+                                    {% if it.codigo_ncm %}
+                                        <a href="/arancel?ncm={{ it.codigo_ncm|urlencode }}" class="text-dark text-decoration-none" title="Ver en el Arancel">{{ it.codigo_ncm }}</a>
+                                    {% else %}-{% endif %}
+                                    {% if ev %}
+                                        {% if ev.estado == 'ok' %}<i class="bi bi-check-circle-fill text-success ms-1" title="{{ ev.texto }}"></i>
+                                        {% elif ev.estado == 'tasa_distinta' %}<i class="bi bi-exclamation-triangle-fill text-warning ms-1" title="{{ ev.texto }}"></i>
+                                        {% elif ev.estado == 'no_existe' %}<i class="bi bi-x-octagon-fill text-danger ms-1" title="{{ ev.texto }}"></i>
+                                        {% elif ev.estado == 'sin_tasa' %}<i class="bi bi-question-circle text-secondary ms-1" title="{{ ev.texto }}"></i>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
                                 <td>
                                     <span class="badge bg-light text-primary border border-primary-subtle fw-semibold px-2 py-1">
                                         {{ it.marca or 'Sin Marca' }}

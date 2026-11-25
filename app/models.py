@@ -243,4 +243,89 @@ class MarcaRegla(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+# --------------------------------------------------------------------------------------
+# ARANCEL DE ADUANAS (datos de referencia; no se sincronizan con Turso: cada PC los carga
+# desde app/recursos/arancel o desde un PDF oficial importado por el programador)
+# --------------------------------------------------------------------------------------
+
+class ArancelVersion(Base):
+    """Una edición del arancel (p. ej. Arancel Nacional Vigente del MEF, octubre 2025)."""
+    __tablename__ = "arancel_versiones"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    nombre = Column(String(200), nullable=False)
+    fuente = Column(Text, nullable=True)                    # Archivos / URLs de origen
+    hash_contenido = Column(String(64), nullable=False, unique=True, index=True)
+    fecha_vigencia = Column(Date, nullable=True)
+    origen = Column(String(20), default="incluido")         # incluido (viene con el sistema) | importado
+    activa = Column(Boolean, default=False, index=True)
+    total_ncm = Column(Integer, default=0)
+    leyendas = Column(JSON, default=dict)                   # Símbolos: "*" -> Registro Especial, etc.
+    resumen = Column(JSON, default=dict)                    # Estadísticas de la carga
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ArancelSeccion(Base):
+    __tablename__ = "arancel_secciones"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    version_id = Column(Integer, ForeignKey("arancel_versiones.id", ondelete="CASCADE"), nullable=False, index=True)
+    numero = Column(String(10), nullable=False)             # Romano: I, II, ... XXI
+    titulo = Column(Text, nullable=True)
+    notas = Column(Text, nullable=True)
+
+
+class ArancelCapitulo(Base):
+    __tablename__ = "arancel_capitulos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    version_id = Column(Integer, ForeignKey("arancel_versiones.id", ondelete="CASCADE"), nullable=False, index=True)
+    numero = Column(String(2), nullable=False)              # "01" ... "97"
+    seccion = Column(String(10), nullable=True)
+    titulo = Column(Text, nullable=True)
+    notas = Column(Text, nullable=True)
+
+
+class ArancelPosicion(Base):
+    """
+    Posición arancelaria: partida (4 dígitos), subpartida (6), agrupación (7), NCM (8) o
+    apertura nacional (más de 8). Cada tasa se guarda como número y como el TEXTO ORIGINAL
+    ("1,5*", "Exenta", "14,4 DEC. 08/22") para no perder información.
+    """
+    __tablename__ = "arancel_posiciones"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    version_id = Column(Integer, ForeignKey("arancel_versiones.id", ondelete="CASCADE"), nullable=False)
+    codigo = Column(String(20), nullable=False)             # 3303.00.10
+    digitos = Column(String(14), nullable=False)            # 33030010
+    nivel = Column(String(12), nullable=False)              # partida | subpartida | agrupacion | ncm | apertura
+    capitulo = Column(String(2), nullable=True)
+    descripcion = Column(Text, nullable=True)
+    guiones = Column(Integer, default=0)                    # Sangría oficial ("- -")
+
+    aec = Column(Float, nullable=True)                      # Arancel Externo Común (MERCOSUR) %
+    aec_texto = Column(String(60), nullable=True)
+    anv = Column(Float, nullable=True)                      # Arancel Nacional Vigente (Paraguay) %
+    anv_texto = Column(String(60), nullable=True)
+    anv_decreto = Column(String(60), nullable=True)
+    lista = Column(String(30), nullable=True)               # BK, BIT, LNE, DEC. 08/22, ...
+
+    iva = Column(Float, nullable=True)
+    iva_texto = Column(String(30), nullable=True)
+    renta = Column(Float, nullable=True)
+    renta_texto = Column(String(30), nullable=True)
+    isc = Column(Float, nullable=True)
+    isc_texto = Column(String(30), nullable=True)
+    omc = Column(String(30), nullable=True)
+    autopartes_intrazona = Column(Float, nullable=True)
+    autopartes_extrazona = Column(Float, nullable=True)
+    observaciones = Column(JSON, default=list)              # Decretos y observaciones del Excel
+    fuente_impuestos = Column(String(80), nullable=True)    # De dónde salen IVA/Renta/ISC
+    pagina = Column(Integer, nullable=True)                 # Página del PDF oficial
+
+    __table_args__ = (
+        Index("ix_arancel_pos_version_digitos", "version_id", "digitos", unique=True),
+    )
+
+
 

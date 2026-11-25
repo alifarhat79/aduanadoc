@@ -116,13 +116,24 @@ async def despacho_detail_view(despacho_id: int, request: Request, db: Session =
     items = db.query(DespachoItem).filter(DespachoItem.despacho_id == despacho_id).all()
     auditorias = db.query(DespachoAuditoria).filter(DespachoAuditoria.despacho_id == despacho_id).order_by(desc(DespachoAuditoria.fecha_modificacion)).all()
 
+    # Validación contra el arancel vigente: solo se calcula para mostrar, no modifica nada.
+    validacion_arancel = None
+    try:
+        from app.services.arancel_service import validar_items
+        validacion_arancel = validar_items(db, items)
+    except Exception as val_err:
+        import logging
+        logging.getLogger(__name__).warning("Validación arancelaria omitida: %s", val_err)
+        db.rollback()
+
     return templates.TemplateResponse(
         request=request,
         name="despacho_detalle.html",
         context={
             "despacho": despacho,
             "items": items,
-            "auditorias": auditorias
+            "auditorias": auditorias,
+            "validacion_arancel": validacion_arancel,
         }
     )
 

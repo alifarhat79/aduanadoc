@@ -1,0 +1,608 @@
+{% extends "base.html" %}
+
+{% block title %}Arancel de Aduanas | AduanaDoc{% endblock %}
+{% block page_title %}Arancel de Aduanas{% endblock %}
+
+{% block extra_head %}
+<style>
+  .arancel .kpi .val { font-size: 1.45rem; font-weight: 700; line-height: 1.1; }
+  .arancel .kpi .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #64748b; font-weight: 600; }
+  .arancel .nav-tabs .nav-link { font-weight: 600; color: #475569; }
+  .arancel .nav-tabs .nav-link.active { color: #1e40af; }
+  .arancel .res-row { cursor: pointer; }
+  .arancel .res-row:hover { background: #eff6ff; }
+  .arancel .res-row.sel { background: #dbeafe; }
+  .arancel .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; }
+  .arancel .ruta { font-size: .72rem; color: #64748b; }
+  .arancel .tasa-box { border: 1px solid #e2e8f0; border-radius: 10px; padding: .5rem .65rem; background: #fff; height: 100%; }
+  .arancel .tasa-box .t { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; font-weight: 700; }
+  .arancel .tasa-box .v { font-size: 1.2rem; font-weight: 700; }
+  .arancel .tasa-box.main { border-color: #1e40af; background: #eff6ff; }
+  .arancel .ficha-sticky { position: sticky; top: 76px; }
+  .arancel .notas { white-space: pre-line; font-size: .8rem; color: #334155; max-height: 320px; overflow: auto; background: #f8fafc; border-radius: 8px; padding: .75rem; }
+  .arancel .tree-node { padding: 2px 0; font-size: .84rem; }
+  .arancel .tree-node.lv-partida { font-weight: 700; margin-top: 8px; }
+  .arancel .tree-node.lv-subpartida { padding-left: 18px; font-weight: 600; }
+  .arancel .tree-node.lv-agrupacion { padding-left: 34px; color: #334155; }
+  .arancel .tree-node.lv-ncm { padding-left: 50px; }
+  .arancel .tree-node.lv-apertura { padding-left: 66px; color: #0f766e; }
+  .arancel .badge-uso { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .arancel .table-sm td, .arancel .table-sm th { font-size: .82rem; }
+  .arancel mark { padding: 0 1px; background: #fef08a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="arancel">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h4 class="fw-bold mb-0"><i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Arancel de Aduanas</h4>
+      <div class="text-muted small" id="versionTxt">Cargando arancel…</div>
+    </div>
+  </div>
+
+  <div id="arancelError" class="alert alert-danger d-none"></div>
+
+  <div class="row g-3 mb-3" id="kpis"></div>
+
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabBuscar" type="button"><i class="bi bi-search me-1"></i>Buscador</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabArbol" type="button"><i class="bi bi-diagram-3 me-1"></i>Por capítulos</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabMios" type="button"><i class="bi bi-star-fill text-warning me-1"></i>Tus NCM</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabValid" type="button"><i class="bi bi-shield-exclamation text-danger me-1"></i>Validación <span class="badge bg-danger-subtle text-danger-emphasis" id="badgeValid"></span></button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSim" type="button"><i class="bi bi-calculator me-1"></i>Simulador</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabVersiones" type="button"><i class="bi bi-clock-history me-1"></i>Versiones</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- BUSCADOR -->
+    <div class="tab-pane fade show active" id="tabBuscar">
+      <div class="row g-3">
+        <div class="col-xl-6">
+          <div class="card border-0 shadow-sm p-3 mb-3">
+            <div class="input-group mb-2">
+              <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+              <input id="q" class="form-control" placeholder="Código (3303, 8517.13…) o texto (perfume, teléfono, auricular…)" autocomplete="off">
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <select id="fCap" class="form-select form-select-sm" style="max-width:260px"><option value="">Todos los capítulos</option></select>
+              <select id="fLista" class="form-select form-select-sm" style="max-width:170px"><option value="">Todas las listas</option></select>
+              <div class="form-check form-switch ms-1">
+                <input class="form-check-input" type="checkbox" id="fMios"><label class="form-check-label small" for="fMios">Solo los que importo</label>
+              </div>
+              <span class="ms-auto small text-muted" id="resCount"></span>
+            </div>
+          </div>
+          <div class="card border-0 shadow-sm">
+            <div class="table-responsive" style="max-height: 640px">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light sticky-top"><tr><th>NCM</th><th>Descripción</th><th class="text-end">ANV</th><th class="text-end">IVA</th><th></th></tr></thead>
+                <tbody id="resBody"><tr><td colspan="5" class="text-center text-muted py-4">Cargando…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-xl-6"><div class="ficha-sticky" id="ficha"></div></div>
+      </div>
+    </div>
+
+    <!-- ÁRBOL -->
+    <div class="tab-pane fade" id="tabArbol">
+      <div class="row g-3">
+        <div class="col-lg-4"><div class="card border-0 shadow-sm p-2" style="max-height: 760px; overflow:auto" id="arbolSecciones"></div></div>
+        <div class="col-lg-8"><div class="card border-0 shadow-sm p-3" id="arbolCapitulo" style="max-height: 760px; overflow:auto">
+          <div class="text-muted">Elija un capítulo a la izquierda.</div></div></div>
+      </div>
+    </div>
+
+    <!-- TUS NCM -->
+    <div class="tab-pane fade" id="tabMios">
+      <div class="card border-0 shadow-sm">
+        <div class="p-3 pb-0 small text-muted">Posiciones arancelarias de tus despachos, ordenadas por valor FOB importado. Clic en una fila para ver su ficha.</div>
+        <div class="table-responsive" style="max-height: 700px">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light sticky-top"><tr><th>NCM</th><th>Descripción oficial</th><th class="text-end">Ítems</th><th class="text-end">Despachos</th><th class="text-end">FOB USD</th><th class="text-end">ANV</th><th class="text-end">Tasa en tus PDFs</th><th>IVA</th><th>Marcas</th></tr></thead>
+            <tbody id="miosBody"><tr><td colspan="9" class="text-center text-muted py-4">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- VALIDACIÓN -->
+    <div class="tab-pane fade" id="tabValid">
+      <div class="alert alert-info small"><i class="bi bi-info-circle me-1"></i>
+        Cada despacho se compara con el arancel vigente <b>al mostrarlo</b> (también en el detalle de cada despacho, junto al NCM de cada ítem).
+        Esta revisión <b>no modifica</b> ningún dato ni el estado de los despachos.</div>
+      <div class="small text-muted mb-2" id="validResumen"></div>
+      <div class="row g-3">
+        <div class="col-xxl-6"><div class="card border-0 shadow-sm">
+          <div class="p-3 pb-2"><h6 class="fw-bold mb-1"><i class="bi bi-x-octagon text-danger me-1"></i>Códigos de tus despachos que NO están en el arancel vigente</h6>
+            <div class="small text-muted" id="sinResumen"></div></div>
+          <div class="table-responsive" style="max-height: 560px"><table class="table table-sm align-middle mb-0">
+            <thead class="table-light sticky-top"><tr><th>Código en el PDF</th><th class="text-end">Ítems</th><th class="text-end">Desp.</th><th class="text-end">FOB USD</th><th>Motivo y despachos</th></tr></thead>
+            <tbody id="sinBody"><tr><td colspan="5" class="text-center text-muted py-4">Cargando…</td></tr></tbody></table></div>
+        </div></div>
+        <div class="col-xxl-6"><div class="card border-0 shadow-sm">
+          <div class="p-3 pb-2"><h6 class="fw-bold mb-1"><i class="bi bi-exclamation-triangle text-warning me-1"></i>Tasa aplicada en tus PDFs distinta del ANV vigente</h6>
+            <div class="small text-muted">Puede ser un régimen especial (zona franca, turismo) o un cambio de tasa posterior al despacho. Sirve para auditar.</div></div>
+          <div class="table-responsive" style="max-height: 560px"><table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light sticky-top"><tr><th>NCM</th><th>Descripción</th><th class="text-end">ANV</th><th class="text-end">Tasa en PDFs (ítems)</th><th class="text-end">FOB USD</th><th>Despachos</th></tr></thead>
+            <tbody id="discBody"></tbody></table></div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- SIMULADOR -->
+    <div class="tab-pane fade" id="tabSim">
+      <div class="row g-3">
+        <div class="col-lg-5"><div class="card border-0 shadow-sm p-3">
+          <h6 class="fw-bold"><i class="bi bi-calculator me-1"></i>Datos de la importación</h6>
+          <label class="form-label small fw-semibold mt-2" for="sNcm">NCM</label>
+          <input id="sNcm" class="form-control font-monospace" value="3303.00.10" autocomplete="off">
+          <div class="small text-muted mt-1" id="sNcmDesc"></div>
+          <div class="row g-2 mt-1">
+            <div class="col-6"><label class="form-label small fw-semibold" for="sFob">FOB (USD)</label><input id="sFob" type="number" class="form-control" value="10000" min="0" step="0.01"></div>
+            <div class="col-3"><label class="form-label small fw-semibold" for="sFlete">Flete</label><input id="sFlete" type="number" class="form-control" value="500" min="0" step="0.01"></div>
+            <div class="col-3"><label class="form-label small fw-semibold" for="sSeg">Seguro</label><input id="sSeg" type="number" class="form-control" value="50" min="0" step="0.01"></div>
+            <div class="col-6"><label class="form-label small fw-semibold" for="sTc">Tipo de cambio (Gs/USD)</label><input id="sTc" type="number" class="form-control" step="0.01"></div>
+            <div class="col-6"><label class="form-label small fw-semibold" for="sReg">Régimen IVA</label>
+              <select id="sReg" class="form-select"><option value="esp">Registro Especial (*)</option><option value="gen">General</option></select></div>
+          </div>
+          <div class="small text-muted mt-2" id="sTcNota"></div>
+        </div></div>
+        <div class="col-lg-7"><div class="card border-0 shadow-sm p-3">
+          <h6 class="fw-bold">Estimación de tributos</h6>
+          <table class="table table-sm mb-2"><thead class="table-light"><tr><th>Concepto</th><th>Cálculo</th><th class="text-end">USD</th><th class="text-end">Gs</th></tr></thead><tbody id="sBody"></tbody></table>
+          <div class="alert alert-warning small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>
+            <b>Estimación simplificada.</b> No incluye servicio de valoración, tasas, honorarios ni otros cargos; las bases de cálculo son aproximadas.</div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- VERSIONES -->
+    <div class="tab-pane fade" id="tabVersiones">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="p-3 pb-2"><h6 class="fw-bold mb-1"><i class="bi bi-clock-history me-1"></i>Versiones del arancel en esta PC</h6>
+          <div class="small text-muted">El arancel incluido con el sistema se carga solo. Cuando el MEF publique una edición nueva, el programador puede importarla aquí y compararla antes de activarla.</div></div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>Versión</th><th>Vigencia</th><th>Origen</th><th class="text-end">NCM</th><th>Cargada</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="versionesBody"><tr><td colspan="7" class="text-center text-muted py-3">Cargando…</td></tr></tbody></table></div>
+      </div>
+      {% if es_admin %}
+      <div class="card border-0 shadow-sm p-3">
+        <h6 class="fw-bold"><i class="bi bi-upload me-1"></i>Importar una edición nueva del MEF</h6>
+        <form id="formImportar" class="row g-2 align-items-end">
+          <div class="col-lg-4"><label class="form-label small fw-semibold" for="impPdf">PDF "Arancel Nacional Vigente" (MEF)</label><input id="impPdf" name="pdf" type="file" accept=".pdf" class="form-control form-control-sm" required></div>
+          <div class="col-lg-3"><label class="form-label small fw-semibold" for="impExcel">Excel AEC con IVA/Renta/ISC (opcional)</label><input id="impExcel" name="excel" type="file" accept=".xls,.xlsx" class="form-control form-control-sm"></div>
+          <div class="col-lg-3"><label class="form-label small fw-semibold" for="impNombre">Nombre</label><input id="impNombre" name="nombre" class="form-control form-control-sm" placeholder="Arancel Nacional Vigente — mes año (MEF)" required maxlength="200"></div>
+          <div class="col-lg-2"><label class="form-label small fw-semibold" for="impFecha">Vigencia</label><input id="impFecha" name="fecha_vigencia" type="date" class="form-control form-control-sm" required></div>
+          <div class="col-12 small text-muted">Sin Excel, el IVA/Renta/ISC y las notas legales se toman de la versión activa. La versión nueva queda <b>inactiva</b> hasta que usted la active.</div>
+          <div class="col-12"><button class="btn btn-primary btn-sm" type="submit" id="btnImportar"><i class="bi bi-cloud-arrow-up me-1"></i>Leer y comparar</button></div>
+        </form>
+        <div id="importResultado" class="mt-3"></div>
+      </div>
+      {% else %}
+      <div class="alert alert-light border small"><i class="bi bi-lock me-1"></i>Para importar una edición nueva del arancel, inicie sesión como programador en <a href="/configuracion">Configuración</a>.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const NCM_INICIAL = {{ ncm_inicial|tojson }};
+  const ES_ADMIN = {{ es_admin|tojson }};
+
+  const $ = id => document.getElementById(id);
+  const esc = v => (v === null || v === undefined) ? '' : String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const fmt = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toLocaleString('es-PY', {minimumFractionDigits: d, maximumFractionDigits: d});
+  const pct = v => (v === null || v === undefined) ? '—' : `${fmt(v, Number(v) % 1 ? 1 : 0)}%`;
+  const fecha = iso => iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—';
+
+  async function api(url, opts) {
+    const r = await fetch(url, opts);
+    if (!r.ok) {
+      let detalle = '';
+      try { detalle = (await r.json()).detail; } catch (e) { /* respuesta sin JSON */ }
+      throw new Error(detalle || `Error ${r.status}`);
+    }
+    return r.json();
+  }
+  function mostrarError(e) {
+    const box = $('arancelError');
+    box.textContent = `No se pudo cargar el arancel: ${e.message}`;
+    box.classList.remove('d-none');
+  }
+
+  let R = null;          // resumen (versión, KPIs, capítulos, listas, tipo de cambio)
+  let seleccionado = null;
+  const fichas = {};     // caché de fichas por código
+
+  // ---------------- Cabecera y KPIs ----------------
+  function renderCabecera() {
+    const v = R.version;
+    $('versionTxt').textContent = `${v.nombre} · vigencia ${fecha(v.fecha_vigencia)} · IVA, Renta, ISC y notas legales del Excel AEC 2017`;
+    const K = R.kpi;
+    const porc = K.items ? K.items_validos * 100 / K.items : 0;
+    const kpis = [
+      ['bi-journal-text', 'primary', fmt(K.ncm, 0), `NCM en el arancel <span class="text-muted">(+${fmt(K.aperturas, 0)} aperturas)</span>`],
+      ['bi-star-fill', 'warning', fmt(K.ncm_usados, 0), 'NCM que usás en tus despachos'],
+      ['bi-check2-all', 'success', `${fmt(porc, 1)}%`, `de tus ${fmt(K.items, 0)} ítems tienen NCM vigente`],
+      ['bi-x-octagon', 'danger', fmt(K.items_no_existe, 0), 'ítems con NCM que no está en el arancel'],
+      ['bi-exclamation-triangle', 'warning', fmt(K.items_tasa_distinta, 0), 'ítems con tasa distinta del ANV'],
+    ];
+    $('kpis').innerHTML = kpis.map(([ic, col, v, l]) => `
+      <div class="col-6 col-lg"><div class="card border-0 shadow-sm kpi p-3 h-100 d-flex flex-row align-items-center gap-3">
+        <div class="rounded-3 bg-${col}-subtle text-${col}-emphasis d-flex align-items-center justify-content-center" style="width:44px;height:44px"><i class="bi ${ic} fs-5"></i></div>
+        <div><div class="val">${v}</div><div class="lbl">${l}</div></div></div></div>`).join('');
+    $('badgeValid').textContent = K.codigos_no_encontrados ? fmt(K.codigos_no_encontrados, 0) : '';
+  }
+
+  function llenarFiltros() {
+    R.capitulos.forEach(c => $('fCap').insertAdjacentHTML('beforeend',
+      `<option value="${esc(c.numero)}">${esc(c.numero)} · ${esc((c.titulo || '').slice(0, 48))}</option>`));
+    R.listas.forEach(l => $('fLista').insertAdjacentHTML('beforeend',
+      `<option value="${esc(l.lista)}">${esc(l.lista)}${l.descripcion ? ' · ' + esc(l.descripcion) : ''} (${fmt(l.ncm, 0)})</option>`));
+  }
+
+  // ---------------- Buscador ----------------
+  function resaltar(texto, toks) {
+    const h = esc(texto);
+    const ts = toks.filter(t => t.length > 2 && !/^\d/.test(t));
+    if (!ts.length) return h;
+    const re = new RegExp(ts.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+    const plano = norm(h);
+    let out = '', i = 0, m;
+    while ((m = re.exec(plano)) !== null) {
+      out += h.slice(i, m.index) + '<mark>' + h.slice(m.index, m.index + m[0].length) + '</mark>';
+      i = m.index + m[0].length;
+    }
+    return out + h.slice(i);
+  }
+
+  let busquedaN = 0, timerBuscar = null;
+  async function buscar() {
+    const n = ++busquedaN;
+    const q = $('q').value.trim();
+    const params = new URLSearchParams({q, capitulo: $('fCap').value, lista: $('fLista').value, mios: $('fMios').checked});
+    let data;
+    try { data = await api(`/arancel/api/buscar?${params}`); } catch (e) { mostrarError(e); return null; }
+    if (n !== busquedaN) return null;  // llegó una búsqueda más nueva
+    const toks = norm(q).split(/\s+/).filter(Boolean);
+    $('resCount').textContent = data.sin_filtros ? `Tus ${fmt(data.total, 0)} NCM más importados`
+      : `${fmt(data.total, 0)} resultado(s)${data.total > data.resultados.length ? ` · primeros ${data.resultados.length}` : ''}`;
+    $('resBody').innerHTML = data.resultados.map(r => `
+      <tr class="res-row ${seleccionado === r.d ? 'sel' : ''}" data-d="${esc(r.d)}">
+        <td class="code text-nowrap">${esc(r.c)}</td>
+        <td><div>${resaltar(r.t, toks)}</div><div class="ruta">${resaltar((r.ruta || '').slice(0, 140), toks)}</div></td>
+        <td class="text-end fw-semibold">${r.anv !== null ? pct(r.anv) : esc(r.anv_t || '—')}</td>
+        <td class="text-end small">${esc(r.iva_t || '—')}</td>
+        <td>${r.uso_items ? `<span class="badge badge-uso" title="Importado en tus despachos">${fmt(r.uso_items, 0)} ítems</span>` : ''}</td>
+      </tr>`).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">Sin resultados</td></tr>';
+    return data;
+  }
+  function buscarConPausa() { clearTimeout(timerBuscar); timerBuscar = setTimeout(buscar, 220); }
+  $('q').addEventListener('input', buscarConPausa);
+  ['fCap', 'fLista', 'fMios'].forEach(id => $(id).addEventListener('change', buscar));
+  $('resBody').addEventListener('click', e => { const tr = e.target.closest('tr[data-d]'); if (tr) verFicha(tr.dataset.d); });
+
+  // ---------------- Ficha ----------------
+  async function obtenerFicha(codigo) {
+    const clave = codigo.replace(/\D/g, '');
+    if (!clave) throw new Error('Código vacío');
+    if (!fichas[clave]) fichas[clave] = await api(`/arancel/api/ncm/${encodeURIComponent(clave)}`);
+    return fichas[clave];
+  }
+  function tasaBox(t, v, sub = '', main = false) {
+    return `<div class="col"><div class="tasa-box ${main ? 'main' : ''}"><div class="t">${t}</div><div class="v">${v}</div>${sub ? `<div class="small text-muted" style="font-size:.7rem">${sub}</div>` : ''}</div></div>`;
+  }
+  async function verFicha(codigo) {
+    let f;
+    try { f = await obtenerFicha(codigo); }
+    catch (e) {
+      const dig = String(codigo).replace(/\D/g, '');
+      const sub = dig.length >= 6 ? `${dig.slice(0, 4)}.${dig.slice(4, 6)}` : '';
+      $('ficha').innerHTML = `<div class="card border-0 shadow-sm p-3">
+        <div class="text-danger fw-semibold"><i class="bi bi-x-octagon me-1"></i>${esc(codigo)}: ${esc(e.message)}</div>
+        ${sub ? `<div class="small text-muted mt-2">A la izquierda se muestran las posiciones vigentes más cercanas (subpartida <b>${esc(sub)}</b> o, si no existe, la partida <b>${esc(dig.slice(0, 4))}</b>) para elegir la correcta.</div>` : ''}
+      </div>`;
+      if (sub) {
+        $('q').value = sub;
+        const r = await buscar();
+        if (r && !r.total) { $('q').value = dig.slice(0, 4); buscar(); }
+      }
+      return false;
+    }
+    seleccionado = f.d;
+    document.querySelectorAll('#resBody .res-row').forEach(r => r.classList.toggle('sel', r.dataset.d === f.d));
+    const u = f.uso, cap = f.capitulo || {}, sec = f.seccion;
+    let alertaTasa = '';
+    const anvAperturas = (f.aperturas || []).map(a => a.anv).filter(x => x !== null);
+    const tasaValida = t => [f.anv].concat(anvAperturas).some(x => x !== null && Math.abs(t - x) <= 0.05);
+    if (u && u.tasas_pdf.length && f.anv !== null && u.tasas_pdf.some(([t]) => !tasaValida(t))) {
+      alertaTasa = `<div class="alert alert-warning small py-2 mb-2"><i class="bi bi-exclamation-triangle me-1"></i>
+        En tus PDFs se aplicó ${u.tasas_pdf.map(([t, c]) => `<b>${pct(t)}</b> (${fmt(c, 0)} ítems)`).join(', ')} y el arancel vigente dice ANV <b>${pct(f.anv)}</b>.</div>`;
+    }
+    const fuenteImp = f.fi ? `IVA, Renta e ISC: ${esc(f.fi)}` : 'IVA, Renta e ISC: sin dato (código nuevo de la NCM 2022, no figura en el Excel AEC 2017)';
+    const anvSub = f.anv_dec ? esc(f.anv_dec) : 'aplicado en Paraguay';
+    $('ficha').innerHTML = `
+    <div class="card border-0 shadow-sm p-3">
+      <div class="small text-muted mb-2">
+        ${sec ? `<span title="${esc(sec.titulo)}">Sección ${esc(sec.numero)}</span> › ` : ''}
+        <span title="${esc(cap.titulo)}">Cap. ${esc(f.cap)}</span>
+        ${f.ancestros.map(a => ` › <a href="#" data-buscar="${esc(a.c)}" class="font-monospace text-decoration-none">${esc(a.c)}</a>`).join('')}
+      </div>
+      <div class="d-flex align-items-start justify-content-between gap-2">
+        <div>
+          <div class="code fs-4 text-primary">${esc(f.c)}</div>
+          <div class="fw-semibold">${esc(f.t)}</div>
+          <div class="ruta mt-1">${esc(f.ruta)}</div>
+        </div>
+        <div class="text-end">${f.lista ? `<span class="badge bg-dark-subtle text-dark-emphasis border">${esc(f.lista)}</span>${f.lista_descripcion ? `<div class="small text-muted mt-1" style="font-size:.7rem">${esc(f.lista_descripcion)}</div>` : ''}` : ''}</div>
+      </div>
+      <div class="row row-cols-3 row-cols-md-6 g-2 my-2">
+        ${tasaBox('ANV', f.anv !== null ? pct(f.anv) : esc(f.anv_t || '—'), anvSub, true)}
+        ${tasaBox('AEC', f.aec !== null ? pct(f.aec) : esc(f.aec_t || '—'), 'Mercosur')}
+        ${tasaBox('IVA', esc(f.iva_t || '—'))}
+        ${tasaBox('Renta', esc(f.renta_t || '—'))}
+        ${tasaBox('ISC', esc(f.isc_t || '—'))}
+        ${tasaBox('OMC', esc(f.omc || '—'))}
+      </div>
+      <div class="small text-muted mb-2">${fuenteImp}</div>
+      ${(f.ai !== null || f.ae !== null) ? `<div class="small mb-2"><i class="bi bi-car-front me-1"></i>Autopartes: intrazona ${pct(f.ai)} · extrazona ${pct(f.ae)}</div>` : ''}
+      ${Object.entries(f.leyendas || {}).map(([s, t]) => `<div class="small text-muted mb-1">(${esc(s)}) ${esc(t)}</div>`).join('')}
+      ${(f.obs && f.obs.length) ? `<div class="small mb-2"><i class="bi bi-bank me-1"></i>Normas / observaciones: ${f.obs.map(d => `<span class="badge bg-light text-dark border me-1">${esc(d)}</span>`).join('')}</div>` : ''}
+      ${alertaTasa}
+      <div class="card bg-light border-0 p-2 mb-2">
+        <div class="small fw-bold mb-1"><i class="bi bi-star-fill text-warning me-1"></i>Uso en tus despachos</div>
+        ${u ? `<div class="row small g-1">
+            <div class="col-6 col-md-3"><div class="text-muted">Ítems</div><b>${fmt(u.items, 0)}</b></div>
+            <div class="col-6 col-md-3"><div class="text-muted">Despachos</div><b>${fmt(u.despachos, 0)}</b></div>
+            <div class="col-6 col-md-3"><div class="text-muted">FOB total</div><b>USD ${fmt(u.fob)}</b></div>
+            <div class="col-6 col-md-3"><div class="text-muted">Último</div><b>${fecha(u.ultimo)}</b></div>
+            <div class="col-12"><span class="text-muted">Marcas:</span> ${u.marcas.map(m => `<span class="badge bg-white text-primary border">${esc(m)}</span>`).join(' ') || '—'}</div>
+          </div>
+          <details class="mt-1"><summary class="small fw-semibold">Despachos recientes con este NCM</summary>
+            <table class="table table-sm mb-0 mt-1"><tbody>${u.despachos_recientes.map(dsp => `<tr>
+              <td><a href="/despachos/${encodeURIComponent(dsp.id)}" class="font-monospace">${esc(dsp.numero)}</a></td>
+              <td class="text-muted">${fecha(dsp.fecha)}</td><td class="text-end">${fmt(dsp.items, 0)} ítems</td><td class="text-end">USD ${fmt(dsp.fob)}</td></tr>`).join('')}</tbody></table>
+          </details>` : '<div class="small text-muted">Nunca importado en tus despachos.</div>'}
+      </div>
+      ${f.aperturas.length ? `<details class="mb-2"><summary class="small fw-semibold">Aperturas nacionales (${f.aperturas.length})</summary>
+        <div class="mt-1">${f.aperturas.map(a => `<div class="small"><a href="#" class="font-monospace" data-ficha="${esc(a.d)}">${esc(a.c)}</a> ${esc(a.t)} · ANV ${pct(a.anv)}</div>`).join('')}</div></details>` : ''}
+      ${f.hermanos.length ? `<details class="mb-2"><summary class="small fw-semibold">Otras posiciones de la subpartida ${esc(f.d.slice(0, 4))}.${esc(f.d.slice(4, 6))} (${f.hermanos.length}) — ayuda a verificar la clasificación</summary>
+        <div class="mt-1">${f.hermanos.map(h => `<div class="small"><a href="#" class="font-monospace" data-ficha="${esc(h.d)}">${esc(h.c)}</a> ${esc(h.t)} · ANV ${pct(h.anv)}</div>`).join('')}</div></details>` : ''}
+      <details class="mb-2"><summary class="small fw-semibold">Notas legales del Capítulo ${esc(f.cap)} — ${esc((cap.titulo || '').slice(0, 60))}</summary><div class="notas mt-1">${esc(cap.notas || 'Sin notas.')}</div></details>
+      ${sec && sec.notas ? `<details class="mb-2"><summary class="small fw-semibold">Notas de la Sección ${esc(sec.numero)}</summary><div class="notas mt-1">${esc(sec.notas)}</div></details>` : ''}
+      <div class="small text-muted mb-2" style="font-size:.72rem">Las notas legales provienen del Excel AEC 2017 y pueden no reflejar la VII Enmienda (NCM 2022).</div>
+      <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-primary btn-sm" type="button" data-simular="${esc(f.c)}"><i class="bi bi-calculator me-1"></i>Simular tributos con este NCM</button>
+        ${f.pag ? `<span class="small text-muted">Página ${esc(f.pag)} del PDF oficial</span>` : ''}
+      </div>
+    </div>`;
+  }
+  $('ficha').addEventListener('click', e => {
+    const a = e.target.closest('[data-ficha],[data-buscar],[data-simular]');
+    if (!a) return;
+    e.preventDefault();
+    if (a.dataset.ficha) verFicha(a.dataset.ficha);
+    else if (a.dataset.buscar) { $('q').value = a.dataset.buscar; buscar(); }
+    else if (a.dataset.simular) simularCon(a.dataset.simular);
+  });
+  function irAFicha(codigo) {
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#tabBuscar"]')).show();
+    verFicha(codigo);
+  }
+
+  // ---------------- Árbol por capítulos ----------------
+  function renderSecciones() {
+    const porSec = {};
+    R.capitulos.forEach(c => (porSec[c.seccion || '—'] = porSec[c.seccion || '—'] || []).push(c));
+    const secs = R.secciones.concat(porSec['—'] ? [{numero: '—', titulo: 'Otros capítulos'}] : []);
+    $('arbolSecciones').innerHTML = secs.map(s => `
+      <details class="mb-1"><summary class="small fw-bold py-1">Sección ${esc(s.numero)} <span class="fw-normal text-muted">${esc((s.titulo || '').slice(0, 70))}</span></summary>
+      ${(porSec[s.numero] || []).map(c => `<a href="#" class="d-block small ps-3 py-1 text-decoration-none" data-cap="${esc(c.numero)}"><b>${esc(c.numero)}</b> ${esc((c.titulo || '').slice(0, 70))}</a>`).join('')}
+      </details>`).join('');
+  }
+  $('arbolSecciones').addEventListener('click', async e => {
+    const a = e.target.closest('[data-cap]');
+    if (!a) return;
+    e.preventDefault();
+    $('arbolCapitulo').innerHTML = '<div class="text-muted">Cargando…</div>';
+    let data;
+    try { data = await api(`/arancel/api/capitulo/${encodeURIComponent(a.dataset.cap)}`); }
+    catch (err) { $('arbolCapitulo').innerHTML = `<div class="text-danger">${esc(err.message)}</div>`; return; }
+    const c = data.capitulo;
+    $('arbolCapitulo').innerHTML = `
+      <h5 class="fw-bold">Capítulo ${esc(c.numero)}</h5><div class="mb-2">${esc(c.titulo)}</div>
+      <details class="mb-3"><summary class="small fw-semibold">Notas legales</summary><div class="notas mt-1">${esc(c.notas || 'Sin notas.')}</div></details>
+      ${data.nodos.map(n => `<div class="tree-node lv-${esc(n.n)}">
+          ${(n.n === 'ncm' || n.n === 'apertura') ? `<a href="#" class="font-monospace" data-ficha="${esc(n.d)}">${esc(n.c)}</a>` : `<span class="font-monospace">${esc(n.c)}</span>`}
+          ${esc(n.t)}
+          ${(n.n === 'ncm' || n.n === 'apertura') ? `<span class="text-muted small">· ANV ${pct(n.anv)} · IVA ${esc(n.iva_t || '—')}</span>` : ''}
+          ${n.uso_items ? `<span class="badge badge-uso ms-1">${fmt(n.uso_items, 0)} ítems tuyos</span>` : ''}
+        </div>`).join('')}`;
+  });
+  $('arbolCapitulo').addEventListener('click', e => {
+    const a = e.target.closest('[data-ficha]');
+    if (!a) return;
+    e.preventDefault();
+    irAFicha(a.dataset.ficha);
+  });
+
+  // ---------------- Tus NCM ----------------
+  async function cargarMios() {
+    let filas;
+    try { filas = await api('/arancel/api/mios'); } catch (e) { $('miosBody').innerHTML = `<tr><td colspan="9" class="text-danger">${esc(e.message)}</td></tr>`; return; }
+    $('miosBody').innerHTML = filas.map(n => `<tr class="res-row" data-d="${esc(n.d)}">
+      <td class="code text-nowrap">${esc(n.c)}</td>
+      <td style="max-width:340px"><div class="text-truncate" title="${esc(n.ruta + ' › ' + n.t)}">${esc(n.t)}</div><div class="ruta text-truncate">${esc(n.ruta)}</div></td>
+      <td class="text-end">${fmt(n.uso.items, 0)}</td><td class="text-end">${fmt(n.uso.despachos, 0)}</td>
+      <td class="text-end fw-semibold">${fmt(n.uso.fob)}</td>
+      <td class="text-end">${pct(n.anv)}</td>
+      <td class="text-end ${n.tasa_distinta ? 'text-warning-emphasis fw-bold' : ''}">${n.uso.tasas_pdf.map(([t]) => pct(t)).join(' / ') || '—'}${n.tasa_distinta ? ' <i class="bi bi-exclamation-triangle-fill text-warning"></i>' : ''}</td>
+      <td class="small">${esc(n.iva_t || '—')}</td>
+      <td class="small text-truncate" style="max-width:180px">${esc(n.uso.marcas.join(', '))}</td></tr>`).join('')
+      || '<tr><td colspan="9" class="text-center text-muted py-4">Todavía no hay despachos con NCM vigente.</td></tr>';
+  }
+  $('miosBody').addEventListener('click', e => { const tr = e.target.closest('tr[data-d]'); if (tr) irAFicha(tr.dataset.d); });
+
+  // ---------------- Validación ----------------
+  const linksDespachos = ej => ej.map(x => `<a href="/despachos/${encodeURIComponent(x.id)}" class="badge bg-light text-primary border font-monospace text-decoration-none me-1">${esc(x.numero)}</a>`).join('');
+  async function cargarValidacion() {
+    let v;
+    try { v = await api('/arancel/api/validacion'); } catch (e) { $('sinBody').innerHTML = `<tr><td colspan="5" class="text-danger">${esc(e.message)}</td></tr>`; return; }
+    const K = v.kpi;
+    $('validResumen').textContent = `${fmt(K.items, 0)} ítems revisados: ${fmt(K.items_validos, 0)} con NCM vigente, ${fmt(K.items_no_existe, 0)} con NCM inexistente, ${fmt(K.items_tasa_distinta, 0)} con tasa distinta, ${fmt(K.items_sin_ncm, 0)} sin NCM.`;
+    const sinItems = v.no_encontrados.reduce((s, x) => s + x.items, 0), sinFob = v.no_encontrados.reduce((s, x) => s + x.fob, 0);
+    $('sinResumen').textContent = `${fmt(v.no_encontrados.length, 0)} códigos · ${fmt(sinItems, 0)} ítems · USD ${fmt(sinFob)} FOB.`;
+    $('sinBody').innerHTML = v.no_encontrados.map(x => `<tr>
+      <td class="code text-nowrap">${esc(x.codigo)}</td><td class="text-end">${fmt(x.items, 0)}</td><td class="text-end">${fmt(x.despachos, 0)}</td>
+      <td class="text-end">${fmt(x.fob)}</td><td class="small">${esc(x.motivo)}<div class="mt-1">${linksDespachos(x.ejemplos)}</div></td></tr>`).join('')
+      || '<tr><td colspan="5" class="text-center text-success py-4"><i class="bi bi-check-circle me-1"></i>Todos los códigos existen en el arancel vigente.</td></tr>';
+    $('discBody').innerHTML = v.tasa_distinta.map(n => `<tr>
+      <td class="code"><a href="#" data-ficha="${esc(n.d)}" class="text-decoration-none">${esc(n.c)}</a></td><td class="small text-truncate" style="max-width:220px" title="${esc(n.t)}">${esc(n.t)}</td>
+      <td class="text-end">${pct(n.anv)}</td><td class="text-end">${n.tasas_pdf.map(([t, c]) => `${pct(t)} (${fmt(c, 0)})`).join(' / ')}</td>
+      <td class="text-end">${fmt(n.fob)}</td><td class="small">${linksDespachos(n.ejemplos.slice(0, 4))}${n.despachos > 4 ? `<span class="text-muted">+${n.despachos - 4}</span>` : ''}</td></tr>`).join('')
+      || '<tr><td colspan="6" class="text-center text-success py-4"><i class="bi bi-check-circle me-1"></i>Sin diferencias de tasa.</td></tr>';
+  }
+  $('discBody').addEventListener('click', e => { const a = e.target.closest('[data-ficha]'); if (a) { e.preventDefault(); irAFicha(a.dataset.ficha); } });
+
+  // ---------------- Simulador ----------------
+  function simularCon(c) {
+    $('sNcm').value = c;
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#tabSim"]')).show();
+    simular();
+  }
+  let simN = 0, timerSim = null;
+  async function simular() {
+    const n = ++simN;
+    const cod = $('sNcm').value.trim();
+    let f = null;
+    try { f = cod ? await obtenerFicha(cod) : null; } catch (e) { f = null; }
+    if (n !== simN) return;
+    const fob = +$('sFob').value || 0, fl = +$('sFlete').value || 0, se = +$('sSeg').value || 0;
+    const tc = +$('sTc').value || 0, reg = $('sReg').value;
+    if (!f) { $('sNcmDesc').innerHTML = '<span class="text-danger">NCM no encontrado en el arancel vigente</span>'; $('sBody').innerHTML = ''; return; }
+    $('sNcmDesc').textContent = `${f.c} · ${f.ruta ? f.ruta + ' › ' : ''}${f.t}`;
+    const ivaTxt = f.iva_t || '';
+    const especial = reg === 'esp' && ivaTxt.includes('*');
+    let ivaP, ivaNota = '';
+    if (/exent/i.test(ivaTxt)) ivaP = 0;
+    else if (!ivaTxt) { ivaP = 10; ivaNota = ' — sin dato, se asume 10%'; }
+    else if (ivaTxt.includes('*')) ivaP = especial ? (f.iva ?? 10) : 10;
+    else ivaP = f.iva ?? 10;
+    const rentaP = especial && (f.renta_t || '').includes('*') ? (f.renta || 0) : 0;
+    const obs = (f.uso && f.uso.tasas_pdf) || [];
+    const anvUsado = f.anv !== null ? f.anv : (obs.length ? obs[0][0] : 0);
+    const anvLbl = f.anv !== null ? `ANV ${pct(f.anv)}` : (obs.length ? `${pct(anvUsado)} observado en tus PDFs; el arancel no trae tasa` : 'SIN TASA en el arancel');
+    const cif = fob + fl + se, aran = cif * anvUsado / 100, isc = (cif + aran) * (f.isc || 0) / 100;
+    const baseIva = cif + aran + isc, iva = baseIva * ivaP / 100, renta = baseIva * rentaP / 100;
+    const total = aran + isc + iva + renta;
+    const filas = [
+      ['Valor CIF (aduanero)', 'FOB + flete + seguro', cif],
+      [`Arancel (${anvLbl})`, 'CIF × ANV', aran],
+      [`ISC (${f.isc_t || '0'})`, '(CIF + arancel) × ISC', isc],
+      [`IVA (${pct(ivaP)})${especial ? ' Reg. Especial' : ''}${ivaNota}`, '(CIF + arancel + ISC) × IVA', iva],
+      [`Anticipo de renta (${pct(rentaP)})`, 'misma base que el IVA', renta],
+    ];
+    $('sBody').innerHTML = filas.map(([c, fo, v]) => `<tr><td>${esc(c)}</td><td class="text-muted small">${esc(fo)}</td><td class="text-end">${fmt(v)}</td><td class="text-end">${fmt(v * tc, 0)}</td></tr>`).join('')
+      + `<tr class="table-primary fw-bold"><td>Total tributos estimados</td><td class="small">${cif ? pct(total * 100 / cif) + ' del CIF' : ''}</td><td class="text-end">${fmt(total)}</td><td class="text-end">${fmt(total * tc, 0)}</td></tr>`
+      + `<tr class="fw-bold"><td>Costo puesto (CIF + tributos)</td><td></td><td class="text-end">${fmt(cif + total)}</td><td class="text-end">${fmt((cif + total) * tc, 0)}</td></tr>`;
+  }
+  $('sNcm').addEventListener('input', () => { clearTimeout(timerSim); timerSim = setTimeout(simular, 300); });
+  ['sFob', 'sFlete', 'sSeg', 'sTc', 'sReg'].forEach(id => $(id).addEventListener('input', simular));
+
+  // ---------------- Versiones ----------------
+  async function cargarVersiones() {
+    let vs;
+    try { vs = await api('/arancel/api/versiones'); } catch (e) { $('versionesBody').innerHTML = `<tr><td colspan="7" class="text-danger">${esc(e.message)}</td></tr>`; return; }
+    $('versionesBody').innerHTML = vs.map(v => `<tr>
+      <td><div class="fw-semibold">${esc(v.nombre)}</div><div class="ruta">${esc(v.fuente || '')}</div></td>
+      <td>${fecha(v.fecha_vigencia)}</td>
+      <td>${v.origen === 'incluido' ? 'Incluido en el sistema' : 'Importado'}</td>
+      <td class="text-end">${fmt(v.total_ncm, 0)}</td>
+      <td class="small">${esc(v.cargada || '')}</td>
+      <td>${v.activa ? '<span class="badge bg-success">Activa</span>' : '<span class="badge bg-secondary">Inactiva</span>'}</td>
+      <td class="text-end text-nowrap">${ES_ADMIN && !v.activa ? `
+        <button class="btn btn-outline-success btn-sm" type="button" data-activar="${esc(v.id)}">Activar</button>
+        <button class="btn btn-outline-danger btn-sm" type="button" data-eliminar="${esc(v.id)}"><i class="bi bi-trash3"></i></button>` : ''}</td>
+    </tr>`).join('');
+  }
+  async function activarVersion(id) {
+    if (!confirm('¿Activar esta versión del arancel? La validación y las fichas pasarán a usarla.')) return;
+    try { await api(`/arancel/api/versiones/${encodeURIComponent(id)}/activar`, {method: 'POST'}); location.reload(); }
+    catch (e) { alert(e.message); }
+  }
+  $('versionesBody').addEventListener('click', async e => {
+    const act = e.target.closest('[data-activar]'), del = e.target.closest('[data-eliminar]');
+    if (act) activarVersion(act.dataset.activar);
+    if (del) {
+      if (!confirm('¿Eliminar esta versión inactiva del arancel? No afecta a los despachos.')) return;
+      try { await api(`/arancel/api/versiones/${encodeURIComponent(del.dataset.eliminar)}`, {method: 'DELETE'}); cargarVersiones(); }
+      catch (err) { alert(err.message); }
+    }
+  });
+  if (ES_ADMIN && $('formImportar')) {
+    $('formImportar').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = $('btnImportar'), out = $('importResultado');
+      btn.disabled = true;
+      out.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Leyendo el PDF (puede tardar unos segundos)…</div>';
+      try {
+        const r = await api('/arancel/api/importar', {method: 'POST', body: new FormData(e.target)});
+        const d = r.diferencias;
+        out.innerHTML = `<div class="alert alert-${r.ya_existia ? 'info' : 'success'} small mb-2">
+            ${r.ya_existia ? 'Esta versión ya estaba cargada.' : 'Versión leída y guardada como <b>inactiva</b>.'}
+            <b>${esc(r.version.nombre)}</b>: ${fmt(r.version.total_ncm, 0)} NCM.
+            ${d.base ? `Comparada con la activa: ${fmt(d.nuevos, 0)} NCM nuevos, ${fmt(d.eliminados, 0)} eliminados, ${fmt(d.anv_cambiados, 0)} con ANV distinto.` : ''}
+            ${d.eliminados_usados && d.eliminados_usados.length ? `<div class="mt-1 text-danger">NCM que usás y desaparecen: ${d.eliminados_usados.map(esc).join(', ')}</div>` : ''}
+          </div>
+          ${d.ejemplos && d.ejemplos.length ? `<div class="table-responsive" style="max-height:320px"><table class="table table-sm mb-2"><thead class="table-light"><tr><th>NCM</th><th>Descripción</th><th class="text-end">ANV antes</th><th class="text-end">ANV ahora</th><th></th></tr></thead><tbody>
+            ${d.ejemplos.map(x => `<tr><td class="code">${esc(x.c)}</td><td class="small">${esc(x.t)}</td><td class="text-end">${pct(x.antes)}</td><td class="text-end fw-semibold">${pct(x.ahora)}</td><td>${x.lo_usas ? '<span class="badge badge-uso">lo usás</span>' : ''}</td></tr>`).join('')}
+          </tbody></table></div>` : ''}
+          ${!r.version.activa ? `<button class="btn btn-success btn-sm" type="button" id="btnActivarNueva">Activar esta versión</button>` : ''}`;
+        const b = $('btnActivarNueva');
+        if (b) b.addEventListener('click', () => activarVersion(r.version.id));
+        cargarVersiones();
+      } catch (err) {
+        out.innerHTML = `<div class="alert alert-danger small">${esc(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // ---------------- Pestañas con carga diferida ----------------
+  const cargadas = {};
+  document.querySelectorAll('.arancel [data-bs-toggle="tab"]').forEach(b => b.addEventListener('shown.bs.tab', () => {
+    const t = b.dataset.bsTarget;
+    if (cargadas[t]) return;
+    cargadas[t] = true;
+    if (t === '#tabMios') cargarMios();
+    if (t === '#tabValid') cargarValidacion();
+    if (t === '#tabVersiones') cargarVersiones();
+    if (t === '#tabSim') simular();
+  }));
+
+  // ---------------- Arranque ----------------
+  (async function iniciar() {
+    try { R = await api('/arancel/api/resumen'); } catch (e) { mostrarError(e); $('versionTxt').textContent = ''; return; }
+    renderCabecera();
+    llenarFiltros();
+    renderSecciones();
+    if (R.tc && R.tc.valor) {
+      $('sTc').value = R.tc.valor;
+      $('sTcNota').textContent = `Tipo de cambio de tu último despacho (${fecha(R.tc.fecha)}).`;
+    }
+    const primeros = await buscar();
+    if (NCM_INICIAL) verFicha(NCM_INICIAL);
+    else if (primeros && primeros.resultados.length) verFicha(primeros.resultados[0].d);
+    else $('ficha').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted">Busque un código o una descripción.</div>';
+  })();
+})();
+</script>
+{% endblock %}

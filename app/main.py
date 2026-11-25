@@ -17,7 +17,7 @@ from pathlib import Path
 from app.config import settings
 from app.database import init_db
 from app.services.gdrive_watcher import GDriveWatcher
-from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater, planillas, sync_unified, marcas
+from app.routers import dashboard, despachos, mercancias, turso, configuracion, upload, revisar, exportacion, backup_updater, planillas, sync_unified, marcas, arancel
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,6 +123,7 @@ app.include_router(exportacion.router)
 app.include_router(backup_updater.router)
 app.include_router(sync_unified.router)
 app.include_router(marcas.router)
+app.include_router(arancel.router)
 
 
 if __name__ == "__main__":
