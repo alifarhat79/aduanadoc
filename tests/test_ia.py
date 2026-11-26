@@ -67,8 +67,8 @@ def sin_clave(monkeypatch):
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "")
 
 
-PASO1 = {"interpretacion": "Auriculares inalámbricos con estuche de carga.",
-         "partidas": [{"codigo": "85.18", "motivo": "Auriculares"}, {"codigo": "99.99", "motivo": "inventada"}]}
+PASO1 = {"resultados": [{"n": 1, "interpretacion": "Auriculares inalámbricos con estuche de carga.",
+                         "partidas": ["85.18", "99.99"]}]}
 PASO2 = {"sugerencias": [
     {"ncm": "8518.30.00", "confianza": "alta", "fundamento": "Texto de la subpartida 8518.30",
      "notas_aplicadas": "", "por_que_no_otras": ""},
@@ -94,8 +94,9 @@ def test_asistente_sugiere_solo_codigos_del_arancel(con_clave):
     assert via1 == via2 == "beta"
     assert k1["model"] == k2["model"] == "claude-opus-5-5"
     assert k1["betas"] == ["server-side-fallback-2026-07-01"] and k1["extra_body"] == {"fallbacks": "default"}
-    assert k1["system"][-1]["cache_control"] == {"type": "ephemeral"}       # lista de partidas en caché
-    assert "LISTA DE PARTIDAS" in k1["system"][-1]["text"]
+    cacheado = [b for b in k1["system"] if "cache_control" in b]
+    assert cacheado[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}  # lista de partidas en caché 1 h
+    assert "LISTA DE PARTIDAS" in cacheado[0]["text"]
     assert k1["output_config"]["format"]["type"] == "json_schema" and k1["output_config"]["effort"] == "medium"
     assert k2["output_config"]["effort"] == "high"
     assert "8518.30.00" in k2["messages"][0]["content"]                     # candidatos completos de la partida
@@ -339,3 +340,185 @@ def test_excel_con_una_hoja_por_ncm():
     assert resumen["3304.99.10"] == 1 and resumen["3304.99.90"] == 2 and resumen["Total"] == 4
 
     assert client.post("/arancel/api/ia/lista-xlsx", json={"productos": []}).status_code == 400
+
+
+# --------------------------------------------------------------------------------------
+# Modo automático: sin NCM elegidos, la IA busca el NCM de cada producto
+# --------------------------------------------------------------------------------------
+
+class _ClienteAuto:
+    """Paso 1 (partidas) y paso 2 (NCM) se distinguen por el esquema de salida pedido."""
+
+    def __init__(self, paso1, paso2):
+        self.paso1, self.paso2, self.llamadas = paso1, paso2, []
+        api = SimpleNamespace(create=lambda **kw: self._crear(kw))
+        self.beta = SimpleNamespace(messages=api)
+        self.messages = api
+
+    def _crear(self, kw):
+        import re as _re
+        self.llamadas.append(kw)
+        props = kw["output_config"]["format"]["schema"]["properties"]["resultados"]["items"]["properties"]
+        texto = kw["messages"][0]["content"].split("POSICIONES CANDIDATAS")[0]  # solo la lista de productos
+        numeros = [int(n) for n in _re.findall(r"^(\d+)\. ", texto, _re.M)]
+        decidir = self.paso1 if "partidas" in props else self.paso2
+        return _respuesta({"resultados": [decidir(n) for n in numeros]})
+
+
+def test_modo_automatico_identifica_cada_producto(con_clave):
+    paso1 = {1: ("Perfume masculino (eau de parfum)", ["33.03"]), 2: ("Crema facial", ["33.04"]),
+             3: ("No identificado", ["99.99"])}
+    paso2 = {1: "3303.00.10", 2: "3304.99.10", 3: "8517.99.10"}  # el 3 no existe en el arancel
+    falso = _ClienteAuto(lambda n: {"n": n, "interpretacion": paso1[n][0], "partidas": paso1[n][1]},
+                         lambda n: {"n": n, "ncm": paso2[n], "confianza": "alta", "motivo": "ok"})
+    texto = "LATTAFA ASAD BOURBON EDP 100ML\nCREMA HIDRATANTE FACIAL 50ML\nMODELO DESCONOCIDO XZ"
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        r = client.post("/arancel/api/ia/clasificar-lista", data={"candidatos": "", "texto": texto})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["modo"] == "automatico"
+    assert [p["ncm"] for p in d["productos"]] == ["3303.00.10", "3304.99.10", "SIN_RESPUESTA"]
+    assert d["productos"][0]["motivo"].startswith("Perfume masculino")
+    assert "8517.99.10" in d["productos"][2]["motivo"]
+    assert [c["ncm"] for c in d["candidatos"]] == ["3303.00.10", "3304.99.10"]
+    assert d["resumen"]["SIN_RESPUESTA"] == 1
+
+    paso1_kw, paso2_kw = falso.llamadas
+    cacheado = [b for b in paso1_kw["system"] if "cache_control" in b]
+    assert "LISTA DE PARTIDAS" in cacheado[0]["text"] and cacheado[0]["cache_control"]["ttl"] == "1h"
+    mensaje2 = paso2_kw["messages"][0]["content"]
+    assert "3303.00.10" in mensaje2 and "3304.99.10" in mensaje2           # posiciones completas de 33.03 y 33.04
+    assert "Qué es (paso anterior): Perfume masculino" in mensaje2
+
+
+def test_modo_automatico_usa_el_historial_del_modelo(con_clave):
+    """Un producto que viene solo con el modelo se reconoce por cómo se declaró antes."""
+    from datetime import date as _date
+    from app.database import SessionLocal
+    from app.models import Despacho, DespachoItem
+    db = SessionLocal()
+    try:
+        d = Despacho(numero_despacho="IA-HIST-0001", fecha_despacho=_date(2026, 9, 1), archivo_pdf="h.pdf",
+                     nombre_archivo_original="h.pdf", hash_archivo="hash_ia_hist_0001", estado_procesamiento="PROCESADO")
+        db.add(d)
+        db.flush()
+        db.add(DespachoItem(despacho_id=d.id, numero_item=1, codigo_ncm="3303.00.10.000L",
+                            descripcion="LATTAFA KHAMRAH QAHWA EDP 100ML", marca="LATTAFA", valor_total=10.0))
+        db.commit()
+    finally:
+        db.close()
+
+    falso = _ClienteAuto(lambda n: {"n": n, "interpretacion": "Desconocido", "partidas": []},  # la IA no sabe qué es
+                         lambda n: {"n": n, "ncm": "3303.00.10", "confianza": "media", "motivo": "Por el historial"})
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        d = client.post("/arancel/api/ia/clasificar-lista", data={"texto": "KHAMRAH QAHWA"}).json()
+    assert d["productos"][0]["ncm"] == "3303.00.10"
+    assert "En los despachos del usuario: 3303.00.10" in falso.llamadas[0]["messages"][0]["content"]
+    assert "Partida 33.03" in falso.llamadas[1]["messages"][0]["content"]  # la partida del historial se revisa igual
+
+
+def test_excel_con_muchos_ncm_encontrados():
+    import io
+    openpyxl = pytest.importorskip("openpyxl")
+    codigos = [f"3304.99.{i:02d}" for i in range(12)]
+    resultado = {"modelo": "claude-opus-5-5", "modo": "automatico", "origen": "texto",
+                 "candidatos": [{"ncm": c, "descripcion": "x", "anv": 6.0, "iva_t": "10"} for c in codigos],
+                 "productos": [{"n": i + 1, "descripcion": f"P{i}", "marca": "", "codigo": "", "cantidad": "", "ncm": c,
+                                "descripcion_ncm": "x", "confianza": "alta", "motivo": "ok", "otro_ncm": ""}
+                               for i, c in enumerate(codigos)],
+                 "consumo": {}}
+    r = client.post("/arancel/api/ia/lista-xlsx", json=resultado)
+    assert r.status_code == 200
+    assert len(openpyxl.load_workbook(io.BytesIO(r.content)).sheetnames) == 2 + len(codigos)
+
+
+# --------------------------------------------------------------------------------------
+# Sugerir NCM: búsqueda en internet cuando la IA no tiene una respuesta definitiva
+# --------------------------------------------------------------------------------------
+
+def _paso2(confianza):
+    return {"sugerencias": [{"ncm": "8518.30.00", "confianza": confianza, "fundamento": "Auriculares",
+                             "notas_aplicadas": "", "por_que_no_otras": ""}],
+            "informacion_faltante": ["¿Tiene micrófono?"], "advertencia": ""}
+
+
+def _respuesta_web(texto="Es un auricular inalámbrico TWS con micrófono incorporado.", stop="end_turn", busquedas=2):
+    cita = SimpleNamespace(url="https://fabricante.example/auricular-tws", title="Ficha técnica del fabricante")
+    return SimpleNamespace(
+        stop_reason=stop,
+        content=[SimpleNamespace(type="server_tool_use", name="web_search"),
+                 SimpleNamespace(type="web_search_tool_result",
+                                 content=[SimpleNamespace(url="https://tienda.example/tws", title="Tienda")]),
+                 SimpleNamespace(type="text", text=texto, citations=[cita])],
+        usage=SimpleNamespace(input_tokens=5000, output_tokens=400, cache_creation_input_tokens=0,
+                              cache_read_input_tokens=0, server_tool_use=SimpleNamespace(web_search_requests=busquedas)),
+    )
+
+
+def test_sugerir_ncm_busca_en_internet_si_no_esta_segura(con_clave):
+    falso = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("media")), _respuesta_web(), _respuesta(_paso2("alta"))])
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        r = client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares TWS modelo X9"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert len(falso.llamadas) == 4
+    _, web = falso.llamadas[2]
+    assert web["tools"] == [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
+    assert "format" not in web["output_config"]                          # texto libre (las citas no admiten JSON)
+    assert "auriculares TWS modelo X9" in web["messages"][0]["content"]
+    _, final = falso.llamadas[3]
+    assert "INVESTIGACIÓN EN INTERNET" in final["messages"][0]["content"] and "8518.30.00" in final["messages"][0]["content"]
+    assert d["sugerencias"][0]["ncm"] == "8518.30.00" and d["sugerencias"][0]["confianza"] == "alta"
+    w = d["investigacion_web"]
+    assert w["usada"] is True and w["busquedas"] == 2 and "TWS" in w["resumen"]
+    assert {f["url"] for f in w["fuentes"]} == {"https://fabricante.example/auricular-tws", "https://tienda.example/tws"}
+    assert d["consumo"]["busquedas_web"] == 2 and d["consumo"]["usd_estimado"] >= 0.02
+
+
+def test_no_busca_si_ya_esta_segura_o_si_se_desactiva(con_clave):
+    falso = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("alta"))])
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        d = client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares"}).json()
+    assert len(falso.llamadas) == 2 and d["investigacion_web"] is None
+
+    falso = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("baja"))])
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        d = client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares", "buscar_internet": False}).json()
+    assert len(falso.llamadas) == 2 and d["investigacion_web"] is None
+
+
+def test_si_falla_la_busqueda_queda_la_respuesta_anterior(con_clave):
+    falso = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("media")),
+                           _error(anthropic.BadRequestError, 400, "web search is not enabled for this organization")])
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        r = client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["sugerencias"][0]["ncm"] == "8518.30.00" and d["sugerencias"][0]["confianza"] == "media"
+    assert "No se pudo buscar en internet" in d["investigacion_web"]["error"]
+
+
+def test_busqueda_pausada_se_reanuda(con_clave):
+    falso = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("baja")),
+                           _respuesta_web(texto="", stop="pause_turn", busquedas=1), _respuesta_web(busquedas=1),
+                           _respuesta(_paso2("alta"))])
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        d = client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares"}).json()
+    _, reanudar = falso.llamadas[3]
+    assert [m["role"] for m in reanudar["messages"]] == ["user", "assistant"]  # sin un "continuar" extra
+    assert d["investigacion_web"]["busquedas"] == 2
+
+
+def test_sugerir_y_lista_comparten_la_cache_de_partidas(con_clave):
+    """Mismo prefijo (instrucciones base + lista de partidas) en los dos modos: una sola escritura de caché."""
+    uno = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("alta"))])
+    with patch.object(ia_service, "_cliente", return_value=uno):
+        client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares"})
+    lista = _ClienteAuto(lambda n: {"n": n, "interpretacion": "x", "partidas": ["85.18"]},
+                         lambda n: {"n": n, "ncm": "8518.30.00", "confianza": "alta", "motivo": "ok"})
+    with patch.object(ia_service, "_cliente", return_value=lista):
+        client.post("/arancel/api/ia/clasificar-lista", data={"texto": "AURICULARES TWS"})
+    prefijo = lambda sistema: [b["text"] for b in sistema[:2]]
+    assert prefijo(uno.llamadas[0][1]["system"]) == prefijo(lista.llamadas[0]["system"])
+    # el esquema de salida y el esfuerzo también forman parte del prefijo en caché
+    assert uno.llamadas[0][1]["output_config"] == lista.llamadas[0]["output_config"]

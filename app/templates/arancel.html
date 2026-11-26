@@ -104,6 +104,11 @@
               <label class="form-label small fw-semibold mt-2" for="iaDet">Detalles (opcional)</label>
               <textarea id="iaDet" class="form-control" rows="2" maxlength="1500"
                         placeholder="Material, composición, uso, potencia, si viene en juego o surtido…"></textarea>
+              <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="iaWeb" checked>
+                <label class="form-check-label small" for="iaWeb">Si no está segura, buscar el producto en internet
+                  <span class="text-muted">(hasta 3 búsquedas; solo se envía la descripción del producto)</span></label>
+              </div>
               <button class="btn btn-primary btn-sm mt-2" type="submit" id="btnIA"><i class="bi bi-stars me-1"></i>Sugerir NCM</button>
             </form>
             <div class="small text-muted mt-3" style="font-size:.72rem">
@@ -116,9 +121,9 @@
           <div class="card border-0 shadow-sm p-3 mt-3">
             <h6 class="fw-bold"><i class="bi bi-list-check text-primary me-1"></i>Separar una lista o factura por NCM</h6>
             <form id="formLista">
-              <label class="form-label small fw-semibold" for="lsCand">NCM posibles (separados por coma)</label>
-              <input id="lsCand" class="form-control font-monospace" maxlength="500" required placeholder="3304.99.10, 3304.99.90">
-              <div id="lsCandInfo" class="small mt-1"></div>
+              <label class="form-label small fw-semibold" for="lsCand">NCM posibles <span class="fw-normal text-muted">(opcional)</span></label>
+              <input id="lsCand" class="form-control font-monospace" maxlength="500" placeholder="Vacío: la IA busca el NCM de cada producto">
+              <div id="lsCandInfo" class="small mt-1 text-muted">Vacío: la IA identifica cada producto (aunque venga solo con marca y modelo) y busca su NCM en todo el arancel. Si escribe códigos (ej.: 3304.99.10, 3304.99.90), elige solo entre ellos.</div>
               <label class="form-label small fw-semibold mt-2" for="lsTexto">Productos (uno por línea)</label>
               <textarea id="lsTexto" class="form-control" rows="4" maxlength="60000"
                         placeholder="CREMA HIDRATANTE FACIAL 50ML&#10;SERUM VITAMINA C 30ML&#10;LOCION TONICA 200ML"></textarea>
@@ -659,11 +664,23 @@
                                         : '<span class="text-muted">Nunca usado en tus despachos</span>'}</div>
       </div>`).join('');
     const c = r.consumo || {};
+    const web = r.investigacion_web;
+    const enlaceSeguro = u => /^https?:\/\//i.test(u || '') ? u : '#';
+    const bloqueWeb = !web ? '' : web.error
+      ? `<div class="alert alert-secondary small py-2 mb-2"><i class="bi bi-globe me-1"></i>${esc(web.error)}</div>`
+      : `<div class="card border-0 shadow-sm p-3 mb-2">
+          <div class="small fw-semibold mb-1"><i class="bi bi-globe me-1 text-primary"></i>Investigación en internet
+            <span class="text-muted fw-normal">(${fmt(web.busquedas || 0, 0)} búsquedas${web.usada ? ' · usada para decidir' : ''})</span></div>
+          <div class="small" style="white-space: pre-line">${esc(web.resumen)}</div>
+          ${web.fuentes && web.fuentes.length ? `<div class="small mt-2"><span class="text-muted">Fuentes:</span>
+            ${web.fuentes.map(f => `<div class="text-truncate"><a href="${esc(enlaceSeguro(f.url))}" target="_blank" rel="noopener noreferrer">${esc(f.titulo)}</a></div>`).join('')}</div>` : ''}
+        </div>`;
     $('iaResultado').innerHTML = `
       <div class="card border-0 shadow-sm p-3 mb-2">
         <div class="small text-muted">Interpretación de la IA</div>
         <div>${esc(r.interpretacion)}</div>
       </div>
+      ${bloqueWeb}
       ${r.advertencia ? `<div class="alert alert-warning small py-2 mb-2"><i class="bi bi-exclamation-triangle me-1"></i>${esc(r.advertencia)}</div>` : ''}
       ${sugerencias || '<div class="alert alert-secondary small">La IA no encontró un NCM con suficiente seguridad. Agregue más detalles del producto.</div>'}
       ${r.informacion_faltante && r.informacion_faltante.length ? `<div class="card border-0 shadow-sm p-3 mb-2">
@@ -672,17 +689,18 @@
       <details class="small mb-1"><summary>Partidas revisadas (${r.partidas_revisadas.length})</summary>
         ${r.partidas_revisadas.map(p => `<div><span class="font-monospace">${esc(p.codigo)}</span> ${esc(p.descripcion.slice(0, 120))} <span class="text-muted">— ${esc(p.motivo)}</span></div>`).join('')}
       </details>
-      <div class="text-muted" style="font-size:.7rem">Modelo ${esc(r.modelo)} · ${fmt((c.entrada || 0) + (c.cache_escritura || 0) + (c.cache_lectura || 0), 0)} tokens de entrada
-        (${fmt(c.cache_lectura || 0, 0)} desde caché) y ${fmt(c.salida || 0, 0)} de salida · costo estimado US$ ${fmt(c.usd_estimado || 0, 3)}</div>`;
+      <div class="text-muted" style="font-size:.7rem">Modelo ${esc(r.modelo)} · ${fmt((c.entrada || 0) + (c.cache_escritura || 0) + (c.cache_escritura_1h || 0) + (c.cache_lectura || 0), 0)} tokens de entrada
+        (${fmt(c.cache_lectura || 0, 0)} desde caché) y ${fmt(c.salida || 0, 0)} de salida${c.busquedas_web ? ` · ${fmt(c.busquedas_web, 0)} búsquedas web` : ''} · costo estimado US$ ${fmt(c.usd_estimado || 0, 3)}</div>`;
   }
   $('formIA').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = $('btnIA');
     btn.disabled = true;
-    $('iaResultado').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Consultando a Claude: revisa el arancel completo y las notas legales (puede tardar hasta un minuto)…</div>';
+    $('iaResultado').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Consultando a Claude: revisa el arancel completo y las notas legales' + ($('iaWeb').checked ? ' y, si no está segura, busca el producto en internet (puede tardar hasta 2 minutos)' : ' (puede tardar hasta un minuto)') + '…</div>';
     try {
       const r = await api('/arancel/api/ia/clasificar', {method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({descripcion: $('iaDesc').value.trim(), detalles: $('iaDet').value.trim()})});
+        body: JSON.stringify({descripcion: $('iaDesc').value.trim(), detalles: $('iaDet').value.trim(),
+                              buscar_internet: $('iaWeb').checked})});
       renderIA(r);
     } catch (err) {
       $('iaResultado').innerHTML = `<div class="alert alert-danger small">${esc(err.message)}</div>`;
@@ -697,9 +715,11 @@
 
   // ---------------- Separar una lista o factura por NCM ----------------
   let ultimaLista = null, filtroLista = '';
+  const AYUDA_AUTO = 'Vacío: la IA identifica cada producto (aunque venga solo con marca y modelo) y busca su NCM en todo el arancel. Si escribe códigos (ej.: 3304.99.10, 3304.99.90), elige solo entre ellos.';
   async function validarCandidatos() {
     const v = $('lsCand').value.trim();
-    if (!v) { $('lsCandInfo').innerHTML = ''; return false; }
+    if (!v) { $('lsCandInfo').className = 'small mt-1 text-muted'; $('lsCandInfo').textContent = AYUDA_AUTO; return true; }
+    $('lsCandInfo').className = 'small mt-1';
     const fd = new FormData(); fd.append('candidatos', v);
     try {
       const c = await api('/arancel/api/ia/candidatos', {method: 'POST', body: fd});
@@ -718,11 +738,16 @@
     const filas = r.productos.filter(p => !filtroLista || p.ncm === filtroLista);
     const chip = (clave, etiqueta, n, color) => n ? `<button type="button" class="btn btn-sm ${filtroLista === clave ? 'btn-' + color : 'btn-outline-' + color} me-1 mb-1" data-filtro="${esc(clave)}">${esc(etiqueta)} <span class="badge bg-light text-dark">${fmt(n, 0)}</span></button>` : '';
     const c = r.consumo || {};
+    const auto = r.modo === 'automatico';
+    const todosNinguno = !auto && r.resumen.NINGUNO && r.resumen.NINGUNO === r.productos.length;
     $('iaResultado').innerHTML = `
+      ${todosNinguno ? `<div class="alert alert-warning small py-2"><i class="bi bi-lightbulb me-1"></i>Ningún producto corresponde a los NCM que eligió.
+          Deje <b>vacío</b> el campo "NCM posibles" para que la IA busque el NCM correcto de cada producto.</div>` : ''}
       <div class="card border-0 shadow-sm p-3">
         <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-          <div><div class="fw-bold">${fmt(r.productos.length, 0)} productos separados por NCM</div>
-            <div class="small text-muted">Origen: ${esc(r.origen)}</div></div>
+          <div><div class="fw-bold">${auto ? `${fmt(r.productos.length, 0)} productos clasificados en ${fmt(r.candidatos.length, 0)} NCM`
+                                           : `${fmt(r.productos.length, 0)} productos separados por NCM`}</div>
+            <div class="small text-muted">${auto ? 'Búsqueda automática en todo el arancel · ' : ''}Origen: ${esc(r.origen)}</div></div>
           <button type="button" class="btn btn-outline-success btn-sm" id="btnXlsxLista" title="Hoja Resumen, hoja Todos y una hoja por cada NCM"><i class="bi bi-file-earmark-excel me-1"></i>Descargar Excel (una hoja por NCM)</button>
         </div>
         <div class="mt-2">
@@ -745,7 +770,7 @@
             </tr>`).join('')}</tbody>
           </table>
         </div>
-        <div class="text-muted mt-2" style="font-size:.7rem">Modelo ${esc(r.modelo)} · ${fmt((c.entrada || 0) + (c.cache_escritura || 0) + (c.cache_lectura || 0), 0)} tokens de entrada
+        <div class="text-muted mt-2" style="font-size:.7rem">Modelo ${esc(r.modelo)} · ${fmt((c.entrada || 0) + (c.cache_escritura || 0) + (c.cache_escritura_1h || 0) + (c.cache_lectura || 0), 0)} tokens de entrada
           (${fmt(c.cache_lectura || 0, 0)} desde caché) y ${fmt(c.salida || 0, 0)} de salida · costo estimado US$ ${fmt(c.usd_estimado || 0, 3)}</div>
       </div>`;
   }
@@ -786,7 +811,10 @@
     if ($('lsArchivo').files[0]) fd.append('archivo', $('lsArchivo').files[0]);
     const btn = $('btnLista');
     btn.disabled = true;
-    $('iaResultado').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Clasificando los productos con Claude (una lista larga o una factura puede tardar unos minutos)…</div>';
+    const textoEspera = $('lsCand').value.trim()
+      ? 'Clasificando los productos entre los NCM elegidos'
+      : 'Identificando cada producto y buscando su NCM en todo el arancel';
+    $('iaResultado').innerHTML = `<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>${textoEspera} (una lista larga o una factura puede tardar unos minutos)…</div>`;
     try {
       ultimaLista = await api('/arancel/api/ia/clasificar-lista', {method: 'POST', body: fd});
       filtroLista = '';

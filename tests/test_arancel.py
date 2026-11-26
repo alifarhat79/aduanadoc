@@ -120,6 +120,49 @@ def test_parsear_pdf_mef_encabezado_bajo_las_notas_y_dec_en_el_borde(tmp_path):
     assert nodos["0101.30.00"]["lista"] == "LNE" and nodos["0101.30.00"]["pag"] == 2
 
 
+def test_partidas_que_el_pdf_no_imprime_se_reconstruyen():
+    """El MEF imprime "3303.00 Perfumes y aguas de tocador." sin la fila "33.03": la partida se crea."""
+    nodos = [
+        {"c": "3303.00", "d": "330300", "t": "Perfumes y aguas de tocador.", "aec_t": "", "anv_t": "", "lista": "",
+         "pag": 168, "aec": None, "anv": None, "anv_dec": None},
+        {"c": "3303.00.10", "d": "33030010", "t": "Perfumes (extractos)", "aec_t": "18", "anv_t": "6", "lista": "LNE",
+         "pag": 168, "aec": 18.0, "anv": 6.0, "anv_dec": None},
+        {"c": "0205.00.00", "d": "02050000", "t": "Carne de animales de la especie caballar.", "aec_t": "10",
+         "anv_t": "10", "lista": "", "pag": 18, "aec": 10.0, "anv": 10.0, "anv_dec": None},
+    ]
+    ds = construir_dataset(nodos, None, meta={"nombre": "x"})
+    por_d = {p["d"]: p for p in ds["posiciones"]}
+    assert por_d["3303"]["n"] == "partida" and por_d["3303"]["c"] == "33.03"
+    assert por_d["3303"]["t"] == "Perfumes y aguas de tocador."
+    assert por_d["0205"]["t"] == "Carne de animales de la especie caballar."  # desde el NCM XXXX.00.00
+    assert [p["d"] for p in ds["posiciones"]].index("3303") < [p["d"] for p in ds["posiciones"]].index("330300")
+
+
+def test_parsear_pdf_codigo_y_descripcion_desalineados(tmp_path):
+    """Código y descripción a 1 punto de altura de diferencia: antes quedaban en renglones distintos."""
+    pymupdf = pytest.importorskip("pymupdf")
+    from app.services.arancel_importer import parsear_pdf_mef
+    doc = pymupdf.open()
+    pag = doc.new_page(width=595, height=842)
+    for x, t in ((95, "NCM"), (248, "DESCRIPCIÓN"), (433, "AEC"), (465, "ANV"), (511, "LISTA")):
+        pag.insert_text((x, 99), t, fontsize=8)
+    pag.insert_text((75, 112), "71.17", fontsize=8)
+    pag.insert_text((124, 112), "Bisutería.", fontsize=8)              # descripción en x=124 (pág. 308 del MEF)
+    pag.insert_text((83, 124), "8541.51.00", fontsize=8)
+    for x, t in ((132, "- -"), (143, "Transductores basados en semiconductores")):  # 1 pt más abajo que el código
+        pag.insert_text((x, 125.2), t, fontsize=8)
+    pag.insert_text((449, 125.2), "5,4", fontsize=8)
+    pag.insert_text((479, 125.2), "2", fontsize=8)
+    pag.insert_text((513, 125.2), "BIT", fontsize=8)
+    ruta = tmp_path / "mef.pdf"
+    doc.save(ruta)
+    nodos = {x["c"]: x for x in parsear_pdf_mef(ruta)}
+    assert nodos["71.17"]["t"] == "Bisutería."
+    n = nodos["8541.51.00"]
+    assert "Transductores basados en semiconductores" in n["t"]
+    assert n["anv"] == 2.0 and n["lista"] == "BIT"
+
+
 def test_parsear_excel_aec_formato_xlsx(tmp_path):
     openpyxl = pytest.importorskip("openpyxl")
     wb = openpyxl.Workbook()
@@ -201,7 +244,8 @@ def test_ficha_ncm_con_impuestos_y_leyendas():
     assert f["anv"] == 6.0 and f["aec"] == 18.0 and f["lista"] == "LNE"
     assert f["iva_t"] == "1,5*" and f["renta_t"] == "0,4*" and f["isc_t"] == "5"
     assert "*" in f["leyendas"]
-    assert [a["c"] for a in f["ancestros"]] == ["3303.00"]
+    # La partida 33.03 no figura como fila en el PDF del MEF (pasa directo a "3303.00"): se reconstruye
+    assert [a["c"] for a in f["ancestros"]] == ["33.03", "3303.00"]
     assert any(h["c"] == "3303.00.20" for h in f["hermanos"])
     assert f["capitulo"]["numero"] == "33" and f["capitulo"]["notas"]
 

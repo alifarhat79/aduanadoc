@@ -219,7 +219,7 @@ def parsear_excel_aec(ruta) -> Dict[str, Any]:
 # ======================================================================================
 
 _CODIGO_MEF = re.compile(r"^\d{2}\.\d{2}$|^\d{4}\.\d{2}(\.\d{1,2})?$|^\d{4}\.\d{2}\.\d{2}\.\d{1,3}$")
-_X_DESCRIPCION = 125  # Las palabras a la izquierda de esta coordenada son la columna NCM
+_X_DESCRIPCION = 110  # A la izquierda: columna NCM (los códigos empiezan antes de x=100; algunas páginas tienen la descripción en x=124)
 
 
 def _encabezado_tabla(palabras):
@@ -259,16 +259,19 @@ def parsear_pdf_mef(ruta) -> List[Dict[str, Any]]:
             else:
                 y_min = 94  # página de tabla sin encabezado: se usan las columnas de la anterior
 
-            renglones: Dict[int, List] = {}
-            for x0, y0, x1, y1, t, *_ in palabras:
-                if y0 < y_min:
-                    continue
-                renglones.setdefault(round(y0 / 3), []).append((x0, x1, t))
+            # Renglones por cercanía vertical (no por redondeo): el código y su descripción pueden
+            # diferir 1 punto de altura y el redondeo los separaba en dos renglones distintos.
+            renglones: Dict[float, List] = {}
+            y_actual = None
+            for x0, y0, x1, y1, t, *_ in sorted((w for w in palabras if w[1] >= y_min), key=lambda w: (w[1], w[0])):
+                if y_actual is None or y0 - y_actual > 2.5:
+                    y_actual = y0
+                renglones.setdefault(y_actual, []).append((x0, x1, t))
 
             y_previo = None
             for clave in sorted(renglones):
                 ws = sorted(renglones[clave])
-                y = clave * 3
+                y = clave
                 codigo = ws[0][2] if ws[0][0] < _X_DESCRIPCION and _CODIGO_MEF.match(ws[0][2]) else None
                 desc = " ".join(t for x0, x1, t in ws if _X_DESCRIPCION <= x0 < columnas["aec"] - 6 and not (codigo and t == codigo))
                 aec = " ".join(t for x0, x1, t in ws if columnas["aec"] - 6 <= x0 < columnas["anv"] - 2)
@@ -348,6 +351,22 @@ def construir_dataset(nodos_mef: List[Dict[str, Any]], complemento: Optional[Dic
             if x and x.get("n") == "ncm":
                 p.update(_impuestos(x, fuente_complemento))
         posiciones.append({k: v for k, v in p.items() if v not in (None, "", [])})
+
+    # Partidas que el PDF no imprime: cuando una partida tiene una sola subpartida, el MEF pasa
+    # directo a "3303.00 Perfumes y aguas de tocador." sin la fila "33.03". Sin ella el árbol queda
+    # incompleto y el asistente de IA no puede elegir la partida. Se toma el texto de esa
+    # subpartida "XXXX.00" (o el de la partida del Excel si existiera).
+    partidas = {p["d"] for p in posiciones if p["n"] == "partida"}
+    por_d_mef = {p["d"]: p for p in posiciones}
+    for d4 in sorted({p["d"][:4] for p in posiciones if p["n"] != "partida"} - partidas):
+        # El texto de la partida es el de su única subpartida "XXXX.00" o, si el PDF pasa directo
+        # al NCM, el de "XXXX.00.00"; si no, el de la partida en el Excel.
+        sub00 = por_d_mef.get(d4 + "00") or por_d_mef.get(d4 + "0000")
+        excel = comp_por_d.get(d4)
+        texto = (sub00 or {}).get("t") or ((excel or {}).get("t") if (excel or {}).get("n") == "partida" else "") or ""
+        posiciones.append({k: v for k, v in {"c": f"{d4[:2]}.{d4[2:]}", "d": d4, "n": "partida", "t": texto, "g": 0,
+                                             "pag": (sub00 or {}).get("pag")}.items() if v not in (None, "")})
+        vistos.add(d4)
 
     # Aperturas nacionales (más de 8 dígitos) del complemento, solo bajo un NCM vigente
     ncm_vigentes = {p["d"] for p in posiciones if p["n"] == "ncm"}

@@ -98,6 +98,7 @@ def api_versiones(db: Session = Depends(get_db)):
 class ConsultaIA(BaseModel):
     descripcion: str = Field(..., min_length=3, max_length=1000)
     detalles: str = Field("", max_length=1500)
+    buscar_internet: bool = True  # sin respuesta definitiva, la IA busca el producto en internet
 
 
 @router.get("/api/ia/estado")
@@ -111,7 +112,7 @@ def api_ia_clasificar(consulta: ConsultaIA, db: Session = Depends(get_db)):
     """Sugiere NCM con Claude, siempre validados contra el arancel vigente. Solo lee datos locales."""
     from app.services import ia_service
     try:
-        return ia_service.clasificar_ncm(db, consulta.descripcion, consulta.detalles)
+        return ia_service.clasificar_ncm(db, consulta.descripcion, consulta.detalles, consulta.buscar_internet)
     except ia_service.IAError as e:
         raise HTTPException(status_code=e.status, detail=e.mensaje)
 
@@ -132,7 +133,7 @@ def api_ia_candidatos(candidatos: str = Form(..., max_length=500), db: Session =
 
 @router.post("/api/ia/clasificar-lista")
 def api_ia_clasificar_lista(
-    candidatos: str = Form(..., max_length=500),
+    candidatos: str = Form("", max_length=500),  # vacío = la IA busca el NCM de cada producto
     texto: str = Form("", max_length=60000),
     archivo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),

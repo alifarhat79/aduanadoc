@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 MODELO = "claude-opus-5-5"
 # Precios por millón de tokens de claude-opus-5-5 (para mostrar un costo ESTIMADO de cada consulta)
-_PRECIO = {"entrada": 4.00, "salida": 20.00, "cache_escritura": 5.00, "cache_lectura": 0.20}
+_PRECIO = {"entrada": 4.00, "salida": 20.00, "cache_escritura": 5.00, "cache_escritura_1h": 8.00, "cache_lectura": 0.20}
 MAX_PARTIDAS = 6
 MAX_SUGERENCIAS = 3
 MAX_LINEAS_CANDIDATOS = 450
@@ -169,8 +169,10 @@ def _llamar(cliente, *, system: List[Dict[str, Any]], mensaje: Any, esquema: Dic
     except (TypeError, ValueError) as e:
         raise IAError("La IA devolvió una respuesta que no se pudo leer. Intente de nuevo.", 502) from e
     u = resp.usage
+    escrito = getattr(u, "cache_creation_input_tokens", 0) or 0
+    escrito_1h = getattr(getattr(u, "cache_creation", None), "ephemeral_1h_input_tokens", 0) or 0
     uso = {"entrada": getattr(u, "input_tokens", 0) or 0, "salida": getattr(u, "output_tokens", 0) or 0,
-           "cache_escritura": getattr(u, "cache_creation_input_tokens", 0) or 0,
+           "cache_escritura": max(0, escrito - escrito_1h), "cache_escritura_1h": escrito_1h,
            "cache_lectura": getattr(u, "cache_read_input_tokens", 0) or 0}
     return datos, uso
 
@@ -264,6 +266,19 @@ def _texto_partidas(idx: Dict[str, Any]) -> str:
         return texto
 
 
+def _sistema_partidas(idx: Dict[str, Any], tarea: str) -> List[Dict[str, Any]]:
+    """
+    Instrucciones + lista completa de partidas (~65.000 tokens). La lista va ANTES de la tarea y con
+    caché de 1 hora: "Sugerir NCM" y "Separar lista" comparten la misma caché, y las consultas de la
+    misma hora cuestan una fracción (la primera de cada hora paga la escritura de la caché).
+    """
+    return [
+        {"type": "text", "text": _SISTEMA_BASE},
+        {"type": "text", "text": _texto_partidas(idx), "cache_control": {"type": "ephemeral", "ttl": "1h"}},
+        {"type": "text", "text": tarea},
+    ]
+
+
 def _pct(v) -> str:
     return "—" if v is None else (f"{v:.2f}".rstrip("0").rstrip(".") + "%").replace(".", ",")
 
@@ -308,7 +323,8 @@ def _ejemplos_por_ncm(db: Session, candidatos: set, por_ncm: int = 2) -> Dict[st
     return ejemplos
 
 
-def _material_candidatos(db: Session, idx: Dict[str, Any], partidas: List[str]) -> Tuple[str, set]:
+def _material_candidatos(db: Session, idx: Dict[str, Any], partidas: List[str],
+                         max_lineas: int = MAX_LINEAS_CANDIDATOS) -> Tuple[str, set]:
     """Texto con las posiciones completas de las partidas elegidas, sus tasas, notas e historial."""
     uso = arancel_service.uso_en_despachos(db)["por_ncm"]
     validos: set = set()
@@ -323,7 +339,7 @@ def _material_candidatos(db: Session, idx: Dict[str, Any], partidas: List[str]) 
         cap = (idx["caps"].get(p[:2]) or {})
         bloques.append(f"\n=== Capítulo {p[:2]} ({cap.get('titulo', '')}) · Partida {partida['c']}: {partida['t']}")
         for n in nodos_por_partida[p]:
-            if total >= MAX_LINEAS_CANDIDATOS:
+            if total >= max_lineas:
                 bloques.append("  (lista recortada por longitud)")
                 break
             linea = f"{sangria.get(n['n'], '  ')}{n['c']} {n['t']}"
@@ -361,16 +377,17 @@ def _material_candidatos(db: Session, idx: Dict[str, Any], partidas: List[str]) 
 
 
 def _costo(usos: List[Dict[str, int]]) -> Dict[str, Any]:
-    total = {k: sum(u[k] for u in usos) for k in _PRECIO}
-    usd = sum(total[k] * _PRECIO[k] for k in _PRECIO) / 1_000_000
-    return {**total, "usd_estimado": round(usd, 4)}
+    total = {k: sum(u.get(k, 0) for u in usos) for k in _PRECIO}
+    busquedas = sum(u.get("busquedas_web", 0) for u in usos)
+    usd = sum(total[k] * _PRECIO[k] for k in _PRECIO) / 1_000_000 + busquedas * PRECIO_BUSQUEDA_WEB
+    return {**total, "busquedas_web": busquedas, "usd_estimado": round(usd, 4)}
 
 
 # ======================================================================================
 # Asistente de clasificación
 # ======================================================================================
 
-def clasificar_ncm(db: Session, descripcion: str, detalles: str = "") -> Dict[str, Any]:
+def clasificar_ncm(db: Session, descripcion: str, detalles: str = "", buscar_internet: bool = True) -> Dict[str, Any]:
     descripcion = (descripcion or "").strip()
     detalles = (detalles or "").strip()
     if len(descripcion) < 3:
@@ -392,15 +409,19 @@ def clasificar_ncm(db: Session, descripcion: str, detalles: str = "") -> Dict[st
             f"- {r['c']} {r['t']} ({r['ruta'][:120]})" for r in busqueda))
 
     # Paso 1: partidas (lista completa en caché)
-    sistema_1 = [
-        {"type": "text", "text": _SISTEMA_BASE + "\n\nEn este paso elegí las PARTIDAS (4 dígitos) de la lista que "
-                                                  "podrían corresponder a la mercadería, de la más a la menos probable "
-                                                  f"(entre 1 y {MAX_PARTIDAS}). Si hay dudas razonables entre capítulos, "
-                                                  "incluí ambas opciones."},
-        {"type": "text", "text": _texto_partidas(idx), "cache_control": {"type": "ephemeral"}},
-    ]
-    paso1, uso1 = _llamar(cliente, system=sistema_1, mensaje=producto + ("\n\n" + "\n\n".join(pistas) if pistas else ""),
-                          esquema=_ESQUEMA_PARTIDAS, effort="medium")
+    # Mismo esquema y mismo prefijo que "Separar lista" (un producto = lista de 1): ambas funciones
+    # comparten la caché de la lista de partidas.
+    sistema_1 = _sistema_partidas(idx, "Tarea: el usuario consulta UN producto (número 1). Decí brevemente qué es "
+                                       "y elegí las PARTIDAS (4 dígitos) de la lista que podrían corresponderle, de "
+                                       f"la más a la menos probable (entre 1 y {MAX_PARTIDAS}). Si hay dudas "
+                                       "razonables entre capítulos, incluí ambas opciones.")
+    paso1_lote, uso1 = _llamar(cliente, system=sistema_1, esquema=_ESQUEMA_PARTIDAS_LOTE, effort="medium",
+                               mensaje="PRODUCTOS:\n1. " + producto.replace("Mercadería: ", "", 1)
+                                       + ("\n\n" + "\n\n".join(pistas) if pistas else ""))
+    r1 = next((r for r in paso1_lote.get("resultados", []) if r.get("n") == 1),
+              (paso1_lote.get("resultados") or [{}])[0])
+    paso1 = {"interpretacion": (r1.get("interpretacion") or "").strip(),
+             "partidas": [{"codigo": c, "motivo": ""} for c in (r1.get("partidas") or [])]}
 
     partidas: List[str] = []
     motivos: Dict[str, str] = {}
@@ -431,8 +452,54 @@ def clasificar_ncm(db: Session, descripcion: str, detalles: str = "") -> Dict[st
                           esquema=_ESQUEMA_NCM, effort="high")
 
     usos_por_ncm = arancel_service.uso_en_despachos(db)["por_ncm"]
+    usos = [uso1, uso2]
+    sugerencias, descartadas = _armar_sugerencias(paso2, validos, idx, usos_por_ncm)
+
+    # Paso 3 (opcional): sin una respuesta definitiva, buscar en internet qué es exactamente el producto
+    # y volver a decidir entre las MISMAS posiciones candidatas del arancel.
+    investigacion = None
+    if buscar_internet and (not sugerencias or sugerencias[0]["confianza"] != "alta"):
+        try:
+            investigacion, uso_web = _investigar_en_internet(cliente, producto, paso1.get("interpretacion", ""),
+                                                             sugerencias, paso2.get("informacion_faltante", []))
+            usos.append(uso_web)
+            paso3, uso3 = _llamar(
+                cliente, system=sistema_2, esquema=_ESQUEMA_NCM, effort="high",
+                mensaje=(f"{producto}\n\nInterpretación previa: {paso1.get('interpretacion', '')}\n\n"
+                         f"INVESTIGACIÓN EN INTERNET SOBRE EL PRODUCTO (puede contener errores; las fuentes "
+                         f"web no reemplazan al arancel):\n{investigacion['resumen']}\n\n{material}"))
+            usos.append(uso3)
+            nuevas, descartadas_3 = _armar_sugerencias(paso3, validos, idx, usos_por_ncm)
+            if nuevas:
+                sugerencias, paso2 = nuevas, paso3
+                descartadas += descartadas_3
+                investigacion["usada"] = True
+        except IAError as e:
+            investigacion = {"error": f"No se pudo buscar en internet: {e.mensaje}", "fuentes": []}
+    if descartadas:
+        logger.warning("[IA] Sugerencias fuera del arancel descartadas: %s", descartadas)
+
+    return {
+        "modelo": MODELO,
+        "version_arancel": idx["version"]["nombre"],
+        "interpretacion": paso1.get("interpretacion", ""),
+        "partidas_revisadas": [{"codigo": idx["por_d"][p]["c"], "descripcion": idx["por_d"][p]["t"],
+                                "motivo": motivos.get(p, "")} for p in partidas],
+        "sugerencias": sugerencias,
+        "descartadas": descartadas,
+        "informacion_faltante": paso2.get("informacion_faltante", []),
+        "advertencia": paso2.get("advertencia", ""),
+        "antecedentes": antecedentes,
+        "investigacion_web": investigacion,
+        "consumo": _costo(usos),
+    }
+
+
+def _armar_sugerencias(paso: Dict[str, Any], validos: set, idx: Dict[str, Any],
+                       usos_por_ncm: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Sugerencias de la IA validadas contra el arancel: un código fuera de las candidatas se descarta."""
     sugerencias, descartadas = [], []
-    for s in paso2.get("sugerencias", []):
+    for s in paso.get("sugerencias", []):
         d = digitos(s.get("ncm"))
         d = d if d in validos else (d[:8] if d[:8] in validos else None)
         if d is None:
@@ -452,22 +519,97 @@ def clasificar_ncm(db: Session, descripcion: str, detalles: str = "") -> Dict[st
         })
         if len(sugerencias) >= MAX_SUGERENCIAS:
             break
-    if descartadas:
-        logger.warning("[IA] Sugerencias fuera del arancel descartadas: %s", descartadas)
+    return sugerencias, descartadas
 
-    return {
-        "modelo": MODELO,
-        "version_arancel": idx["version"]["nombre"],
-        "interpretacion": paso1.get("interpretacion", ""),
-        "partidas_revisadas": [{"codigo": idx["por_d"][p]["c"], "descripcion": idx["por_d"][p]["t"],
-                                "motivo": motivos.get(p, "")} for p in partidas],
-        "sugerencias": sugerencias,
-        "descartadas": descartadas,
-        "informacion_faltante": paso2.get("informacion_faltante", []),
-        "advertencia": paso2.get("advertencia", ""),
-        "antecedentes": antecedentes,
-        "consumo": _costo([uso1, uso2]),
-    }
+
+MAX_BUSQUEDAS_WEB = 3
+PRECIO_BUSQUEDA_WEB = 0.01  # US$ por búsqueda (US$ 10 cada 1.000)
+
+
+def _fuentes_web(contenido: List[Any]) -> List[Dict[str, str]]:
+    """URLs consultadas: resultados de búsqueda y citas del texto (solo http/https)."""
+    fuentes, vistas = [], set()
+
+    def agregar(url, titulo):
+        url = (url or "").strip()
+        if url.startswith(("https://", "http://")) and url not in vistas and len(fuentes) < 8:
+            vistas.add(url)
+            fuentes.append({"url": url, "titulo": (titulo or url)[:150]})
+
+    for b in contenido:
+        tipo = getattr(b, "type", None)
+        if tipo == "text":
+            for c in getattr(b, "citations", None) or []:
+                agregar(getattr(c, "url", None), getattr(c, "title", None))
+        elif tipo == "web_search_tool_result":
+            resultados = getattr(b, "content", None)
+            if isinstance(resultados, list):  # si es un objeto, es un error de la búsqueda
+                for r in resultados[:3]:
+                    agregar(getattr(r, "url", None), getattr(r, "title", None))
+    return fuentes
+
+
+def _investigar_en_internet(cliente, producto: str, interpretacion: str, sugerencias: List[Dict[str, Any]],
+                            faltantes: List[str]) -> Tuple[Dict[str, Any], Dict[str, int]]:
+    """
+    Claude busca en internet (hasta 3 búsquedas) datos técnicos del producto: qué es, composición,
+    función y uso. Texto libre con fuentes; la decisión final la toma otra llamada dentro del arancel.
+    Solo se envía la descripción del producto (nada de clientes ni valores).
+    """
+    global _fallbacks_disponible
+    anthropic = _sdk()
+    opciones = "\n".join(f"- {s['ncm']}: {s['descripcion']} (confianza {s['confianza']})" for s in sugerencias) or "- (ninguna clara)"
+    pedido = (f"{producto}\n\nInterpretación hasta ahora: {interpretacion or '—'}\n"
+              f"Posiciones del arancel en duda:\n{opciones}\n"
+              + (f"Datos que faltan para decidir: {'; '.join(faltantes)}\n" if faltantes else "")
+              + "\nBuscá en internet información técnica de ESTE producto (marca y modelo si los hay): qué es, "
+                "composición o materiales, función principal y uso. Respondé en español con un resumen breve "
+                "de los datos que deciden la clasificación y qué posición parece corresponder. No inventes datos: "
+                "si no encontrás información confiable, decilo.")
+    kwargs = dict(
+        model=MODELO, max_tokens=16000,
+        system=[{"type": "text", "text": "Sos un asistente que investiga productos para clasificarlos en el arancel "
+                                         "de aduanas del Paraguay (NCM 2022). Usá fuentes de fabricantes o vendedores "
+                                         "reconocidos; las clasificaciones arancelarias de terceros son solo una pista."}],
+        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": MAX_BUSQUEDAS_WEB}],
+        output_config={"effort": "medium"},
+    )
+    mensajes = [{"role": "user", "content": pedido}]
+    contenido_total, uso = [], {k: 0 for k in _PRECIO}
+    uso["busquedas_web"] = 0
+    try:
+        for _ in range(4):  # la búsqueda puede pausarse (pause_turn): se reanuda hasta 3 veces
+            if _fallbacks_disponible:
+                try:
+                    resp = cliente.beta.messages.create(betas=["server-side-fallback-2026-07-01"],
+                                                        extra_body={"fallbacks": "default"},
+                                                        messages=mensajes, **kwargs)
+                except anthropic.BadRequestError as e:
+                    if "fallback" not in str(e).lower():
+                        raise
+                    _fallbacks_disponible = False
+                    resp = cliente.messages.create(messages=mensajes, **kwargs)
+            else:
+                resp = cliente.messages.create(messages=mensajes, **kwargs)
+            u = resp.usage
+            uso["entrada"] += getattr(u, "input_tokens", 0) or 0
+            uso["salida"] += getattr(u, "output_tokens", 0) or 0
+            uso["cache_escritura"] += getattr(u, "cache_creation_input_tokens", 0) or 0
+            uso["cache_lectura"] += getattr(u, "cache_read_input_tokens", 0) or 0
+            uso["busquedas_web"] += getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0
+            contenido_total += list(resp.content)
+            if resp.stop_reason != "pause_turn":
+                break
+            mensajes = [{"role": "user", "content": pedido}, {"role": "assistant", "content": resp.content}]
+    except Exception as e:  # noqa: BLE001
+        raise _traducir_error(e) from e
+    if resp.stop_reason == "refusal":
+        raise IAError("La IA no quiso investigar este producto.", 422)
+    resumen = "\n".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", None) == "text").strip()
+    if not resumen:
+        raise IAError("La búsqueda en internet no devolvió información.", 502)
+    return {"resumen": resumen[:6000], "fuentes": _fuentes_web(contenido_total), "usada": False,
+            "busquedas": uso["busquedas_web"]}, uso
 
 
 # ======================================================================================
@@ -661,13 +803,168 @@ def _esquema_lote(codigos: List[str]) -> Dict[str, Any]:
     }
 
 
+_ESQUEMA_PARTIDAS_LOTE = {
+    "type": "object",
+    "properties": {"resultados": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "n": {"type": "integer", "description": "Número del producto en la lista"},
+            "interpretacion": {"type": "string", "description": "Qué es el producto (tipo, material, uso), en pocas palabras."},
+            "partidas": {"type": "array", "items": {"type": "string"},
+                         "description": "Partidas de la lista (ej. 33.03), la más probable primero; cuántas, lo indica la tarea."},
+        },
+        "required": ["n", "interpretacion", "partidas"],
+        "additionalProperties": False}}},
+    "required": ["resultados"],
+    "additionalProperties": False,
+}
+
+_ESQUEMA_NCM_LOTE = {
+    "type": "object",
+    "properties": {"resultados": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "n": {"type": "integer", "description": "Número del producto en la lista"},
+            "ncm": {"type": "string", "description": "Código exacto de las posiciones candidatas, ej. 3303.00.10"},
+            "confianza": {"type": "string", "enum": ["alta", "media", "baja"]},
+            "motivo": {"type": "string", "description": "Motivo breve (una frase)."},
+        },
+        "required": ["n", "ncm", "confianza", "motivo"],
+        "additionalProperties": False}}},
+    "required": ["resultados"],
+    "additionalProperties": False,
+}
+MAX_PARTIDAS_LOTE = 14
+MAX_LINEAS_LOTE = 900
+
+
+def _linea_producto(p: Dict[str, Any], antecedentes: Optional[List[Dict[str, Any]]] = None,
+                    interpretacion: str = "") -> str:
+    extra = [f"marca: {p['marca']}" if p.get("marca") else "", f"código: {p['codigo']}" if p.get("codigo") else ""]
+    texto = f"{p['n']}. {p['descripcion']}" + "".join(f" | {x}" for x in extra if x)
+    if interpretacion:
+        texto += f"\n   Qué es (paso anterior): {interpretacion}"
+    if antecedentes:
+        texto += "\n   En los despachos del usuario: " + "; ".join(
+            f"{a['ncm']} ({a['lineas']} líneas" + (f", ej. '{a['ejemplos'][0]}')" if a["ejemplos"] else ")")
+            for a in antecedentes)
+    return texto
+
+
+def _clasificar_lista_automatica(db: Session, idx: Dict[str, Any], cliente, productos: List[Dict[str, Any]],
+                                 origen: str, usos: List[Dict[str, int]]) -> Dict[str, Any]:
+    """
+    Sin NCM elegidos por el usuario: para cada producto (aunque venga solo con marca y modelo) la IA
+    dice qué es, elige partidas en todo el arancel y después el NCM exacto entre sus posiciones.
+    """
+    from collections import Counter
+    from concurrent.futures import ThreadPoolExecutor
+    from app.database import SessionLocal
+
+    # Historial de cada producto en los despachos (el mismo modelo ya declarado antes)
+    antecedentes = {p["n"]: _antecedentes(db, f"{p['descripcion']} {p.get('marca', '')}", idx, limite=3) for p in productos}
+    sistema_1 = _sistema_partidas(idx, "Tarea (paso 1 de 2): para cada producto de la lista decí brevemente qué "
+                                       "es y elegí de 1 a 3 PARTIDAS (4 dígitos) de la lista que podrían "
+                                       "corresponderle. Los productos pueden venir solo con marca y modelo: usá tu "
+                                       "conocimiento de productos comerciales y los antecedentes de los despachos "
+                                       "del usuario. Respondé un resultado por cada número de producto, sin omitir ninguno.")
+    sistema_2 = [{"type": "text", "text": _SISTEMA_BASE + "\n\nTarea (paso 2 de 2): para cada producto elegí el código "
+                                                           "NCM exacto (8 dígitos, o una apertura nacional si corresponde) "
+                                                           "de las POSICIONES CANDIDATAS, aplicando las RGI y las notas "
+                                                           "legales. Si un producto no se puede identificar con "
+                                                           "seguridad, elegí el más probable con confianza baja y decilo "
+                                                           "en el motivo. Respondé un resultado por cada número de "
+                                                           "producto, sin omitir ninguno."}]
+
+    def lote(parte: List[Dict[str, Any]]):
+        consumo = []
+        paso1, u1 = _llamar(cliente, system=sistema_1, esquema=_ESQUEMA_PARTIDAS_LOTE, effort="medium",
+                            mensaje="PRODUCTOS:\n" + "\n".join(_linea_producto(p, antecedentes[p["n"]]) for p in parte))
+        consumo.append(u1)
+        interpretacion: Dict[int, str] = {}
+        frecuencia: Counter = Counter()
+        for r in paso1.get("resultados", []):
+            if not isinstance(r.get("n"), int):
+                continue
+            interpretacion[r["n"]] = (r.get("interpretacion") or "").strip()
+            for codigo in (r.get("partidas") or [])[:3]:
+                nodo = idx["por_d"].get(digitos(codigo)[:4])
+                if nodo and nodo["n"] == "partida":
+                    frecuencia[nodo["d"]] += 1
+        for p in parte:  # la práctica del usuario siempre se revisa
+            for a in antecedentes[p["n"]]:
+                frecuencia[digitos(a["ncm"])[:4]] += 1
+        partidas = [d for d, _ in frecuencia.most_common(MAX_PARTIDAS_LOTE) if d in idx["por_d"]]
+        if not partidas:
+            return {}, consumo
+        sesion = SessionLocal()  # cada lote corre en su propio hilo: sesión propia
+        try:
+            material, validos = _material_candidatos(sesion, idx, partidas, max_lineas=MAX_LINEAS_LOTE)
+        finally:
+            sesion.close()
+        lineas = [_linea_producto(p, antecedentes[p["n"]], interpretacion.get(p["n"], "")) for p in parte]
+        paso2, u2 = _llamar(cliente, system=sistema_2, esquema=_ESQUEMA_NCM_LOTE, effort="high",
+                            mensaje="PRODUCTOS:\n" + "\n".join(lineas) + "\n\n" + material)
+        consumo.append(u2)
+        respuestas = {}
+        for r in paso2.get("resultados", []):
+            if isinstance(r.get("n"), int) and r["n"] not in respuestas:
+                d = digitos(r.get("ncm"))
+                d = d if d in validos else (d[:8] if d[:8] in validos else None)
+                respuestas[r["n"]] = {**r, "d": d, "interpretacion": interpretacion.get(r["n"], "")}
+        return respuestas, consumo
+
+    partes = [productos[i:i + TAMANO_LOTE] for i in range(0, len(productos), TAMANO_LOTE)]
+    resultados = [lote(partes[0])]  # el primero solo: deja la lista de partidas en caché
+    if len(partes) > 1:
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            resultados += list(ex.map(lote, partes[1:]))
+
+    por_n: Dict[int, Dict[str, Any]] = {}
+    for respuestas, consumo in resultados:
+        usos.extend(consumo)
+        por_n.update(respuestas)
+
+    filas, conteo = [], Counter()
+    for p in productos:
+        r = por_n.get(p["n"])
+        if not r or not r.get("d"):
+            motivo = ("La IA no devolvió este producto." if not r
+                      else f"La IA propuso {r.get('ncm')}, que no está entre las posiciones vigentes revisadas.")
+            fila = {**p, "ncm": "SIN_RESPUESTA", "descripcion_ncm": "", "confianza": "", "motivo": motivo, "otro_ncm": ""}
+        else:
+            nodo = idx["por_d"][r["d"]]
+            motivo = r.get("motivo", "")
+            if r.get("interpretacion"):
+                motivo = f"{r['interpretacion'].rstrip('.')}. {motivo}"
+            fila = {**p, "ncm": nodo["c"], "descripcion_ncm": nodo["t"], "confianza": r.get("confianza", "baja"),
+                    "motivo": motivo, "otro_ncm": ""}
+        conteo[fila["ncm"]] += 1
+        filas.append(fila)
+
+    encontrados = [c for c, _ in conteo.most_common() if c != "SIN_RESPUESTA"]
+    candidatos = []
+    for c in encontrados:
+        nodo = idx["por_d"][digitos(c)]
+        candidatos.append({"ncm": c, "d": nodo["d"], "descripcion": nodo["t"], "anv": nodo.get("anv"),
+                           "iva_t": nodo.get("iva_t")})
+    resumen = {c: conteo[c] for c in encontrados}
+    resumen.update({NINGUNO: 0, "SIN_RESPUESTA": conteo["SIN_RESPUESTA"]})
+    return {"modelo": MODELO, "modo": "automatico", "origen": origen, "candidatos": candidatos,
+            "productos": filas, "resumen": resumen, "consumo": _costo(usos)}
+
+
 def clasificar_lista(db: Session, candidatos_texto: str, texto: str = "", archivo: Optional[bytes] = None,
                      nombre_archivo: str = "") -> Dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path as _Path
 
-    candidatos = resolver_candidatos(db, candidatos_texto)
+    # Sin NCM posibles: la IA busca el NCM de cada producto en TODO el arancel (modo automático)
+    modo_auto = not (candidatos_texto or "").strip()
+    candidatos = [] if modo_auto else resolver_candidatos(db, candidatos_texto)
     idx = arancel_service.indice(db)
+    if idx is None:
+        raise IAError("El arancel todavía no está cargado en esta PC.", 503)
     cliente = _cliente()
     usos: List[Dict[str, int]] = []
 
@@ -694,6 +991,9 @@ def clasificar_lista(db: Session, candidatos_texto: str, texto: str = "", archiv
         raise IAError(f"La lista tiene {len(productos)} productos; el máximo por consulta es {MAX_PRODUCTOS}.", 400)
     for i, p in enumerate(productos, start=1):
         p["n"] = i
+
+    if modo_auto:
+        return _clasificar_lista_automatica(db, idx, cliente, productos, origen, usos)
 
     codigos = [c["c"] for c in candidatos]
     sistema = [
@@ -748,6 +1048,7 @@ def clasificar_lista(db: Session, candidatos_texto: str, texto: str = "", archiv
 
     return {
         "modelo": MODELO,
+        "modo": "elegidos",
         "origen": origen,
         "candidatos": [{"ncm": c["c"], "d": c["d"], "descripcion": c["t"], "anv": c.get("anv"), "iva_t": c.get("iva_t")}
                        for c in candidatos],
@@ -779,7 +1080,8 @@ def exportar_lista_xlsx(resultado: Dict[str, Any]) -> bytes:
     productos = resultado.get("productos") or []
     if not productos:
         raise IAError("No hay productos para exportar.", 400)
-    if len(productos) > MAX_PRODUCTOS or len(candidatos) > MAX_CANDIDATOS:
+    # En modo automático puede haber más NCM encontrados que los 10 elegibles a mano
+    if len(productos) > MAX_PRODUCTOS or len(candidatos) > 100:
         raise IAError("El resultado es demasiado grande para exportar.", 400)
 
     negrita, blanca = Font(bold=True), Font(bold=True, color="FFFFFF")
