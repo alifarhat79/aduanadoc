@@ -14,9 +14,12 @@ descripciones de productos de tus despachos por NCM candidato. Nunca importadore
 """
 import json
 import logging
+import math
 import os
 import re
 import threading
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -479,6 +482,8 @@ def clasificar_ncm(db: Session, descripcion: str, detalles: str = "", buscar_int
     if descartadas:
         logger.warning("[IA] Sugerencias fuera del arancel descartadas: %s", descartadas)
 
+    consumo = _costo(usos)
+    registrar_consumo("sugerir", consumo, True, idx)
     return {
         "modelo": MODELO,
         "version_arancel": idx["version"]["nombre"],
@@ -491,7 +496,7 @@ def clasificar_ncm(db: Session, descripcion: str, detalles: str = "", buscar_int
         "advertencia": paso2.get("advertencia", ""),
         "antecedentes": antecedentes,
         "investigacion_web": investigacion,
-        "consumo": _costo(usos),
+        "consumo": consumo,
     }
 
 
@@ -950,8 +955,10 @@ def _clasificar_lista_automatica(db: Session, idx: Dict[str, Any], cliente, prod
                            "iva_t": nodo.get("iva_t")})
     resumen = {c: conteo[c] for c in encontrados}
     resumen.update({NINGUNO: 0, "SIN_RESPUESTA": conteo["SIN_RESPUESTA"]})
+    consumo = _costo(usos)
+    registrar_consumo("lista_automatica", consumo, True, idx)
     return {"modelo": MODELO, "modo": "automatico", "origen": origen, "candidatos": candidatos,
-            "productos": filas, "resumen": resumen, "consumo": _costo(usos)}
+            "productos": filas, "resumen": resumen, "consumo": consumo}
 
 
 def clasificar_lista(db: Session, candidatos_texto: str, texto: str = "", archivo: Optional[bytes] = None,
@@ -1046,6 +1053,8 @@ def clasificar_lista(db: Session, candidatos_texto: str, texto: str = "", archiv
         resumen[fila["ncm"]] += 1
         filas.append(fila)
 
+    consumo = _costo(usos)
+    registrar_consumo("lista_elegidos", consumo, False, idx)
     return {
         "modelo": MODELO,
         "modo": "elegidos",
@@ -1054,7 +1063,7 @@ def clasificar_lista(db: Session, candidatos_texto: str, texto: str = "", archiv
                        for c in candidatos],
         "productos": filas,
         "resumen": resumen,
-        "consumo": _costo(usos),
+        "consumo": consumo,
     }
 
 
@@ -1169,3 +1178,197 @@ def exportar_lista_xlsx(resultado: Dict[str, Any]) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ======================================================================================
+# Costo estimado ANTES de consultar (sin usar la IA) y consumo registrado en esta PC
+# ======================================================================================
+
+CARACTERES_POR_TOKEN = 2.3   # medido con el arancel real: 153.906 caracteres = 67.330 tokens
+VIGENCIA_CACHE = timedelta(minutes=55)  # la caché dura 1 h desde su último uso (margen de 5 min)
+_lock_consumo = threading.Lock()
+
+
+def _ruta_consumo() -> Path:
+    return Path(settings.DATA_DIR) / "ia_consumo.jsonl"
+
+
+def registrar_consumo(tipo: str, consumo: Dict[str, Any], usa_cache_partidas: bool, idx: Dict[str, Any]) -> None:
+    """Anota cada consulta (costo estimado y si usó la caché de partidas). Nunca interrumpe la consulta."""
+    linea = {"fecha": datetime.now().isoformat(timespec="seconds"), "tipo": tipo,
+             "usd": consumo.get("usd_estimado", 0), "cache_partidas": usa_cache_partidas,
+             "version": idx["version"].get("nombre")}
+    try:
+        with _lock_consumo:
+            ruta = _ruta_consumo()
+            ruta.parent.mkdir(parents=True, exist_ok=True)
+            with open(ruta, "a", encoding="utf-8") as f:
+                f.write(json.dumps(linea, ensure_ascii=False) + "\n")
+    except OSError as e:
+        logger.warning("[IA] No se pudo registrar el consumo: %s", e)
+
+
+def _leer_consumo() -> List[Dict[str, Any]]:
+    ruta = _ruta_consumo()
+    if not ruta.exists():
+        return []
+    filas = []
+    with _lock_consumo:
+        for linea in ruta.read_text(encoding="utf-8").splitlines():
+            try:
+                filas.append(json.loads(linea))
+            except ValueError:
+                continue
+    return filas
+
+
+def resumen_consumo() -> Dict[str, Any]:
+    ahora = datetime.now()
+    hoy, mes = ahora.date().isoformat(), ahora.strftime("%Y-%m")
+    filas = _leer_consumo()
+    de_hoy = [f for f in filas if f.get("fecha", "").startswith(hoy)]
+    return {"hoy_usd": round(sum(f.get("usd", 0) for f in de_hoy), 3), "consultas_hoy": len(de_hoy),
+            "mes_usd": round(sum(f.get("usd", 0) for f in filas if f.get("fecha", "").startswith(mes)), 3)}
+
+
+def _cache_partidas_activa(idx: Dict[str, Any]) -> bool:
+    """¿Hubo en esta PC una consulta con la lista de partidas (misma versión del arancel) en la última hora?"""
+    limite = datetime.now() - VIGENCIA_CACHE
+    for f in reversed(_leer_consumo()):
+        if f.get("cache_partidas") and f.get("version") == idx["version"].get("nombre"):
+            try:
+                return datetime.fromisoformat(f["fecha"]) >= limite
+            except (KeyError, ValueError):
+                return False
+    return False
+
+
+def _usd(entrada=0, salida=0, cache_lectura=0, cache_escritura_1h=0, cache_escritura=0, busquedas=0) -> float:
+    return ((entrada * _PRECIO["entrada"] + salida * _PRECIO["salida"] + cache_lectura * _PRECIO["cache_lectura"]
+             + cache_escritura_1h * _PRECIO["cache_escritura_1h"] + cache_escritura * _PRECIO["cache_escritura"]) / 1_000_000
+            + busquedas * PRECIO_BUSQUEDA_WEB)
+
+
+def _tokens(texto: str) -> int:
+    return int(len(texto) / CARACTERES_POR_TOKEN) + 1
+
+
+def _costo_cache_partidas(idx: Dict[str, Any], lotes: int = 1) -> Tuple[float, bool, int]:
+    tokens = _tokens(_SISTEMA_BASE + _texto_partidas(idx))
+    activa = _cache_partidas_activa(idx)
+    primero = _usd(cache_lectura=tokens) if activa else _usd(cache_escritura_1h=tokens)
+    return primero + (lotes - 1) * _usd(cache_lectura=tokens), activa, tokens
+
+
+def _num(v: float, decimales: int = 2) -> str:
+    """Número con el formato de Paraguay: 66.916 tokens, US$ 0,54."""
+    return f"{v:,.{decimales}f}".translate(str.maketrans(",.", ".,"))
+
+
+def _texto_cache(activa: bool, costo: float, tokens: int) -> str:
+    if activa:
+        return (f"Lista de partidas del arancel: ya está en caché por una consulta de la última hora en esta PC "
+                f"(US$ {_num(costo, 3)}).")
+    return (f"Primera consulta de la hora: se guarda en caché la lista de partidas del arancel "
+            f"({_num(tokens, 0)} tokens, US$ {_num(costo)}). Durante la hora siguiente, las consultas cuestan mucho menos.")
+
+
+def estimar_sugerir(db: Session, buscar_internet: bool = True) -> Dict[str, Any]:
+    """Rango de costo de "Sugerir NCM" calibrado con consultas reales (sin llamar a la IA)."""
+    idx = arancel_service.indice(db)
+    if idx is None:
+        raise IAError("El arancel todavía no está cargado en esta PC.", 503)
+    cache, activa, tokens = _costo_cache_partidas(idx)
+    analisis = (_usd(entrada=2000, salida=500) + _usd(entrada=6000, salida=1000),
+                _usd(entrada=3500, salida=1000) + _usd(entrada=16000, salida=2200))
+    web = ((_usd(entrada=35000, salida=2500, busquedas=1) + _usd(entrada=8000, salida=1000),
+            _usd(entrada=65000, salida=5000, busquedas=MAX_BUSQUEDAS_WEB) + _usd(entrada=16000, salida=2000))
+           if buscar_internet else (0.0, 0.0))
+    detalle = [_texto_cache(activa, cache, tokens),
+               f"Análisis del producto (2 pasos): US$ {_num(analisis[0])} a {_num(analisis[1])}."]
+    if buscar_internet:
+        detalle.append(f"Solo si la IA no está segura y busca en internet (hasta {MAX_BUSQUEDAS_WEB} búsquedas): "
+                       f"US$ {_num(web[0])} a {_num(web[1])} más.")
+    return {"usd_min": round(cache + analisis[0], 3), "usd_max": round(cache + analisis[1] + web[1], 3),
+            "cache_activa": activa, "detalle": detalle, "consumo": resumen_consumo()}
+
+
+def _rango_lote_auto(n: int) -> Tuple[float, float]:
+    """Costo sin la caché de partidas de un lote de n productos en modo automático (2 pasos)."""
+    minimo = _usd(entrada=1000 + 60 * n, salida=150 + 50 * n) + _usd(entrada=2500 + 100 * n, salida=200 + 70 * n)
+    maximo = _usd(entrada=1500 + 80 * n, salida=600 + 120 * n) + _usd(entrada=25000 + 150 * n, salida=800 + 150 * n)
+    return minimo, maximo
+
+
+def estimar_lista(db: Session, candidatos_texto: str, texto: str = "", archivo: Optional[bytes] = None,
+                  nombre_archivo: str = "") -> Dict[str, Any]:
+    """
+    Rango de costo de "Separar lista" sin llamar a la IA: cuenta los productos localmente (texto, Excel,
+    CSV) o las páginas de la factura PDF, y valida los NCM elegidos antes de cobrar nada.
+    """
+    modo_auto = not (candidatos_texto or "").strip()
+    candidatos = [] if modo_auto else resolver_candidatos(db, candidatos_texto)
+    idx = arancel_service.indice(db)
+    if idx is None:
+        raise IAError("El arancel todavía no está cargado en esta PC.", 503)
+
+    productos = productos_desde_texto(texto)
+    paginas_pdf, costo_pdf = 0, (0.0, 0.0)
+    if archivo:
+        ext = Path(nombre_archivo or "").suffix.lower()
+        if ext == ".pdf":
+            import pymupdf
+            try:
+                with pymupdf.open(stream=archivo, filetype="pdf") as doc:
+                    paginas_pdf = len(doc)
+            except Exception as e:  # noqa: BLE001
+                raise IAError(f"No se pudo abrir el PDF: {type(e).__name__}.", 400) from e
+            # Lectura de la factura por la IA: ~1.600 a 3.000 tokens por página y 40 a 60 por producto
+            costo_pdf = (_usd(entrada=300 + 1600 * paginas_pdf, salida=300 + 8 * 40 * paginas_pdf),
+                         _usd(entrada=300 + 3000 * paginas_pdf, salida=600 + 35 * 60 * paginas_pdf))
+        elif ext in (".xlsx", ".xls", ".csv"):
+            productos = productos_desde_planilla(archivo, nombre_archivo) + productos
+        elif ext == ".txt":
+            productos = productos_desde_texto(archivo.decode("utf-8", errors="replace")) + productos
+        else:
+            raise IAError("Formato no admitido: suba Excel (.xlsx/.xls), CSV, PDF o TXT.", 400)
+
+    if paginas_pdf:  # la cantidad real de productos se sabe recién al leer la factura
+        n_min, n_max = len(productos) + 8 * paginas_pdf, len(productos) + 35 * paginas_pdf
+    else:
+        n_min = n_max = len(productos)
+        if not productos:
+            raise IAError("No se encontraron productos: escriba uno por línea o suba una lista o factura.", 400)
+    if len(productos) > MAX_PRODUCTOS:  # solo los contados de verdad (lo de la factura es una estimación)
+        raise IAError(f"La lista tiene {len(productos)} productos; el máximo por consulta es {MAX_PRODUCTOS}.", 400)
+    n_min, n_max = min(n_min, MAX_PRODUCTOS), min(n_max, MAX_PRODUCTOS)
+
+    def costo_productos(n: int, extremo: int) -> float:
+        lotes = max(1, math.ceil(n / TAMANO_LOTE))
+        if modo_auto:
+            total = sum(_rango_lote_auto(min(TAMANO_LOTE, n - i * TAMANO_LOTE))[extremo] for i in range(lotes))
+            return total + _costo_cache_partidas(idx, lotes)[0]
+        material = _tokens(_SISTEMA_BASE + _material_lista(db, idx, candidatos))
+        cache = _usd(cache_escritura=material) + (lotes - 1) * _usd(cache_lectura=material)
+        por_lote = [(_usd(entrada=500 + 40 * m, salida=150 + 45 * m), _usd(entrada=800 + 60 * m, salida=400 + 90 * m))
+                    for m in (min(TAMANO_LOTE, n - i * TAMANO_LOTE) for i in range(lotes))]
+        return cache + sum(p[extremo] for p in por_lote)
+
+    usd_min = costo_pdf[0] + costo_productos(n_min, 0)
+    usd_max = costo_pdf[1] + costo_productos(n_max, 1)
+    detalle = []
+    if paginas_pdf:
+        detalle.append(f"Factura PDF de {paginas_pdf} página(s): la IA la lee completa (US$ {_num(costo_pdf[0])} a "
+                       f"{_num(costo_pdf[1])}); se estiman {n_min} a {n_max} productos.")
+    else:
+        lotes = max(1, math.ceil(n_min / TAMANO_LOTE))
+        detalle.append(f"{n_min} producto(s), {lotes} lote(s) de hasta {TAMANO_LOTE}.")
+    if modo_auto:
+        cache, activa, tokens = _costo_cache_partidas(idx)
+        detalle.insert(0, "Búsqueda automática del NCM de cada producto en todo el arancel (2 pasos por lote).")
+        detalle.append(_texto_cache(activa, cache, tokens))
+    else:
+        activa = False
+        detalle.insert(0, f"Clasificación entre {len(candidatos)} NCM elegido(s) (1 paso por lote).")
+    return {"usd_min": round(usd_min, 3), "usd_max": round(usd_max, 3), "cache_activa": activa,
+            "productos": [n_min, n_max], "detalle": detalle, "consumo": resumen_consumo()}

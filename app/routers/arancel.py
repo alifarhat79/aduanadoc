@@ -104,7 +104,18 @@ class ConsultaIA(BaseModel):
 @router.get("/api/ia/estado")
 def api_ia_estado():
     from app.services import ia_service
-    return {"configurada": ia_service.esta_configurada(), "modelo": ia_service.MODELO}
+    return {"configurada": ia_service.esta_configurada(), "modelo": ia_service.MODELO,
+            "consumo": ia_service.resumen_consumo()}
+
+
+@router.post("/api/ia/estimar")
+def api_ia_estimar(consulta: ConsultaIA, db: Session = Depends(get_db)):
+    """Costo estimado de "Sugerir NCM" ANTES de consultar (no usa la IA ni cuesta nada)."""
+    from app.services import ia_service
+    try:
+        return ia_service.estimar_sugerir(db, consulta.buscar_internet)
+    except ia_service.IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
 
 
 @router.post("/api/ia/clasificar")
@@ -148,6 +159,27 @@ def api_ia_clasificar_lista(
             raise HTTPException(status_code=413, detail="El archivo supera 20 MB.")
     try:
         return ia_service.clasificar_lista(db, candidatos, texto, contenido, nombre)
+    except ia_service.IAError as e:
+        raise HTTPException(status_code=e.status, detail=e.mensaje)
+
+
+@router.post("/api/ia/estimar-lista")
+def api_ia_estimar_lista(
+    candidatos: str = Form("", max_length=500),
+    texto: str = Form("", max_length=60000),
+    archivo: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    """Costo estimado de "Separar lista" ANTES de consultar: cuenta productos/páginas localmente, sin la IA."""
+    from app.services import ia_service
+    contenido, nombre = None, ""
+    if archivo is not None and archivo.filename:
+        nombre = Path(archivo.filename).name
+        contenido = archivo.file.read(MAX_LISTA_BYTES + 1)
+        if len(contenido) > MAX_LISTA_BYTES:
+            raise HTTPException(status_code=413, detail="El archivo supera 20 MB.")
+    try:
+        return ia_service.estimar_lista(db, candidatos, texto, contenido, nombre)
     except ia_service.IAError as e:
         raise HTTPException(status_code=e.status, detail=e.mensaje)
 

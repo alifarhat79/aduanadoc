@@ -522,3 +522,143 @@ def test_sugerir_y_lista_comparten_la_cache_de_partidas(con_clave):
     assert prefijo(uno.llamadas[0][1]["system"]) == prefijo(lista.llamadas[0]["system"])
     # el esquema de salida y el esfuerzo también forman parte del prefijo en caché
     assert uno.llamadas[0][1]["output_config"] == lista.llamadas[0]["output_config"]
+
+
+# --------------------------------------------------------------------------------------
+# Costo estimado ANTES de consultar (ventana de confirmación) y consumo registrado
+# --------------------------------------------------------------------------------------
+
+@pytest.fixture
+def consumo_aislado(tmp_path, monkeypatch):
+    ruta = tmp_path / "ia_consumo.jsonl"
+    monkeypatch.setattr(ia_service, "_ruta_consumo", lambda: ruta)
+    return ruta
+
+
+def _sin_ia(*a, **kw):
+    raise AssertionError("La estimación no debe llamar a la IA")
+
+
+def test_estimar_sugerir_no_usa_la_ia_ni_la_clave(sin_clave, consumo_aislado):
+    with patch.object(ia_service, "_cliente", side_effect=_sin_ia):
+        con_web = client.post("/arancel/api/ia/estimar", json={"descripcion": "auriculares TWS"})
+        sin_web = client.post("/arancel/api/ia/estimar", json={"descripcion": "auriculares TWS", "buscar_internet": False})
+    assert con_web.status_code == 200 and sin_web.status_code == 200, con_web.text
+    a, b = con_web.json(), sin_web.json()
+    assert a["cache_activa"] is False and "Primera consulta de la hora" in a["detalle"][0]
+    # calibrado con consultas reales del 26-11: US$ 0,63 sin internet y US$ 1,01 con internet (caché fría)
+    assert b["usd_min"] <= 0.63 <= b["usd_max"]
+    assert a["usd_min"] <= 1.01 <= a["usd_max"]
+    assert a["usd_max"] > b["usd_max"] and a["usd_min"] == b["usd_min"]  # internet solo suma si se usa
+    assert any("internet" in d for d in a["detalle"]) and not any("internet" in d for d in b["detalle"])
+    assert a["consumo"] == {"hoy_usd": 0, "consultas_hoy": 0, "mes_usd": 0}
+    assert client.post("/arancel/api/ia/estimar", json={"descripcion": "x"}).status_code == 422
+    assert not consumo_aislado.exists()  # estimar no registra consumo
+
+
+def test_con_la_cache_activa_la_estimacion_baja(con_clave, consumo_aislado):
+    fria = client.post("/arancel/api/ia/estimar", json={"descripcion": "auriculares", "buscar_internet": False}).json()
+    falso = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("alta"))])
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        d = client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares"}).json()
+    linea, = [json.loads(x) for x in consumo_aislado.read_text(encoding="utf-8").splitlines()]
+    assert linea["tipo"] == "sugerir" and linea["cache_partidas"] is True and linea["usd"] == d["consumo"]["usd_estimado"]
+
+    tibia = client.post("/arancel/api/ia/estimar", json={"descripcion": "auriculares", "buscar_internet": False}).json()
+    assert tibia["cache_activa"] is True and "ya está en caché" in tibia["detalle"][0]
+    assert fria["usd_min"] - tibia["usd_min"] > 0.4             # la lista de partidas ya no se paga completa
+    assert tibia["usd_min"] <= 0.09 <= tibia["usd_max"] < 0.2    # real: 0,63 - 0,54 de la escritura en caché
+    assert tibia["consumo"]["consultas_hoy"] == 1 and tibia["consumo"]["hoy_usd"] == round(linea["usd"], 3)
+    estado = client.get("/arancel/api/ia/estado").json()
+    assert estado["consumo"]["consultas_hoy"] == 1
+
+    # Pasada la hora, la caché ya no cuenta como activa
+    vieja = {**linea, "fecha": "2026-01-01T08:00:00"}
+    consumo_aislado.write_text(json.dumps(vieja) + "\n", encoding="utf-8")
+    assert client.post("/arancel/api/ia/estimar", json={"descripcion": "auriculares"}).json()["cache_activa"] is False
+    # De otra versión del arancel tampoco (el prefijo en caché sería distinto)
+    consumo_aislado.write_text(json.dumps({**linea, "version": "otra edición"}) + "\nlinea rota\n", encoding="utf-8")
+    assert client.post("/arancel/api/ia/estimar", json={"descripcion": "auriculares"}).json()["cache_activa"] is False
+
+
+def test_si_no_se_puede_registrar_el_consumo_la_consulta_sigue(con_clave, tmp_path, monkeypatch):
+    monkeypatch.setattr(ia_service, "_ruta_consumo", lambda: tmp_path)  # una carpeta: no se puede escribir
+    falso = _ClienteFalso([_respuesta(PASO1), _respuesta(_paso2("alta"))])
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        r = client.post("/arancel/api/ia/clasificar", json={"descripcion": "auriculares"})
+    assert r.status_code == 200 and r.json()["sugerencias"][0]["ncm"] == "8518.30.00"
+
+
+def test_estimar_lista_cuenta_los_productos_sin_la_ia(sin_clave, consumo_aislado):
+    import io
+    texto = "\n".join(f"PRODUCTO COSMETICO NUMERO {i}" for i in range(1, 86))
+    with patch.object(ia_service, "_cliente", side_effect=_sin_ia):
+        elegidos = client.post("/arancel/api/ia/estimar-lista", data={"candidatos": "3304.99.10, 3304.99.90", "texto": texto})
+        auto = client.post("/arancel/api/ia/estimar-lista", data={"candidatos": "", "texto": texto})
+    assert elegidos.status_code == 200 and auto.status_code == 200, elegidos.text
+    e, a = elegidos.json(), auto.json()
+    assert e["productos"] == [85, 85] and any("3 lote(s)" in d for d in e["detalle"])
+    assert "2 NCM elegido(s)" in e["detalle"][0] and 0 < e["usd_min"] < e["usd_max"] < 1
+    assert a["productos"] == [85, 85] and "Búsqueda automática" in a["detalle"][0]
+    assert a["usd_min"] > e["usd_min"] + 0.4                     # incluye guardar la lista de partidas en caché
+    assert a["cache_activa"] is False and any("Primera consulta" in d for d in a["detalle"])
+
+    openpyxl = pytest.importorskip("openpyxl")
+    wb = openpyxl.Workbook()
+    for fila in (["Descripción", "Marca"], ["CREMA DE MANOS 100ML", "NIVEA"], ["SERUM FACIAL 30ML", "CERAVE"]):
+        wb.active.append(fila)
+    buf = io.BytesIO()
+    wb.save(buf)
+    r = client.post("/arancel/api/ia/estimar-lista", data={"candidatos": "3304.99.10"},
+                    files={"archivo": ("lista.xlsx", buf.getvalue(), "application/octet-stream")})
+    assert r.status_code == 200 and r.json()["productos"] == [2, 2]
+
+    pymupdf = pytest.importorskip("pymupdf")
+    doc = pymupdf.open()
+    for _ in range(2):
+        doc.new_page().insert_text((72, 72), "FACTURA - CREMA FACIAL 50ML x 12")
+    pdf = doc.tobytes()
+    r = client.post("/arancel/api/ia/estimar-lista", data={"candidatos": ""},
+                    files={"archivo": ("factura.pdf", pdf, "application/pdf")})
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert f["productos"] == [16, 70] and "2 página(s)" in f["detalle"][1] and f["usd_max"] > f["usd_min"]
+
+    grande = pymupdf.open()
+    for _ in range(40):
+        grande.new_page()
+    r = client.post("/arancel/api/ia/estimar-lista", data={"candidatos": "3304.99.10"},
+                    files={"archivo": ("factura.pdf", grande.tobytes(), "application/pdf")})
+    assert r.status_code == 200 and r.json()["productos"] == [300, 300]  # se estima, no se rechaza
+
+    errores = [
+        ({"candidatos": "3304.99.10, 3301.99.90", "texto": "CREMA"}, None, "3301.99.90 no existe"),
+        ({"candidatos": "3304.99.10", "texto": "\n".join(f"P {i}" for i in range(301))}, None, "máximo"),
+        ({"candidatos": "3304.99.10", "texto": "  \n "}, None, "No se encontraron productos"),
+        ({"candidatos": ""}, ("factura.pdf", b"no es un pdf", "application/pdf"), "No se pudo abrir el PDF"),
+        ({"candidatos": ""}, ("lista.docx", b"x", "application/octet-stream"), "Formato"),
+    ]
+    for datos, archivo, texto_error in errores:
+        r = client.post("/arancel/api/ia/estimar-lista", data=datos, files={"archivo": archivo} if archivo else None)
+        assert r.status_code == 400 and texto_error in r.json()["detail"], (datos, r.text)
+    assert not consumo_aislado.exists()
+
+
+def test_cada_lista_registra_su_consumo(con_clave, consumo_aislado):
+    falso = _ClienteLista(lambda n: {"n": n, "ncm": "3304.99.90", "confianza": "alta", "motivo": "ok", "otro_ncm": ""})
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        client.post("/arancel/api/ia/clasificar-lista", data={"candidatos": "3304.99.10, 3304.99.90", "texto": "SERUM"})
+    falso = _ClienteAuto(lambda n: {"n": n, "interpretacion": "Crema facial", "partidas": ["33.04"]},
+                         lambda n: {"n": n, "ncm": "3304.99.10", "confianza": "alta", "motivo": "ok"})
+    with patch.object(ia_service, "_cliente", return_value=falso):
+        client.post("/arancel/api/ia/clasificar-lista", data={"candidatos": "", "texto": "CREMA FACIAL"})
+    lineas = [json.loads(x) for x in consumo_aislado.read_text(encoding="utf-8").splitlines()]
+    assert [(x["tipo"], x["cache_partidas"]) for x in lineas] == [("lista_elegidos", False), ("lista_automatica", True)]
+    assert all(x["usd"] > 0 for x in lineas)
+    assert ia_service.resumen_consumo()["consultas_hoy"] == 2
+
+
+def test_la_pagina_pide_confirmar_el_costo():
+    html = client.get("/arancel").text
+    assert 'id="modalCosto"' in html and "Aceptar y consultar" in html
+    assert "/arancel/api/ia/estimar'" in html and "/arancel/api/ia/estimar-lista'" in html

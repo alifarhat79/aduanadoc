@@ -242,6 +242,32 @@
     </div>
   </div>
 </div>
+
+<!-- Confirmación del costo antes de usar la IA -->
+<div class="modal fade" id="modalCosto" tabindex="-1" aria-labelledby="mcTitulo" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-bold" id="mcTitulo"><i class="bi bi-cash-coin text-success me-1"></i>Costo estimado de esta consulta</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancelar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="fs-3 fw-bold text-center mb-1" id="mcMonto"></div>
+        <div class="small text-muted text-center mb-3">Se cobra en su cuenta de Anthropic. Es una estimación: al terminar se muestra el consumo real.</div>
+        <ul class="small mb-3" id="mcDetalle"></ul>
+        <div class="small text-muted border-top pt-2" id="mcConsumo"></div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="mcNoPreguntar">
+          <label class="form-check-label small" for="mcNoPreguntar">No volver a preguntar mientras esta pestaña esté abierta</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" id="mcAceptar"><i class="bi bi-stars me-1"></i>Aceptar y consultar</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -692,15 +718,50 @@
       <div class="text-muted" style="font-size:.7rem">Modelo ${esc(r.modelo)} · ${fmt((c.entrada || 0) + (c.cache_escritura || 0) + (c.cache_escritura_1h || 0) + (c.cache_lectura || 0), 0)} tokens de entrada
         (${fmt(c.cache_lectura || 0, 0)} desde caché) y ${fmt(c.salida || 0, 0)} de salida${c.busquedas_web ? ` · ${fmt(c.busquedas_web, 0)} búsquedas web` : ''} · costo estimado US$ ${fmt(c.usd_estimado || 0, 3)}</div>`;
   }
+  // ---------------- Confirmar el costo antes de usar la IA ----------------
+  const NO_PREGUNTAR = 'aduanadoc_ia_no_preguntar_costo';
+  const decimales = v => (v > 0 && v < 0.1 ? 3 : 2);  // US$ 0,035 pero US$ 0,00 y US$ 1,17
+  const dinero = v => `US$ ${fmt(v, decimales(v))}`;
+  function confirmarCosto(est) {
+    if (sessionStorage.getItem(NO_PREGUNTAR) === '1') return Promise.resolve(true);
+    return new Promise(resolver => {
+      const modalEl = $('modalCosto');
+      const iguales = Math.abs(est.usd_max - est.usd_min) < 0.0005;
+      $('mcMonto').textContent = iguales ? dinero(est.usd_min) : `${dinero(est.usd_min)} a ${fmt(est.usd_max, decimales(est.usd_max))}`;
+      $('mcDetalle').innerHTML = (est.detalle || []).map(d => `<li>${esc(d)}</li>`).join('');
+      const c = est.consumo || {};
+      $('mcConsumo').textContent = `Gastado en esta PC (estimado): hoy ${dinero(c.hoy_usd || 0)} en ${fmt(c.consultas_hoy || 0, 0)} consulta(s) · este mes ${dinero(c.mes_usd || 0)}.`;
+      $('mcNoPreguntar').checked = false;
+      let aceptado = false;
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      const alAceptar = () => {
+        aceptado = true;
+        if ($('mcNoPreguntar').checked) sessionStorage.setItem(NO_PREGUNTAR, '1');
+        modal.hide();
+      };
+      $('mcAceptar').addEventListener('click', alAceptar, {once: true});
+      modalEl.addEventListener('hidden.bs.modal', () => {
+        $('mcAceptar').removeEventListener('click', alAceptar);
+        resolver(aceptado);
+      }, {once: true});
+      modal.show();
+    });
+  }
+
   $('formIA').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = $('btnIA');
+    const consulta = {descripcion: $('iaDesc').value.trim(), detalles: $('iaDet').value.trim(),
+                      buscar_internet: $('iaWeb').checked};
     btn.disabled = true;
-    $('iaResultado').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Consultando a Claude: revisa el arancel completo y las notas legales' + ($('iaWeb').checked ? ' y, si no está segura, busca el producto en internet (puede tardar hasta 2 minutos)' : ' (puede tardar hasta un minuto)') + '…</div>';
     try {
+      // Primero el costo estimado (no usa la IA); solo si el usuario acepta se consulta
+      const est = await api('/arancel/api/ia/estimar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                       body: JSON.stringify(consulta)});
+      if (!(await confirmarCosto(est))) return;
+      $('iaResultado').innerHTML = '<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Consultando a Claude: revisa el arancel completo y las notas legales' + (consulta.buscar_internet ? ' y, si no está segura, busca el producto en internet (puede tardar hasta 2 minutos)' : ' (puede tardar hasta un minuto)') + '…</div>';
       const r = await api('/arancel/api/ia/clasificar', {method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({descripcion: $('iaDesc').value.trim(), detalles: $('iaDet').value.trim(),
-                              buscar_internet: $('iaWeb').checked})});
+                                                         body: JSON.stringify(consulta)});
       renderIA(r);
     } catch (err) {
       $('iaResultado').innerHTML = `<div class="alert alert-danger small">${esc(err.message)}</div>`;
@@ -805,18 +866,23 @@
   $('formLista').addEventListener('submit', async e => {
     e.preventDefault();
     if (!(await validarCandidatos())) return;
-    const fd = new FormData();
-    fd.append('candidatos', $('lsCand').value.trim());
-    fd.append('texto', $('lsTexto').value);
-    if ($('lsArchivo').files[0]) fd.append('archivo', $('lsArchivo').files[0]);
+    const armarDatos = () => {  // un FormData nuevo para cada envío (estimación y consulta)
+      const fd = new FormData();
+      fd.append('candidatos', $('lsCand').value.trim());
+      fd.append('texto', $('lsTexto').value);
+      if ($('lsArchivo').files[0]) fd.append('archivo', $('lsArchivo').files[0]);
+      return fd;
+    };
     const btn = $('btnLista');
     btn.disabled = true;
     const textoEspera = $('lsCand').value.trim()
       ? 'Clasificando los productos entre los NCM elegidos'
       : 'Identificando cada producto y buscando su NCM en todo el arancel';
-    $('iaResultado').innerHTML = `<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>${textoEspera} (una lista larga o una factura puede tardar unos minutos)…</div>`;
     try {
-      ultimaLista = await api('/arancel/api/ia/clasificar-lista', {method: 'POST', body: fd});
+      const est = await api('/arancel/api/ia/estimar-lista', {method: 'POST', body: armarDatos()});
+      if (!(await confirmarCosto(est))) return;
+      $('iaResultado').innerHTML = `<div class="card border-0 shadow-sm p-3 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>${textoEspera} (una lista larga o una factura puede tardar unos minutos)…</div>`;
+      ultimaLista = await api('/arancel/api/ia/clasificar-lista', {method: 'POST', body: armarDatos()});
       filtroLista = '';
       renderLista();
     } catch (err) {
